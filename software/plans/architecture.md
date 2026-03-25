@@ -4,6 +4,43 @@
 
 Управляющее приложение построено на базе .NET 8.0 с использованием паттерна MVVM (Model-View-ViewModel) и принципов Clean Architecture.
 
+**Ключевая особенность**: Двухкомпонентная архитектура с Backend Service для совместимости с плагинами Elgato Stream Deck.
+
+## Архитектура системы
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  MacroKeyboard.Backend (Windows Service / Daemon)       │
+│  ┌───────────────────────────────────────────────────┐  │
+│  │  WebSocket Server (port 28196)                    │  │
+│  │  - Stream Deck API эмуляция                       │  │
+│  │  - Регистрация плагинов                           │  │
+│  │  - Маршрутизация событий                          │  │
+│  └───────────────────────────────────────────────────┘  │
+│  ┌───────────────────────────────────────────────────┐  │
+│  │  Device Manager                                   │  │
+│  │  - USB HID коммуникация                           │  │
+│  │  - Управление устройством                         │  │
+│  └───────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────┘
+                      ↕ WebSocket
+┌─────────────────────────────────────────────────────────┐
+│  Plugins (HTML/JS, Node.js, Python, C#)                 │
+│  - OBS Studio Control                                   │
+│  - Spotify Control                                      │
+│  - Discord Integration                                  │
+│  - Custom Actions                                       │
+└─────────────────────────────────────────────────────────┘
+                      ↕ IPC / WebSocket
+┌─────────────────────────────────────────────────────────┐
+│  MacroKeyboard.UI (Configuration Application)           │
+│  - Profile Editor                                       │
+│  - Button Configuration                                 │
+│  - Plugin Browser                                       │
+│  - Settings                                             │
+└─────────────────────────────────────────────────────────┘
+```
+
 ## Технологический стек
 
 ### Основные технологии
@@ -33,6 +70,36 @@
 MacroKeyboard.sln
 │
 ├── src/
+│   ├── MacroKeyboard.Backend/           # Backend Service (Windows Service/Daemon)
+│   │   ├── Program.cs
+│   │   ├── BackendService.cs
+│   │   ├── Services/
+│   │   │   ├── DeviceManager.cs
+│   │   │   └── EventRouter.cs
+│   │   └── appsettings.json
+│   │
+│   ├── MacroKeyboard.PluginSystem/      # Система плагинов
+│   │   ├── WebSocketServer/
+│   │   │   ├── StreamDeckWebSocketServer.cs
+│   │   │   ├── MessageHandler.cs
+│   │   │   └── ProtocolAdapter.cs
+│   │   │
+│   │   ├── PluginHost/
+│   │   │   ├── PluginManager.cs
+│   │   │   ├── PluginLoader.cs
+│   │   │   ├── PluginProcess.cs
+│   │   │   └── PluginSandbox.cs
+│   │   │
+│   │   ├── PluginAPI/
+│   │   │   ├── IPlugin.cs
+│   │   │   ├── PluginContext.cs
+│   │   │   ├── PluginManifest.cs
+│   │   │   └── PluginEvents.cs
+│   │   │
+│   │   └── ImageAdapter/
+│   │       ├── ImageConverter.cs
+│   │       └── CircularMask.cs
+│   │
 │   ├── MacroKeyboard.Core/              # Бизнес-логика (не зависит от UI)
 │   │   ├── Models/
 │   │   │   ├── Profile.cs
