@@ -1,0 +1,13 @@
+# Name,     Type, SubType,  Offset,   Size,     Flags
+# Bootloader and system partitions
+nvs,        data, nvs,      0x9000,   0x4000,
+otadata,    data, ota,      0xd000,   0x2000,
+phy_init,   data, phy,      0xf000,   0x1000,
+
+# Application partitions (OTA support)
+factory,    app,  factory,  0x10000,  0x300000,
+ota_0,      app,  ota_0,    0x310000, 0x300000,
+ota_1,      app,  ota_1,    0x610000, 0x300000,
+
+# Storage partition (SPIFFS for profiles and images)
+storage,    data, spiffs,   0x910000, 0x6F0000,

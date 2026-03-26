@@ -1,0 +1,139 @@
+[0;33m--- esp-idf-monitor 1.4.0 on /dev/ttyACM0 115200 ---[0m
+[0;33m--- Quit: Ctrl+] | Menu: Ctrl+T | Help: Ctrl+T followed by Ctrl+H ---[0m
+[0;33m0x4200aafa: app_main at /project/main/main.c:111 (discriminator 1)
+[0m
+[0;33m0x4037e5f3: _esp_error_check_failed at /opt/esp/idf/components/esp_system/esp_err.c:49
+[0m
+[0;33m0x40375fde: panic_abort at /opt/esp/idf/components/esp_system/panic.c:463
+0x4037e5fd: esp_system_abort at /opt/esp/idf/components/esp_system/port/esp_system_chip.c:92
+0x40386bda: abort at /opt/esp/idf/components/newlib/abort.c:38
+0x4037e5f3: _esp_error_check_failed at /opt/esp/idf/components/esp_system/esp_err.c:49
+0x4200aafa: app_main at /project/main/main.c:111 (discriminator 1)
+0x4208eb97: main_task at /opt/esp/idf/components/freertos/app_startup.c:208
+[0m
+[0;33m0x40375f3c: esp_restart_noos at /opt/esp/idf/components/esp_system/port/soc/esp32s3/system_internal.c:158
+[0m
+[0;33m0x4200aafa: app_main at /project/main/main.c:111 (discriminator 1)
+[0m
+[0;33m0x4037e5f3: _esp_error_check_failed at /opt/esp/idf/components/esp_system/esp_err.c:49
+[0m
+[0;33m0x40375fde: panic_abort at /opt/esp/idf/components/esp_system/panic.c:463
+0x4037e5fd: esp_system_abort at /opt/esp/idf/components/esp_system/port/esp_system_chip.c:92
+0x40386bda: abort at /opt/esp/idf/components/newlib/abort.c:38
+0x4037e5f3: _esp_error_check_failed at /opt/esp/idf/components/esp_system/esp_err.c:49
+0x4200aafa: app_main at /project/main/main.c:111 (discriminator 1)
+0x4208eb97: main_task at /opt/esp/idf/components/freertos/app_startup.c:208
+[0m
+[0;33m0x40375f3c: esp_restart_noos at /opt/esp/idf/components/esp_system/port/soc/esp32s3/system_internal.c:158
+[0m
+[0;33m0x4200aafa: app_main at /project/main/main.c:111 (discriminator 1)
+[0m
+[0;33m0x4037e5f3: _esp_error_check_failed at /opt/esp/idf/components/esp_system/esp_err.c:49
+[0m
+[0;33m0x40375fde: panic_abort at /opt/esp/idf/components/esp_system/panic.c:463
+0x4037e5fd: esp_system_abort at /opt/esp/idf/components/esp_system/port/esp_system_chip.c:92
+0x40386bda: abort at /opt/esp/idf/components/newlib/abort.c:38
+0x4037e5f3: _esp_error_check_failed at /opt/esp/idf/components/esp_system/esp_err.c:49
+0x4200aafa: app_main at /project/main/main.c:111 (discriminator 1)
+0x4208eb97: main_task at /opt/esp/idf/components/freertos/app_startup.c:208
+[0m
+[0;33m0x40375f3c: esp_restart_noos at /opt/esp/idf/components/esp_system/port/soc/esp32s3/system_internal.c:158
+[0m
+[0;33m0x4200aafa: app_main at /project/main/main.c:111 (discriminator 1)
+[0m
+[0;33m0x4037e5f3: _esp_error_check_failed at /opt/esp/idf/components/esp_system/esp_err.c:49
+[0m
+[0;33m0x40375fde: panic_abort at /opt/esp/idf/components/esp_system/panic.c:463
+0x4037e5fd: esp_system_abort at /opt/esp/idf/components/esp_system/port/esp_system_chip.c:92
+0x40386bda: abort at /opt/esp/idf/components/newlib/abort.c:38
+0x4037e5f3: _esp_error_check_failed at /opt/esp/idf/components/esp_system/esp_err.c:49
+0x4200aafa: app_main at /project/main/main.c:111 (discriminator 1)
+0x4208eb97: main_task at /opt/esp/idf/components/freertos/app_startup.c:208
+[0m
+[0;33m0x40375f3c: esp_restart_noos at /opt/esp/idf/components/esp_system/port/soc/esp32s3/system_internal.c:158
+[0m
+[0;33m0x4200aafa: app_main at /project/main/main.c:111 (discriminator 1)
+[0m
+[0;33m0x4037e5f3: _esp_error_check_failed at /opt/esp/idf/components/esp_system/esp_err.c:49
+[0m
+[0;33m0x40375fde: panic_abort at /opt/esp/idf/components/esp_system/panic.c:463
+0x4037e5fd: esp_system_abort at /opt/esp/idf/components/esp_system/port/esp_system_chip.c:92
+0x40386bda: abort at /opt/esp/idf/components/newlib/abort.c:38
+0x4037e5f3: _esp_error_check_failed at /opt/esp/idf/components/esp_system/esp_err.c:49
+0x4200aafa: app_main at /project/main/main.c:111 (discriminator 1)
+0x4208eb97: main_task at /opt/esp/idf/components/freertos/app_startup.c:208
+[0m
+[0;33m0x40375f3c: esp_restart_noos at /opt/esp/idf/components/esp_system/port/soc/esp32s3/system_internal.c:158
+[0m
+[0;33m0x4200aafa: app_main at /project/main/main.c:111 (discriminator 1)
+[0m
+[0;33m0x4037e5f3: _esp_error_check_failed at /opt/esp/idf/components/esp_system/esp_err.c:49
+[0m
+[0;33m0x40375fde: panic_abort at /opt/esp/idf/components/esp_system/panic.c:463
+0x4037e5fd: esp_system_abort at /opt/esp/idf/components/esp_system/port/esp_system_chip.c:92
+0x40386bda: abort at /opt/esp/idf/components/newlib/abort.c:38
+0x4037e5f3: _esp_error_check_failed at /opt/esp/idf/components/esp_system/esp_err.c:49
+0x4200aafa: app_main at /project/main/main.c:111 (discriminator 1)
+0x4208eb97: main_task at /opt/esp/idf/components/freertos/app_startup.c:208
+[0m
+[0;33m0x40375f3c: esp_restart_noos at /opt/esp/idf/components/esp_system/port/soc/esp32s3/system_internal.c:158
+[0m
+[0;33m0x4200aafa: app_main at /project/main/main.c:111 (discriminator 1)
+[0m
+[0;33m0x4037e5f3: _esp_error_check_failed at /opt/esp/idf/components/esp_system/esp_err.c:49
+[0m
+[0;33m0x40375fde: panic_abort at /opt/esp/idf/components/esp_system/panic.c:463
+0x4037e5fd: esp_system_abort at /opt/esp/idf/components/esp_system/port/esp_system_chip.c:92
+0x40386bda: abort at /opt/esp/idf/components/newlib/abort.c:38
+0x4037e5f3: _esp_error_check_failed at /opt/esp/idf/components/esp_system/esp_err.c:49
+0x4200aafa: app_main at /project/main/main.c:111 (discriminator 1)
+0x4208eb97: main_task at /opt/esp/idf/components/freertos/app_startup.c:208
+[0m
+[0;33m0x40375f3c: esp_restart_noos at /opt/esp/idf/components/esp_system/port/soc/esp32s3/system_internal.c:158
+[0m
+[0;33m0x4200aafa: app_main at /project/main/main.c:111 (discriminator 1)
+[0m
+[0;33m0x4037e5f3: _esp_error_check_failed at /opt/esp/idf/components/esp_system/esp_err.c:49
+[0m
+[0;33m0x40375fde: panic_abort at /opt/esp/idf/components/esp_system/panic.c:463
+0x4037e5fd: esp_system_abort at /opt/esp/idf/components/esp_system/port/esp_system_chip.c:92
+0x40386bda: abort at /opt/esp/idf/components/newlib/abort.c:38
+0x4037e5f3: _esp_error_check_failed at /opt/esp/idf/components/esp_system/esp_err.c:49
+0x4200aafa: app_main at /project/main/main.c:111 (discriminator 1)
+0x4208eb97: main_task at /opt/esp/idf/components/freertos/app_startup.c:208
+[0m
+[0;33m0x40375f3c: esp_restart_noos at /opt/esp/idf/components/esp_system/port/soc/esp32s3/system_internal.c:158
+[0m
+[0;33m0x4200aafa: app_main at /project/main/main.c:111 (discriminator 1)
+[0m
+[0;33m0x4037e5f3: _esp_error_check_failed at /opt/esp/idf/components/esp_system/esp_err.c:49
+[0m
+[0;33m0x40375fde: panic_abort at /opt/esp/idf/components/esp_system/panic.c:463
+0x4037e5fd: esp_system_abort at /opt/esp/idf/components/esp_system/port/esp_system_chip.c:92
+0x40386bda: abort at /opt/esp/idf/components/newlib/abort.c:38
+0x4037e5f3: _esp_error_check_failed at /opt/esp/idf/components/esp_system/esp_err.c:49
+0x4200aafa: app_main at /project/main/main.c:111 (discriminator 1)
+0x4208eb97: main_task at /opt/esp/idf/components/freertos/app_startup.c:208
+[0m
+[0;33m0x40375f3c: esp_restart_noos at /opt/esp/idf/components/esp_system/port/soc/esp32s3/system_internal.c:158
+[0m
+[0;33m0x4200aafa: app_main at /project/main/main.c:111 (discriminator 1)
+[0m
+[0;33m0x4037e5f3: _esp_error_check_failed at /opt/esp/idf/components/esp_system/esp_err.c:49
+[0m
+[0;33m0x40375fde: panic_abort at /opt/esp/idf/components/esp_system/panic.c:463
+0x4037e5fd: esp_system_abort at /opt/esp/idf/components/esp_system/port/esp_system_chip.c:92
+0x40386bda: abort at /opt/esp/idf/components/newlib/abort.c:38
+0x4037e5f3: _esp_error_check_failed at /opt/esp/idf/components/esp_system/esp_err.c:49
+0x4200aafa: app_main at /project/main/main.c:111 (discriminator 1)
+0x4208eb97: main_task at /opt/esp/idf/components/freertos/app_startup.c:208
+[0m
+[0;33m0x40375f3c: esp_restart_noos at /opt/esp/idf/components/esp_system/port/soc/esp32s3/system_internal.c:158
+[0m
+[0;33m0x4200aafa: app_main at /project/main/main.c:111 (discriminator 1)
+[0m
+[0;33m0x4037e5f3: _esp_error_check_failed at /opt/esp/idf/components/esp_system/esp_err.c:49
+[0m
+[0;33m0x40375fde: panic_abort at /opt/esp/idf/components/esp_system/panic.c:463
+0x4037e5fd: esp_system_abort at /opt/esp/idf/components/esp_system/port/esp_system_chip.c:92
+0x40386bda: abo
