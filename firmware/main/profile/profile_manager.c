@@ -40,9 +40,11 @@ esp_err_t profile_manager_init(void) {
     // Try to load profile from storage
     esp_err_t ret = profile_storage_load(current_profile_id, &current_profile);
     if (ret != ESP_OK) {
-        ESP_LOGW(TAG, "Failed to load profile %d, creating defaults", current_profile_id);
-        profile_create_defaults();
-        profile_storage_load(current_profile_id, &current_profile);
+        ESP_LOGW(TAG, "Failed to load profile %d, using empty profile", current_profile_id);
+        // Create empty profile in memory (don't save to avoid watchdog timeout)
+        memset(&current_profile, 0, sizeof(profile_t));
+        current_profile.profile_id = current_profile_id;
+        snprintf(current_profile.name, sizeof(current_profile.name), "Profile %d", current_profile_id + 1);
     }
     
     ESP_LOGI(TAG, "Profile manager initialized, current profile: %d", current_profile_id);
@@ -189,6 +191,9 @@ esp_err_t profile_create_defaults(void) {
     ESP_LOGI(TAG, "Creating default profiles");
     
     for (int p = 0; p < NUM_PROFILES; p++) {
+        // Feed watchdog to prevent timeout
+        vTaskDelay(pdMS_TO_TICKS(100));
+        
         profile_t profile;
         memset(&profile, 0, sizeof(profile));
         
@@ -221,7 +226,11 @@ esp_err_t profile_create_defaults(void) {
                                          sizeof(profile_t) - sizeof(uint32_t));
         
         // Save profile
+        ESP_LOGI(TAG, "Saving default profile %d", p);
         profile_storage_save(p, &profile);
+        
+        // Feed watchdog after each profile - longer delay for SPIFFS
+        vTaskDelay(pdMS_TO_TICKS(200));
     }
     
     ESP_LOGI(TAG, "Default profiles created");

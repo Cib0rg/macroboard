@@ -1000,7 +1000,7 @@
             "managed_reqs": [ "espressif__tinyusb" ],
             "managed_priv_reqs": [],
             "file": "/project/build/esp-idf/espressif__esp_tinyusb/libespressif__esp_tinyusb.a",
-            "sources": [ "/project/managed_components/espressif__esp_tinyusb/descriptors_control.c", "/project/managed_components/espressif__esp_tinyusb/tinyusb.c", "/project/managed_components/espressif__esp_tinyusb/usb_descriptors.c", "/project/managed_components/espressif__esp_tinyusb/tinyusb_task.c", "/project/managed_components/espressif__esp_tinyusb/cdc.c", "/project/managed_components/espressif__esp_tinyusb/tinyusb_cdc_acm.c", "/project/managed_components/espressif__esp_tinyusb/tinyusb_console.c", "/project/managed_components/espressif__esp_tinyusb/vfs_tinyusb.c" ],
+            "sources": [ "/project/managed_components/espressif__esp_tinyusb/descriptors_control.c", "/project/managed_components/espressif__esp_tinyusb/tinyusb.c", "/project/managed_components/espressif__esp_tinyusb/usb_descriptors.c", "/project/managed_components/espressif__esp_tinyusb/tinyusb_task.c" ],
             "include_dirs": [ "include" ]
         },
         "espressif__tinyusb": {
@@ -1190,13 +1190,13 @@
             "dir": "/project/main",
             "type": "LIBRARY",
             "lib": "__idf_main",
-            "reqs": [ "driver", "esp_wifi", "nvs_flash", "spiffs", "esp_http_client", "esp_https_ota", "app_update", "esp_timer" ],
+            "reqs": [ "driver", "nvs_flash", "spiffs", "esp_timer" ],
             "priv_reqs": [ "espressif__esp_tinyusb" ],
             "managed_reqs": [],
             "managed_priv_reqs": [ "espressif__esp_tinyusb" ],
             "file": "/project/build/esp-idf/main/libmain.a",
-            "sources": [ "/project/main/main.c", "/project/main/hardware/gc9a01.c", "/project/main/hardware/display_mux.c", "/project/main/hardware/buttons.c", "/project/main/hardware/encoder.c", "/project/main/hardware/leds.c", "/project/main/usb/usb_hid_keyboard.c", "/project/main/usb/usb_hid_raw.c", "/project/main/usb/usb_descriptors.c", "/project/main/protocol/protocol_handler.c", "/project/main/protocol/packet_parser.c", "/project/main/protocol/image_transfer.c", "/project/main/storage/nvs_manager.c", "/project/main/storage/profile_storage.c", "/project/main/storage/image_storage.c", "/project/main/profile/profile_manager.c", "/project/main/profile/action_executor.c", "/project/main/network/wifi_manager.c", "/project/main/network/ota_updater.c", "/project/main/utils/logger.c", "/project/main/utils/crc.c" ],
-            "include_dirs": [ ".", "hardware", "usb", "protocol", "storage", "profile", "network", "utils" ]
+            "sources": [ "/project/main/main.c", "/project/main/hardware/gc9a01.c", "/project/main/hardware/gc9a01_backlight.c", "/project/main/hardware/display_mux.c", "/project/main/hardware/buttons.c", "/project/main/hardware/encoder.c", "/project/main/hardware/leds.c", "/project/main/usb/usb_hid_keyboard.c", "/project/main/usb/usb_hid_raw.c", "/project/main/usb/usb_descriptors.c", "/project/main/protocol/protocol_handler.c", "/project/main/protocol/packet_parser.c", "/project/main/protocol/image_transfer.c", "/project/main/storage/nvs_manager.c", "/project/main/storage/profile_storage.c", "/project/main/storage/image_storage.c", "/project/main/profile/profile_manager.c", "/project/main/profile/action_executor.c", "/project/main/utils/logger.c", "/project/main/utils/crc.c" ],
+            "include_dirs": [ ".", "hardware", "usb", "protocol", "storage", "profile", "utils" ]
         },
         "mbedtls": {
             "alias": "idf::mbedtls",
@@ -2805,11 +2805,11 @@
             "prefix": "idf",
             "dir": "/project/main",
             "lib": "__idf_main",
-            "reqs": [ "driver", "esp_wifi", "nvs_flash", "spiffs", "esp_http_client", "esp_https_ota", "app_update", "esp_timer" ],
+            "reqs": [ "driver", "nvs_flash", "spiffs", "esp_timer" ],
             "priv_reqs": [ "espressif__esp_tinyusb" ],
             "managed_reqs": [],
             "managed_priv_reqs": [ "espressif__esp_tinyusb" ],
-            "include_dirs": [ ".", "hardware", "usb", "protocol", "storage", "profile", "network", "utils" ]
+            "include_dirs": [ ".", "hardware", "usb", "protocol", "storage", "profile", "utils" ]
         },
         "espressif__esp_tinyusb": {
             "alias": "idf::espressif__esp_tinyusb",

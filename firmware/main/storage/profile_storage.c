@@ -54,6 +54,7 @@ esp_err_t profile_storage_save(uint8_t profile_id, const profile_t* profile) {
     }
     
     size_t written = fwrite(profile, 1, sizeof(profile_t), f);
+    fflush(f);  // Flush to ensure data is written
     fclose(f);
     
     if (written != sizeof(profile_t)) {
