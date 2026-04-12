@@ -6,7 +6,6 @@
 #include "common.h"
 #include "config.h"
 #include "tinyusb.h"
-#include "tusb_cdc_acm.h"
 #include "class/hid/hid_device.h"
 
 // This file provides USB descriptors for composite HID device
@@ -19,6 +18,33 @@ static const uint8_t desc_hid_report_keyboard[] = {
 // HID Report Descriptor - Raw
 static const uint8_t desc_hid_report_raw[] = {
     TUD_HID_REPORT_DESC_GENERIC_INOUT(64, HID_REPORT_ID(2))
+};
+
+//--------------------------------------------------------------------+
+// Configuration Descriptor
+//--------------------------------------------------------------------+
+
+enum {
+    ITF_NUM_HID_KEYBOARD = 0,
+    ITF_NUM_HID_RAW,
+    ITF_NUM_TOTAL
+};
+
+#define CONFIG_TOTAL_LEN  (TUD_CONFIG_DESC_LEN + TUD_HID_DESC_LEN + TUD_HID_INOUT_DESC_LEN)
+
+#define EPNUM_HID_KEYBOARD  0x81
+#define EPNUM_HID_RAW_OUT   0x02
+#define EPNUM_HID_RAW_IN    0x82
+
+const uint8_t desc_configuration[] = {
+    // Config: self powered, max 500mA
+    TUD_CONFIG_DESCRIPTOR(1, ITF_NUM_TOTAL, 0, CONFIG_TOTAL_LEN, TUSB_DESC_CONFIG_ATT_REMOTE_WAKEUP, 500),
+
+    // Interface 0: HID Keyboard
+    TUD_HID_DESCRIPTOR(ITF_NUM_HID_KEYBOARD, 0, HID_ITF_PROTOCOL_KEYBOARD, sizeof(desc_hid_report_keyboard), EPNUM_HID_KEYBOARD, CFG_TUD_HID_EP_BUFSIZE, 10),
+
+    // Interface 1: HID Raw (bidirectional)
+    TUD_HID_INOUT_DESCRIPTOR(ITF_NUM_HID_RAW, 0, HID_ITF_PROTOCOL_NONE, sizeof(desc_hid_report_raw), EPNUM_HID_RAW_OUT, EPNUM_HID_RAW_IN, CFG_TUD_HID_EP_BUFSIZE, 10)
 };
 
 // Invoked when received GET HID REPORT DESCRIPTOR

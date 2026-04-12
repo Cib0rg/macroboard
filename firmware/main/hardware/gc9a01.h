@@ -87,4 +87,18 @@ esp_err_t gc9a01_write_data(const uint8_t* data, size_t len);
  */
 esp_err_t gc9a01_send_command(uint8_t cmd);
 
+/**
+ * @brief Set backlight state for all displays
+ * @param enabled true to enable, false to disable
+ * @return ESP_OK on success
+ */
+esp_err_t gc9a01_set_backlight(bool enabled);
+
+/**
+ * @brief Set backlight brightness (PWM)
+ * @param brightness Brightness level (0-255)
+ * @return ESP_OK on success
+ */
+esp_err_t gc9a01_set_brightness(uint8_t brightness);
+
 #endif // GC9A01_H

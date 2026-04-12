@@ -18,6 +18,7 @@ typedef enum {
     ACTION_TYPE_KEYBOARD = 0x01,
     ACTION_TYPE_CUSTOM_HID = 0x02,
     ACTION_TYPE_PROFILE_SWITCH = 0x03,
+    ACTION_TYPE_FOLDER = 0x04,
 } action_type_t;
 
 // ============================================
@@ -41,6 +42,9 @@ typedef struct {
     uint16_t action_data_len;
     uint8_t action_data[ACTION_DATA_MAX_LEN];
     
+    // Folder configuration (for ACTION_TYPE_FOLDER)
+    uint8_t folder_id;  // ID of the folder (0-255)
+    
     // LED configuration
     uint8_t led_r;
     uint8_t led_g;
@@ -55,6 +59,16 @@ typedef struct {
 } button_config_t;
 
 // ============================================
+// Folder Structure
+// ============================================
+
+typedef struct {
+    uint8_t folder_id;
+    char name[PROFILE_NAME_MAX_LEN];
+    button_config_t buttons[NUM_BUTTONS];
+} folder_t;
+
+// ============================================
 // Profile Structure
 // ============================================
 
@@ -62,6 +76,7 @@ typedef struct {
     uint8_t profile_id;
     char name[PROFILE_NAME_MAX_LEN];
     button_config_t buttons[NUM_BUTTONS];
+    folder_t folders[NUM_FOLDERS];
     uint32_t crc32;
 } profile_t;
 

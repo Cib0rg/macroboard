@@ -6,7 +6,6 @@
 #include "common.h"
 #include "config.h"
 #include "tinyusb.h"
-#include "tusb_cdc_acm.h"
 #include "utils/logger.h"
 #include "hardware/gc9a01.h"
 #include "hardware/display_mux.h"
@@ -20,10 +19,11 @@
 #include "storage/profile_storage.h"
 #include "storage/image_storage.h"
 #include "profile/profile_manager.h"
-#include "network/wifi_manager.h"
-#include "network/ota_updater.h"
 
 static const char* TAG = "MAIN";
+
+// External USB configuration descriptor
+extern const uint8_t desc_configuration[];
 
 void app_main(void) {
     esp_err_t ret;
@@ -74,6 +74,10 @@ void app_main(void) {
     ESP_ERROR_CHECK(ret);
     ESP_LOGI(TAG, "✓ SPI and display driver initialized");
     
+    // 2.2.1 Enable display backlight
+    gc9a01_set_backlight(true);
+    ESP_LOGI(TAG, "✓ Display backlight enabled");
+    
     // 2.3 Initialize all displays
     for (int i = 0; i < NUM_DISPLAYS; i++) {
         ret = gc9a01_init_display(i);
@@ -106,10 +110,28 @@ void app_main(void) {
     ESP_LOGI(TAG, "Phase 3: USB Init");
     
     // 3.1 Initialize TinyUSB
-    tinyusb_config_t tusb_cfg = {};  // Use default config
+    tinyusb_config_t tusb_cfg = {
+        .task = {
+            .size = 4096,
+            .priority = 5,
+            .xCoreID = 0,
+        },
+        .descriptor = {
+            .device = NULL,  // Use default from Kconfig
+            .string = NULL,  // Use default from Kconfig
+            .string_count = 0,
+            .full_speed_config = desc_configuration,
+            .high_speed_config = NULL,
+        },
+    };
+    
     ret = tinyusb_driver_install(&tusb_cfg);
-    ESP_ERROR_CHECK(ret);
-    ESP_LOGI(TAG, "✓ TinyUSB initialized");
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to initialize TinyUSB: %s", esp_err_to_name(ret));
+        ESP_LOGI(TAG, "Continuing without USB...");
+    } else {
+        ESP_LOGI(TAG, "✓ TinyUSB initialized");
+    }
     
     // 3.2 Initialize USB HID interfaces
     usb_hid_keyboard_init();
@@ -187,23 +209,10 @@ void app_main(void) {
     }
     
     // ============================================
-    // PHASE 6: Network Initialization (Optional)
+    // PHASE 6: Task Creation
     // ============================================
     
-    ESP_LOGI(TAG, "Phase 6: Network Init");
-    
-    ret = wifi_manager_init();
-    if (ret == ESP_OK) {
-        ESP_LOGI(TAG, "✓ WiFi manager initialized (not connected)");
-    } else {
-        ESP_LOGW(TAG, "WiFi manager init failed (OTA will not be available)");
-    }
-    
-    // ============================================
-    // PHASE 7: Task Creation
-    // ============================================
-    
-    ESP_LOGI(TAG, "Phase 7: Creating FreeRTOS Tasks");
+    ESP_LOGI(TAG, "Phase 6: Creating FreeRTOS Tasks");
     
     // 7.1 Create USB RX task
     xTaskCreatePinnedToCore(usb_rx_task, "usb_rx", STACK_SIZE_USB_RX, NULL,
@@ -231,7 +240,7 @@ void app_main(void) {
     ESP_LOGI(TAG, "✓ LED task created");
     
     // ============================================
-    // PHASE 8: System Ready
+    // PHASE 7: System Ready
     // ============================================
     
     ESP_LOGI(TAG, "===========================================");

@@ -14,6 +14,9 @@
 
 static const char* TAG = "ACTION";
 
+// Track which button was used to enter current folder (for toggle exit)
+static uint8_t folder_entry_button_id = 0xFF;
+
 esp_err_t action_execute(uint8_t button_id) {
     if (button_id >= NUM_BUTTONS) {
         return ESP_ERR_INVALID_ARG;
@@ -58,6 +61,27 @@ esp_err_t action_execute(uint8_t button_id) {
             if (btn->action_data_len >= 1) {
                 uint8_t target_profile = btn->action_data[0];
                 profile_switch(target_profile);
+            }
+            break;
+        }
+        
+        case ACTION_TYPE_FOLDER: {
+            // Folder navigation action (toggle enter/exit)
+            uint8_t folder_id = btn->folder_id;
+            
+            // Check if this is the button that was used to enter the current folder
+            if (profile_is_in_folder() && folder_entry_button_id == button_id) {
+                // Exit folder (toggle back)
+                ESP_LOGI(TAG, "Exiting folder via toggle button %d", button_id);
+                profile_folder_exit();
+                folder_entry_button_id = 0xFF;
+            } else {
+                // Enter folder
+                ESP_LOGI(TAG, "Entering folder %d via button %d", folder_id, button_id);
+                esp_err_t ret = profile_folder_enter(folder_id);
+                if (ret == ESP_OK) {
+                    folder_entry_button_id = button_id;
+                }
             }
             break;
         }

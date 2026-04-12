@@ -1,22 +1,20 @@
-/**
- * @file logger.c
- * @brief Logging system implementation
- */
-
 #include "logger.h"
-#include "esp_err.h"
 #include "esp_log.h"
 
-static const char* TAG = "LOGGER";
+static const char *TAG = "LOGGER";
 
-esp_err_t logger_init(void) {
-    // Set default log level
+esp_err_t logger_init(void)
+{
+    // ESP-IDF уже инициализирует систему логирования
+    // Здесь можно настроить уровни логирования для разных компонентов
+    
     esp_log_level_set("*", ESP_LOG_INFO);
+    esp_log_level_set("MAIN", ESP_LOG_DEBUG);
+    esp_log_level_set("PROTOCOL", ESP_LOG_DEBUG);
+    esp_log_level_set("USB_HID", ESP_LOG_DEBUG);
+    esp_log_level_set("PROFILE", ESP_LOG_DEBUG);
     
-    // Set specific module log levels if needed
-    // esp_log_level_set("BUTTONS", ESP_LOG_DEBUG);
-    // esp_log_level_set("ENCODER", ESP_LOG_DEBUG);
+    ESP_LOGI(TAG, "Logger initialized with custom levels");
     
-    ESP_LOGI(TAG, "Logger initialized");
     return ESP_OK;
 }

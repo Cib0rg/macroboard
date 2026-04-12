@@ -8,6 +8,7 @@
 
 #include <stdint.h>
 #include "esp_err.h"
+#include <stdbool.h>
 #include "profile_types.h"
 
 /**
@@ -83,5 +84,36 @@ esp_err_t profile_save_to_storage(uint8_t profile_id);
  * @return ESP_OK on success
  */
 esp_err_t profile_create_defaults(void);
+
+/**
+ * @brief Enter a folder (push to folder stack)
+ * @param folder_id Folder ID to enter
+ * @return ESP_OK on success
+ */
+esp_err_t profile_folder_enter(uint8_t folder_id);
+
+/**
+ * @brief Exit current folder (pop from folder stack)
+ * @return ESP_OK on success
+ */
+esp_err_t profile_folder_exit(void);
+
+/**
+ * @brief Get current folder ID
+ * @return Current folder ID (0xFF if at root level)
+ */
+uint8_t profile_get_current_folder(void);
+
+/**
+ * @brief Check if currently inside a folder
+ * @return true if inside folder, false if at root
+ */
+bool profile_is_in_folder(void);
+
+/**
+ * @brief Get folder depth (0 = root, 1+ = inside folders)
+ * @return Current folder depth
+ */
+uint8_t profile_get_folder_depth(void);
 
 #endif // PROFILE_MANAGER_H

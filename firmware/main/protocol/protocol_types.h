@@ -24,6 +24,7 @@
 #define CMD_END_IMAGE_TRANSFER      0x22
 #define CMD_SET_BUTTON_ACTION       0x30
 #define CMD_SET_LED_COLOR           0x40
+#define CMD_SET_BACKLIGHT           0x41
 #define CMD_SAVE_PROFILE            0x50
 #define CMD_LOAD_PROFILE            0x51
 #define CMD_DELETE_PROFILE          0x52

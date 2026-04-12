@@ -17,6 +17,7 @@ static const char* TAG = "GC9A01";
 
 static spi_device_handle_t spi_device = NULL;
 static SemaphoreHandle_t spi_mutex = NULL;
+static bool backlight_enabled = true;
 
 // Initialization sequence for GC9A01
 static const uint8_t gc9a01_init_sequence[] = {
@@ -173,6 +174,32 @@ esp_err_t gc9a01_init(void) {
     }
     
     ESP_LOGI(TAG, "GC9A01 driver initialized");
+    return ESP_OK;
+}
+
+esp_err_t gc9a01_set_backlight(bool enabled) {
+    backlight_enabled = enabled;
+    
+    if (enabled) {
+        gpio_set_level(PIN_DISPLAY_BACKLIGHT, 1);
+        ESP_LOGI(TAG, "Backlight enabled");
+    } else {
+        gpio_set_level(PIN_DISPLAY_BACKLIGHT, 0);
+        ESP_LOGI(TAG, "Backlight disabled");
+    }
+    
+    return ESP_OK;
+}
+
+esp_err_t gc9a01_set_brightness(uint8_t brightness) {
+    // Simple on/off control via GPIO
+    // For full PWM control, would need LEDC configuration
+    if (brightness > 127) {
+        return gc9a01_set_backlight(true);
+    } else if (brightness == 0) {
+        return gc9a01_set_backlight(false);
+    }
+    
     return ESP_OK;
 }
 

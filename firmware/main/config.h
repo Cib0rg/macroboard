@@ -40,32 +40,33 @@
 #define PIN_SPI_CLK             12
 #define PIN_SPI_DC              13
 #define PIN_SPI_RST             14
+#define PIN_DISPLAY_BACKLIGHT   15  // Common backlight control for all displays
 
 // Display multiplexer (74HC138 decoders)
-#define PIN_MUX_A0              15
-#define PIN_MUX_A1              16
-#define PIN_MUX_A2              17
-#define PIN_MUX_SEL             18
+#define PIN_MUX_A0              16
+#define PIN_MUX_A1              17
+#define PIN_MUX_A2              18
+#define PIN_MUX_SEL             21
 
 // Buttons (GPIO pins)
-#define PIN_BUTTON_0            1
-#define PIN_BUTTON_1            2
-#define PIN_BUTTON_2            3
-#define PIN_BUTTON_3            4
-#define PIN_BUTTON_4            5
+#define PIN_BUTTON_0            2
+#define PIN_BUTTON_1            1
+#define PIN_BUTTON_2            8
+#define PIN_BUTTON_3            9
+#define PIN_BUTTON_4            7
 #define PIN_BUTTON_5            6
-#define PIN_BUTTON_6            7
-#define PIN_BUTTON_7            8
-#define PIN_BUTTON_8            9
-#define PIN_BUTTON_9            10
+#define PIN_BUTTON_6            5
+#define PIN_BUTTON_7            4
+#define PIN_BUTTON_8            38
+#define PIN_BUTTON_9            39
 
 // Rotary encoder
-#define PIN_ENCODER_A           38
-#define PIN_ENCODER_B           39
-#define PIN_ENCODER_BTN         40
+#define PIN_ENCODER_A           40
+#define PIN_ENCODER_B           41
+#define PIN_ENCODER_BTN         42
 
 // WS2812 RGB LEDs
-#define PIN_LED_DATA            21
+#define PIN_LED_DATA            10
 
 // ============================================
 // SPI Configuration
@@ -80,6 +81,10 @@
 #define NUM_PROFILES            5
 #define PROFILE_NAME_MAX_LEN    32
 #define ACTION_DATA_MAX_LEN     100
+
+// Folder Configuration
+#define NUM_FOLDERS             16  // Maximum number of folders per profile
+#define FOLDER_STACK_DEPTH      4   // Maximum nesting depth for folders
 
 // ============================================
 // Storage Paths
@@ -116,8 +121,6 @@
 #define TASK_PRIORITY_PROTOCOL  15
 #define TASK_PRIORITY_DISPLAY   12
 #define TASK_PRIORITY_LED       10
-#define TASK_PRIORITY_WIFI      8
-#define TASK_PRIORITY_OTA       5
 #define TASK_PRIORITY_MONITOR   3
 
 // ============================================
@@ -129,8 +132,6 @@
 #define STACK_SIZE_PROTOCOL     8192
 #define STACK_SIZE_DISPLAY      4096
 #define STACK_SIZE_LED          2048
-#define STACK_SIZE_WIFI         4096
-#define STACK_SIZE_OTA          8192
 
 // ============================================
 // Timing Configuration
@@ -146,23 +147,9 @@
 #define LED_MAX_BRIGHTNESS      255
 
 // ============================================
-// WiFi Configuration
-// ============================================
-#define WIFI_CONNECT_TIMEOUT_MS 10000
-#define WIFI_RECONNECT_DELAY_MS 5000
-
-// ============================================
-// OTA Configuration
-// ============================================
-#define OTA_BUFFER_SIZE         4096
-#define OTA_TIMEOUT_MS          30000
-
-// ============================================
 // System Events (FreeRTOS Event Group bits)
 // ============================================
-#define EVENT_WIFI_CONNECTED    (1 << 0)
-#define EVENT_OTA_IN_PROGRESS   (1 << 1)
-#define EVENT_USB_CONFIGURED    (1 << 2)
-#define EVENT_PROFILE_CHANGED_BIT   (1 << 3)
+#define EVENT_USB_CONFIGURED    (1 << 0)
+#define EVENT_PROFILE_CHANGED_BIT   (1 << 1)
 
 #endif // CONFIG_H

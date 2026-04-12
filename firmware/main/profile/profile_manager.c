@@ -17,6 +17,11 @@ static profile_t current_profile;
 static uint8_t current_profile_id = 0;
 static SemaphoreHandle_t profile_mutex = NULL;
 
+// Folder navigation stack
+static uint8_t folder_stack[FOLDER_STACK_DEPTH];
+static uint8_t folder_stack_depth = 0;
+static uint8_t folder_entry_button = 0xFF;  // Button that was used to enter current folder
+
 esp_err_t profile_manager_init(void) {
     ESP_LOGI(TAG, "Initializing profile manager");
     
@@ -98,6 +103,14 @@ button_config_t* profile_get_button_config(uint8_t button_id) {
     if (button_id >= NUM_BUTTONS) {
         return NULL;
     }
+    
+    // If inside a folder, return button config from current folder
+    if (folder_stack_depth > 0) {
+        uint8_t current_folder = folder_stack[folder_stack_depth - 1];
+        return &current_profile.folders[current_folder].buttons[button_id];
+    }
+    
+    // Otherwise return from root profile
     return &current_profile.buttons[button_id];
 }
 
@@ -213,4 +226,101 @@ esp_err_t profile_create_defaults(void) {
     
     ESP_LOGI(TAG, "Default profiles created");
     return ESP_OK;
+}
+
+// ============================================
+// Folder Navigation Functions
+// ============================================
+
+esp_err_t profile_folder_enter(uint8_t folder_id) {
+    if (folder_id >= NUM_FOLDERS) {
+        ESP_LOGE(TAG, "Invalid folder ID: %d", folder_id);
+        return ESP_ERR_INVALID_ARG;
+    }
+    
+    if (folder_stack_depth >= FOLDER_STACK_DEPTH) {
+        ESP_LOGE(TAG, "Folder stack overflow (max depth: %d)", FOLDER_STACK_DEPTH);
+        return ESP_ERR_NO_MEM;
+    }
+    
+    xSemaphoreTake(profile_mutex, portMAX_DELAY);
+    
+    // Push folder to stack
+    folder_stack[folder_stack_depth] = folder_id;
+    folder_stack_depth++;
+    
+    // Get folder configuration
+    folder_t* folder = &current_profile.folders[folder_id];
+    
+    ESP_LOGI(TAG, "Entering folder %d ('%s'), depth: %d",
+             folder_id, folder->name, folder_stack_depth);
+    
+    // Update LEDs and displays with folder buttons
+    for (int i = 0; i < NUM_BUTTONS; i++) {
+        button_config_t* btn = &folder->buttons[i];
+        led_set_color(i, btn->led_r, btn->led_g, btn->led_b, btn->led_brightness);
+        
+        // TODO: Update display with folder button image
+    }
+    led_update();
+    
+    xSemaphoreGive(profile_mutex);
+    
+    return ESP_OK;
+}
+
+esp_err_t profile_folder_exit(void) {
+    if (folder_stack_depth == 0) {
+        ESP_LOGW(TAG, "Already at root level");
+        return ESP_ERR_INVALID_STATE;
+    }
+    
+    xSemaphoreTake(profile_mutex, portMAX_DELAY);
+    
+    // Pop folder from stack
+    folder_stack_depth--;
+    uint8_t exited_folder = folder_stack[folder_stack_depth];
+    
+    ESP_LOGI(TAG, "Exiting folder %d, new depth: %d", exited_folder, folder_stack_depth);
+    
+    // Restore buttons from parent context
+    button_config_t* buttons;
+    if (folder_stack_depth == 0) {
+        // Back to root profile
+        buttons = current_profile.buttons;
+        ESP_LOGI(TAG, "Returned to root profile");
+    } else {
+        // Back to parent folder
+        uint8_t parent_folder = folder_stack[folder_stack_depth - 1];
+        buttons = current_profile.folders[parent_folder].buttons;
+        ESP_LOGI(TAG, "Returned to parent folder %d", parent_folder);
+    }
+    
+    // Update LEDs and displays
+    for (int i = 0; i < NUM_BUTTONS; i++) {
+        button_config_t* btn = &buttons[i];
+        led_set_color(i, btn->led_r, btn->led_g, btn->led_b, btn->led_brightness);
+        
+        // TODO: Update display with button image
+    }
+    led_update();
+    
+    xSemaphoreGive(profile_mutex);
+    
+    return ESP_OK;
+}
+
+uint8_t profile_get_current_folder(void) {
+    if (folder_stack_depth == 0) {
+        return 0xFF;  // Root level
+    }
+    return folder_stack[folder_stack_depth - 1];
+}
+
+bool profile_is_in_folder(void) {
+    return folder_stack_depth > 0;
+}
+
+uint8_t profile_get_folder_depth(void) {
+    return folder_stack_depth;
 }

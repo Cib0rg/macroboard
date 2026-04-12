@@ -11,8 +11,6 @@
 #include "config.h"
 #include "profile/profile_manager.h"
 #include "storage/profile_storage.h"
-#include "network/wifi_manager.h"
-#include "network/ota_updater.h"
 #include "usb/usb_hid_raw.h"
 
 static const char* TAG = "PROTOCOL";
@@ -30,6 +28,7 @@ static esp_err_t handle_image_data_chunk(const uint8_t* payload, uint16_t length
 static esp_err_t handle_end_image_transfer(const uint8_t* payload, uint16_t length, uint8_t* response, uint16_t* response_len);
 static esp_err_t handle_set_button_action(const uint8_t* payload, uint16_t length, uint8_t* response, uint16_t* response_len);
 static esp_err_t handle_set_led_color(const uint8_t* payload, uint16_t length, uint8_t* response, uint16_t* response_len);
+static esp_err_t handle_set_backlight(const uint8_t* payload, uint16_t length, uint8_t* response, uint16_t* response_len);
 static esp_err_t handle_save_profile(const uint8_t* payload, uint16_t length, uint8_t* response, uint16_t* response_len);
 
 // Command handler table
@@ -48,6 +47,7 @@ static const command_entry_t command_table[] = {
     {CMD_END_IMAGE_TRANSFER, handle_end_image_transfer},
     {CMD_SET_BUTTON_ACTION, handle_set_button_action},
     {CMD_SET_LED_COLOR, handle_set_led_color},
+    {CMD_SET_BACKLIGHT, handle_set_backlight},
     {CMD_SAVE_PROFILE, handle_save_profile},
 };
 
@@ -324,6 +324,23 @@ static esp_err_t handle_set_led_color(const uint8_t* payload, uint16_t length,
     uint8_t effect = payload[6];
     
     esp_err_t ret = profile_set_led_color(profile_id, button_id, r, g, b, brightness, effect);
+    
+    response[0] = (ret == ESP_OK) ? STATUS_OK : STATUS_ERROR;
+    *response_len = 1;
+    
+    return ESP_OK;
+}
+
+static esp_err_t handle_set_backlight(const uint8_t* payload, uint16_t length,
+                                       uint8_t* response, uint16_t* response_len) {
+    if (length < 1) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    
+    uint8_t enabled = payload[0];
+    
+    extern esp_err_t gc9a01_set_backlight(bool enabled);
+    esp_err_t ret = gc9a01_set_backlight(enabled != 0);
     
     response[0] = (ret == ESP_OK) ? STATUS_OK : STATUS_ERROR;
     *response_len = 1;

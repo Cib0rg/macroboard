@@ -122,8 +122,8 @@ esp_err_t encoder_init(void) {
         return ret;
     }
     
-    // Install ISR service
-    gpio_install_isr_service(0);
+    // ISR service already installed by buttons_init(), just add handlers
+    // gpio_install_isr_service(0);  // Already installed
     
     // Add ISR handlers
     gpio_isr_handler_add(PIN_ENCODER_A, encoder_rotation_isr, NULL);
