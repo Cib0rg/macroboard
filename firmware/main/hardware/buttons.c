@@ -57,6 +57,13 @@ esp_err_t buttons_init(void) {
         return ESP_FAIL;
     }
     
+    // Install GPIO ISR service FIRST
+    esp_err_t ret = gpio_install_isr_service(0);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to install GPIO ISR service: %s", esp_err_to_name(ret));
+        return ret;
+    }
+    
     // Configure button pins with interrupts
     for (int i = 0; i < NUM_BUTTONS; i++) {
         gpio_config_t io_conf = {
@@ -67,7 +74,7 @@ esp_err_t buttons_init(void) {
             .intr_type = GPIO_INTR_ANYEDGE,  // Both press and release
         };
         
-        esp_err_t ret = gpio_config(&io_conf);
+        ret = gpio_config(&io_conf);
         if (ret != ESP_OK) {
             ESP_LOGE(TAG, "Failed to configure button %d: %s", i, esp_err_to_name(ret));
             return ret;
@@ -76,9 +83,6 @@ esp_err_t buttons_init(void) {
         // Add ISR handler
         gpio_isr_handler_add(button_pins[i], button_isr_handler, (void*)(uintptr_t)i);
     }
-    
-    // Install GPIO ISR service
-    gpio_install_isr_service(0);
     
     ESP_LOGI(TAG, "Buttons initialized (%d buttons)", NUM_BUTTONS);
     return ESP_OK;
