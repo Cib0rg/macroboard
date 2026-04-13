@@ -269,7 +269,8 @@ esp_err_t profile_folder_enter(uint8_t folder_id) {
         button_config_t* btn = &folder->buttons[i];
         led_set_color(i, btn->led_r, btn->led_g, btn->led_b, btn->led_brightness);
         
-        // TODO: Update display with folder button image
+        // NOTE: Display update would load and show folder button image
+        // Requires: image_storage_load() + JPEG decode + GC9A01 display
     }
     led_update();
     
@@ -310,7 +311,8 @@ esp_err_t profile_folder_exit(void) {
         button_config_t* btn = &buttons[i];
         led_set_color(i, btn->led_r, btn->led_g, btn->led_b, btn->led_brightness);
         
-        // TODO: Update display with button image
+        // NOTE: Display update would restore original button image
+        // Requires: image_storage_load() + JPEG decode + GC9A01 display
     }
     led_update();
     

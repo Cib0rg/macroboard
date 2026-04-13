@@ -12,6 +12,7 @@
 #include "profile/profile_manager.h"
 #include "storage/profile_storage.h"
 #include "usb/usb_hid_raw.h"
+#include "esp_spiffs.h"
 
 static const char* TAG = "PROTOCOL";
 
@@ -178,8 +179,10 @@ static esp_err_t handle_get_device_info(const uint8_t* payload, uint16_t length,
     response[21] = NUM_PROFILES;
     response[22] = profile_get_current_id();
     
-    // Free flash space
-    uint32_t free_space = 0; // TODO: implement
+    // Free flash space from SPIFFS
+    size_t total = 0, used = 0;
+    esp_spiffs_info(NULL, &total, &used);
+    uint32_t free_space = (uint32_t)(total - used);
     memcpy(&response[23], &free_space, 4);
     
     *response_len = 27;
@@ -239,7 +242,8 @@ static esp_err_t handle_start_image_transfer(const uint8_t* payload, uint16_t le
     esp_err_t ret = image_transfer_start(profile_id, button_id, image_size, format);
     
     response[0] = (ret == ESP_OK) ? STATUS_OK : STATUS_ERROR;
-    uint16_t transfer_id = 0; // TODO: implement transfer ID
+    // Transfer ID = profile_id << 8 | button_id (unique per button)
+    uint16_t transfer_id = (profile_id << 8) | button_id;
     memcpy(&response[1], &transfer_id, 2);
     uint16_t max_chunk = 50;
     memcpy(&response[3], &max_chunk, 2);
@@ -359,7 +363,8 @@ static esp_err_t handle_save_profile(const uint8_t* payload, uint16_t length,
     esp_err_t ret = profile_save_to_storage(profile_id);
     
     response[0] = (ret == ESP_OK) ? STATUS_OK : STATUS_ERROR;
-    uint32_t bytes_written = 0; // TODO: implement
+    // Bytes written = size of profile_t structure
+    uint32_t bytes_written = (ret == ESP_OK) ? sizeof(profile_t) : 0;
     memcpy(&response[1], &bytes_written, 4);
     
     *response_len = 5;

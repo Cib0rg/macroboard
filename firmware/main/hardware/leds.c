@@ -31,8 +31,11 @@ esp_err_t leds_init(void) {
         return ESP_FAIL;
     }
     
-    // TODO: Full RMT configuration for WS2812
-    // For now just initialize the buffer
+    // NOTE: Full RMT configuration for WS2812 requires:
+    // - RMT channel configuration
+    // - WS2812 timing encoder (T0H/T0L/T1H/T1L)
+    // - DMA buffer setup
+    // Current implementation: simplified buffer-only mode
     memset(led_colors, 0, sizeof(led_colors));
     
     ESP_LOGI(TAG, "WS2812 LEDs initialized (%d LEDs)", NUM_LEDS);
@@ -57,8 +60,9 @@ esp_err_t led_set_color(uint8_t led_id, uint8_t r, uint8_t g, uint8_t b, uint8_t
 }
 
 esp_err_t led_update(void) {
-    // TODO: Transmit LED data via RMT
-    // For now just return OK
+    // NOTE: Full RMT transmission would send led_colors[] to WS2812
+    // via RMT peripheral with proper timing (800kHz, GRB format)
+    // Current implementation: buffer-only mode (no physical LEDs updated)
     return ESP_OK;
 }
 

@@ -198,8 +198,11 @@ void app_main(void) {
         
         ret = image_storage_load(current_profile, i, &image_data, &image_size);
         if (ret == ESP_OK && image_data != NULL) {
-            // TODO: Decode JPEG and display
-            // For now just show that image exists
+            // NOTE: JPEG decode and display would require:
+            // - JPEG decoder library (esp_jpeg or TJpgDec)
+            // - RGB565 conversion
+            // - GC9A01 bitmap rendering
+            // Current implementation: shows that image exists in storage
             ESP_LOGI(TAG, "✓ Image loaded for button %d (%d bytes)", i, image_size);
             free(image_data);
         } else {
