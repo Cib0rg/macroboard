@@ -1,0 +1,102 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:MacroKeyboard.UI.ViewModels"
+             mc:Ignorable="d" d:DesignWidth="1000" d:DesignHeight="600"
+             x:Class="MacroKeyboard.UI.Views.ProfileEditorView"
+             x:DataType="vm:ProfileEditorViewModel"
+             x:Name="ProfileEditorRoot">
+
+    <Grid ColumnDefinitions="250,*" Margin="20">
+        <!-- Left Panel - Profile List -->
+        <Border Grid.Column="0" Background="#2D2D30" CornerRadius="8" Padding="16" Margin="0,0,10,0">
+            <StackPanel Spacing="12">
+                <TextBlock Text="Profiles" FontSize="18" FontWeight="Bold" />
+                
+                <Separator />
+                
+                <ListBox ItemsSource="{Binding Profiles}"
+                         SelectedItem="{Binding SelectedProfile}"
+                         Height="400"
+                         Background="Transparent">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <TextBlock Text="{Binding Name}" />
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+                
+                <StackPanel Spacing="8">
+                    <Button Content="New Profile" 
+                            Command="{Binding CreateNewProfileCommand}"
+                            HorizontalAlignment="Stretch" />
+                    <Button Content="Save" 
+                            Command="{Binding SaveProfileCommand}"
+                            HorizontalAlignment="Stretch" />
+                    <Button Content="Delete" 
+                            Command="{Binding DeleteProfileCommand}"
+                            HorizontalAlignment="Stretch" />
+                </StackPanel>
+            </StackPanel>
+        </Border>
+
+        <!-- Right Panel - Profile Editor -->
+        <Border Grid.Column="1" Background="#2D2D30" CornerRadius="8" Padding="20">
+            <ScrollViewer>
+                <StackPanel Spacing="16" IsVisible="{Binding SelectedProfile, Converter={x:Static ObjectConverters.IsNotNull}}">
+                    <TextBlock Text="Profile Editor" FontSize="20" FontWeight="Bold" />
+                    
+                    <Separator />
+                    
+                    <!-- Profile Name -->
+                    <StackPanel Spacing="8">
+                        <TextBlock Text="Profile Name:" />
+                        <TextBox Text="{Binding SelectedProfile.Name}" 
+                                 Watermark="Enter profile name..." />
+                    </StackPanel>
+                    
+                    <!-- Buttons Grid -->
+                    <StackPanel Spacing="8">
+                        <TextBlock Text="Buttons:" FontSize="16" FontWeight="Bold" />
+                        
+                        <ItemsControl ItemsSource="{Binding SelectedProfile.Buttons}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <UniformGrid Columns="5" />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Button Background="#3E3E42"
+                                            CornerRadius="8"
+                                            Padding="16"
+                                            Margin="4"
+                                            Height="120"
+                                            HorizontalContentAlignment="Stretch"
+                                            VerticalContentAlignment="Stretch"
+                                            Command="{Binding #ProfileEditorRoot.DataContext.ConfigureButtonCommand}"
+                                            CommandParameter="{Binding}">
+                                        <StackPanel Spacing="8">
+                                            <TextBlock Text="{Binding ButtonId, StringFormat='Button {0}'}"
+                                                       FontWeight="Bold"
+                                                       HorizontalAlignment="Center" />
+                                            <TextBlock Text="Click to configure"
+                                                       FontSize="12"
+                                                       HorizontalAlignment="Center"
+                                                       Opacity="0.7" />
+                                        </StackPanel>
+                                    </Button>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                    
+                    <!-- Loading Indicator -->
+                    <ProgressBar IsIndeterminate="True" 
+                                 IsVisible="{Binding IsLoading}" />
+                </StackPanel>
+            </ScrollViewer>
+        </Border>
+    </Grid>
+</UserControl>

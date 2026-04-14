@@ -1,0 +1,97 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="using:MacroKeyboard.UI.ViewModels"
+        mc:Ignorable="d" d:DesignWidth="600" d:DesignHeight="500"
+        x:Class="MacroKeyboard.UI.Views.ButtonConfigDialog"
+        x:DataType="vm:ButtonConfigDialogViewModel"
+        Title="Configure Button"
+        Width="600" Height="500"
+        WindowStartupLocation="CenterOwner"
+        CanResize="False">
+
+    <Grid Margin="20" RowDefinitions="Auto,*,Auto">
+        <!-- Header -->
+        <TextBlock Grid.Row="0" 
+                   Text="{Binding ButtonConfig.ButtonId, StringFormat='Configure Button {0}'}"
+                   FontSize="24" 
+                   FontWeight="Bold" 
+                   Margin="0,0,0,20" />
+
+        <!-- Content -->
+        <ScrollViewer Grid.Row="1">
+            <StackPanel Spacing="16">
+                <!-- Action Type -->
+                <Border Background="#2D2D30" CornerRadius="8" Padding="16">
+                    <StackPanel Spacing="12">
+                        <TextBlock Text="Action Type" FontSize="16" FontWeight="Bold" />
+                        <ComboBox ItemsSource="{Binding AvailableActionTypes}"
+                                  SelectedItem="{Binding SelectedActionType}"
+                                  HorizontalAlignment="Stretch" />
+                    </StackPanel>
+                </Border>
+
+                <!-- Key Sequence / Text -->
+                <Border Background="#2D2D30" CornerRadius="8" Padding="16">
+                    <StackPanel Spacing="12">
+                        <TextBlock Text="Keys / Text" FontSize="16" FontWeight="Bold" />
+                        <TextBlock Text="Enter key sequence (e.g., Ctrl+C) or text to type"
+                                   FontSize="12"
+                                   Opacity="0.7" />
+                        <TextBox Text="{Binding KeySequence}"
+                                 PlaceholderText="e.g., Ctrl+C or Hello World"
+                                 Watermark="e.g., Ctrl+C or Hello World" />
+                    </StackPanel>
+                </Border>
+
+                <!-- Image -->
+                <Border Background="#2D2D30" CornerRadius="8" Padding="16">
+                    <StackPanel Spacing="12">
+                        <TextBlock Text="Button Image" FontSize="16" FontWeight="Bold" />
+                        <Grid ColumnDefinitions="*,Auto">
+                            <TextBox Grid.Column="0"
+                                     Text="{Binding ImagePath}"
+                                     PlaceholderText="Path to image file"
+                                     Watermark="Path to image file"
+                                     Margin="0,0,8,0" />
+                            <Button Grid.Column="1"
+                                    Content="Browse..."
+                                    Command="{Binding BrowseImageCommand}" />
+                        </Grid>
+                    </StackPanel>
+                </Border>
+
+                <!-- LED Color -->
+                <Border Background="#2D2D30" CornerRadius="8" Padding="16">
+                    <StackPanel Spacing="12">
+                        <TextBlock Text="LED Color (Hex)" FontSize="16" FontWeight="Bold" />
+                        <TextBox Text="{Binding LedColor, StringFormat='0x{0:X6}'}"
+                                 PlaceholderText="0xFFFFFF"
+                                 Watermark="0xFFFFFF" />
+                        <TextBlock Text="Example: 0xFF0000 (Red), 0x00FF00 (Green), 0x0000FF (Blue)"
+                                   FontSize="11"
+                                   Opacity="0.6" />
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </ScrollViewer>
+
+        <!-- Buttons -->
+        <StackPanel Grid.Row="2" 
+                    Orientation="Horizontal" 
+                    HorizontalAlignment="Right" 
+                    Spacing="8"
+                    Margin="0,20,0,0">
+            <Button Content="Cancel" 
+                    Width="100"
+                    Command="{Binding CancelCommand}"
+                    Click="OnCancelClick" />
+            <Button Content="Save" 
+                    Width="100"
+                    Command="{Binding SaveCommand}"
+                    Click="OnSaveClick"
+                    Classes="accent" />
+        </StackPanel>
+    </Grid>
+</Window>

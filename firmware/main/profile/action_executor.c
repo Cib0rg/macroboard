@@ -30,6 +30,11 @@ esp_err_t action_execute(uint8_t button_id) {
     ESP_LOGI(TAG, "Executing action for button %d, type=%d", button_id, btn->action_type);
     
     switch (btn->action_type) {
+        case ACTION_TYPE_NONE:
+            // No action configured for this button
+            ESP_LOGD(TAG, "Button %d has no action configured", button_id);
+            break;
+            
         case ACTION_TYPE_KEYBOARD: {
             // Keyboard action
             if (btn->action_data_len >= 2) {

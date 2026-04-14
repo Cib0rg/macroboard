@@ -1,0 +1,67 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:MacroKeyboard.UI.ViewModels"
+             mc:Ignorable="d" d:DesignWidth="1000" d:DesignHeight="600"
+             x:Class="MacroKeyboard.UI.Views.SettingsView"
+             x:DataType="vm:SettingsViewModel">
+
+    <ScrollViewer>
+        <StackPanel Margin="20" Spacing="20" MaxWidth="600">
+            <TextBlock Text="Settings" FontSize="24" FontWeight="Bold" />
+            
+            <!-- General Settings -->
+            <Border Background="#2D2D30" CornerRadius="8" Padding="20">
+                <StackPanel Spacing="16">
+                    <TextBlock Text="General" FontSize="18" FontWeight="Bold" />
+                    <Separator />
+                    
+                    <CheckBox Content="Start with Windows" 
+                              IsChecked="{Binding AutoStart}" />
+                    
+                    <CheckBox Content="Minimize to tray on close" 
+                              IsChecked="{Binding MinimizeToTray}" />
+                    
+                    <CheckBox Content="Show notifications" 
+                              IsChecked="{Binding ShowNotifications}" />
+                </StackPanel>
+            </Border>
+
+            <!-- Backend Settings -->
+            <Border Background="#2D2D30" CornerRadius="8" Padding="20">
+                <StackPanel Spacing="16">
+                    <TextBlock Text="Backend" FontSize="18" FontWeight="Bold" />
+                    <Separator />
+                    
+                    <StackPanel Spacing="8">
+                        <TextBlock Text="IPC Port:" />
+                        <NumericUpDown Value="{Binding IpcPort}" 
+                                       Minimum="1024" 
+                                       Maximum="65535" />
+                    </StackPanel>
+                    
+                    <StackPanel Spacing="8">
+                        <TextBlock Text="WebSocket Port:" />
+                        <NumericUpDown Value="{Binding WebSocketPort}" 
+                                       Minimum="1024" 
+                                       Maximum="65535" />
+                    </StackPanel>
+                    
+                    <StackPanel Spacing="8">
+                        <TextBlock Text="Plugins Directory:" />
+                        <TextBox Text="{Binding PluginsDirectory}" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- Actions -->
+            <StackPanel Orientation="Horizontal" Spacing="12" HorizontalAlignment="Right">
+                <Button Content="Reset to Defaults" 
+                        Command="{Binding ResetSettingsCommand}" />
+                <Button Content="Save Settings" 
+                        Command="{Binding SaveSettingsCommand}" />
+            </StackPanel>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

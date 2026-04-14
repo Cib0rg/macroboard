@@ -191,7 +191,165 @@ dotnet add package Newtonsoft.Json
 dotnet add package SixLabors.ImageSharp
 ```
 
-## Проверка работоспособности
+## Сборка и запуск проектов
+
+### Быстрый старт - Сборка всех проектов
+
+```bash
+# Перейти в директорию с решением
+cd /home/andrewp/elgato/software/src
+
+# Восстановить зависимости
+dotnet restore
+
+# Собрать все проекты
+dotnet build
+
+# Собрать в Release режиме (оптимизированная версия)
+dotnet build -c Release
+```
+
+### Запуск Backend (MacroKeyboard.Backend)
+
+Backend - это фоновый сервис, который управляет устройством и обрабатывает действия.
+
+```bash
+# Перейти в директорию Backend
+cd /home/andrewp/elgato/software/src/MacroKeyboard.Backend
+
+# Запустить в Debug режиме
+dotnet run
+
+# Или запустить в Release режиме
+dotnet run -c Release
+
+# Backend будет работать в фоне и слушать IPC соединения
+```
+
+**Что делает Backend:**
+- Подключается к HID устройству (макроклавиатуре)
+- Обрабатывает нажатия кнопок
+- Выполняет действия (запуск программ, эмуляция клавиш, и т.д.)
+- Предоставляет IPC интерфейс для UI и TrayApp
+
+### Запуск Tray App (MacroKeyboard.TrayApp)
+
+TrayApp - это приложение в системном трее для быстрого доступа.
+
+```bash
+# Перейти в директорию TrayApp
+cd /home/andrewp/elgato/software/src/MacroKeyboard.TrayApp
+
+# Запустить
+dotnet run
+
+# Или в Release режиме
+dotnet run -c Release
+
+# Иконка появится в системном трее
+```
+
+**Что делает TrayApp:**
+- Показывает иконку в системном трее
+- Позволяет быстро переключать профили
+- Показывает статус подключения устройства
+- Открывает главное UI приложение
+
+### Запуск UI (MacroKeyboard.UI)
+
+UI - это главное приложение для настройки профилей и кнопок.
+
+```bash
+# Перейти в директорию UI
+cd /home/andrewp/elgato/software/src/MacroKeyboard.UI
+
+# Запустить
+dotnet run
+
+# Или в Release режиме
+dotnet run -c Release
+```
+
+**Что делает UI:**
+- Управление профилями
+- Настройка действий для кнопок
+- Загрузка изображений на дисплеи
+- Мониторинг состояния устройства
+
+### Запуск всех компонентов одновременно
+
+Для полноценной работы системы нужно запустить все три компонента:
+
+```bash
+# Терминал 1: Backend
+cd /home/andrewp/elgato/software/src/MacroKeyboard.Backend
+dotnet run
+
+# Терминал 2: TrayApp
+cd /home/andrewp/elgato/software/src/MacroKeyboard.TrayApp
+dotnet run
+
+# Терминал 3: UI (опционально, только для настройки)
+cd /home/andrewp/elgato/software/src/MacroKeyboard.UI
+dotnet run
+```
+
+### Создание исполняемых файлов
+
+Для создания standalone приложений:
+
+```bash
+cd /home/andrewp/elgato/software/src
+
+# Опубликовать Backend
+dotnet publish MacroKeyboard.Backend/MacroKeyboard.Backend.csproj \
+    -c Release \
+    -o ../publish/backend \
+    --self-contained false
+
+# Опубликовать TrayApp
+dotnet publish MacroKeyboard.TrayApp/MacroKeyboard.TrayApp.csproj \
+    -c Release \
+    -o ../publish/trayapp \
+    --self-contained false
+
+# Опубликовать UI
+dotnet publish MacroKeyboard.UI/MacroKeyboard.UI.csproj \
+    -c Release \
+    -o ../publish/ui \
+    --self-contained false
+```
+
+Исполняемые файлы будут в директории `software/publish/`.
+
+### Создание self-contained приложений (со встроенным .NET)
+
+Если нужно распространять приложение без требования установки .NET:
+
+```bash
+# Для Linux
+dotnet publish MacroKeyboard.Backend/MacroKeyboard.Backend.csproj \
+    -c Release \
+    -r linux-x64 \
+    --self-contained true \
+    -o ../publish/backend-linux
+
+# Для Windows
+dotnet publish MacroKeyboard.Backend/MacroKeyboard.Backend.csproj \
+    -c Release \
+    -r win-x64 \
+    --self-contained true \
+    -o ../publish/backend-windows
+
+# Для macOS
+dotnet publish MacroKeyboard.Backend/MacroKeyboard.Backend.csproj \
+    -c Release \
+    -r osx-x64 \
+    --self-contained true \
+    -o ../publish/backend-macos
+```
+
+### Проверка работоспособности
 
 ```bash
 # Собрать решение
@@ -283,6 +441,67 @@ sudo apt-get install -y dotnet-sdk-8.0
 chmod -R 755 ~/.nuget
 ```
 
+## Быстрая справка по командам
+
+### Основные команды
+
+```bash
+# Перейти в директорию проекта
+cd /home/andrewp/elgato/software/src
+
+# Восстановить зависимости
+dotnet restore
+
+# Собрать все проекты
+dotnet build
+
+# Собрать в Release
+dotnet build -c Release
+
+# Очистить сборку
+dotnet clean
+```
+
+### Запуск компонентов
+
+```bash
+# Backend (фоновый сервис)
+cd /home/andrewp/elgato/software/src/MacroKeyboard.Backend
+dotnet run
+
+# TrayApp (системный трей)
+cd /home/andrewp/elgato/software/src/MacroKeyboard.TrayApp
+dotnet run
+
+# UI (главное приложение)
+cd /home/andrewp/elgato/software/src/MacroKeyboard.UI
+dotnet run
+```
+
+### Публикация приложений
+
+```bash
+cd /home/andrewp/elgato/software/src
+
+# Backend
+dotnet publish MacroKeyboard.Backend/MacroKeyboard.Backend.csproj -c Release -o ../publish/backend
+
+# TrayApp
+dotnet publish MacroKeyboard.TrayApp/MacroKeyboard.TrayApp.csproj -c Release -o ../publish/trayapp
+
+# UI
+dotnet publish MacroKeyboard.UI/MacroKeyboard.UI.csproj -c Release -o ../publish/ui
+```
+
+### Однострочная команда для запуска всех компонентов
+
+```bash
+# В разных терминалах или используйте tmux/screen
+cd /home/andrewp/elgato/software/src && dotnet run --project MacroKeyboard.Backend/MacroKeyboard.Backend.csproj &
+cd /home/andrewp/elgato/software/src && dotnet run --project MacroKeyboard.TrayApp/MacroKeyboard.TrayApp.csproj &
+cd /home/andrewp/elgato/software/src && dotnet run --project MacroKeyboard.UI/MacroKeyboard.UI.csproj
+```
+
 ## Следующие шаги
 
 После установки окружения:
@@ -290,7 +509,7 @@ chmod -R 755 ~/.nuget
 1. Изучите документацию:
    - [`software/REQUIREMENTS.md`](REQUIREMENTS.md) - требования
    - [`software/plans/architecture.md`](plans/architecture.md) - архитектура
-   - [`software/plans/diagrams.md`](plans/diagrams.md) - диаграммы
+   - [`software/plans/plugin_system.md`](plans/plugin_system.md) - система плагинов
 
 2. Создайте структуру проекта (см. выше)
 

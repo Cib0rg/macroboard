@@ -177,7 +177,37 @@ idf.py menuconfig
 
 ## Компиляция и прошивка
 
-### Компиляция
+### Быстрый старт - Сборка текущего проекта
+
+```bash
+# Перейти в директорию прошивки
+cd /home/andrewp/elgato/firmware
+
+# Активировать ESP-IDF окружение
+. ~/esp/esp-idf/export.sh
+
+# Собрать проект
+idf.py build
+
+# Первая сборка займет несколько минут
+# Последующие сборки будут быстрее благодаря ccache
+```
+
+### Результаты сборки
+
+После успешной сборки в директории `build/` будут созданы:
+
+```
+build/
+├── bootloader/
+│   └── bootloader.bin          # Загрузчик
+├── partition_table/
+│   └── partition-table.bin     # Таблица разделов
+├── macro-keyboard.bin          # Основная прошивка (или имя вашего проекта)
+└── macro-keyboard.elf          # ELF файл для отладки
+```
+
+### Компиляция (детально)
 
 ```bash
 cd firmware/macro-keyboard
@@ -353,6 +383,45 @@ ninja --version
 ```
 
 Все команды должны выполниться без ошибок.
+
+## Быстрая справка по командам
+
+### Основные команды сборки
+
+```bash
+# Активировать ESP-IDF
+. ~/esp/esp-idf/export.sh
+
+# Перейти в проект
+cd /home/andrewp/elgato/firmware
+
+# Собрать
+idf.py build
+
+# Прошить
+idf.py -p /dev/ttyUSB0 flash
+
+# Прошить и открыть монитор
+idf.py -p /dev/ttyUSB0 flash monitor
+
+# Только монитор
+idf.py -p /dev/ttyUSB0 monitor
+
+# Очистить сборку
+idf.py fullclean
+
+# Конфигурация
+idf.py menuconfig
+
+# Размер прошивки
+idf.py size
+```
+
+### Однострочная команда для быстрой сборки и прошивки
+
+```bash
+cd /home/andrewp/elgato/firmware && . ~/esp/esp-idf/export.sh && idf.py build && idf.py -p /dev/ttyUSB0 flash monitor
+```
 
 ## Следующие шаги
 
