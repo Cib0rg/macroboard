@@ -13,6 +13,33 @@
 - USB HID (клавиатура + raw device + CDC)
 - 3-5 профилей с сохранением в flash
 
+## 🐳 Docker Integration (NEW!)
+
+**Добавлена полная поддержка Docker для сборки прошивки!** Теперь можно собирать проект без установки ESP-IDF локально.
+
+**Быстрый старт:**
+```bash
+cd firmware
+make build              # Собрать проект
+make flash              # Прошить устройство
+make monitor            # Открыть serial monitor
+```
+
+**Документация Docker:**
+- 📖 [Docker Integration Plan](docker_integration.md) - Детальный план интеграции (полное руководство)
+- 🚀 [Docker Quick Start](docker_quick_start.md) - Быстрый старт (TL;DR)
+- 📊 [Docker Diagrams](docker_diagrams.md) - Диаграммы и визуализация
+- 📋 [Docker Summary](docker_summary.md) - Итоговая сводка и рекомендации
+
+**Преимущества Docker подхода:**
+- ✅ Настройка за 5-10 минут (вместо 30-60)
+- ✅ Воспроизводимые сборки на любой машине
+- ✅ Не засоряет систему зависимостями
+- ✅ Готово для CI/CD из коробки
+- ✅ Официальные образы от Espressif
+
+---
+
 ## Структура документации
 
 ### 1. [Использование готовых компонентов ESP-IDF](esp_idf_components.md) ⭐ НОВОЕ

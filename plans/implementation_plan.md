@@ -356,6 +356,7 @@ typedef enum {
     ACTION_TYPE_KEYBOARD = 0x01,
     ACTION_TYPE_CUSTOM_HID = 0x02,
     ACTION_TYPE_PROFILE_SWITCH = 0x03,
+    ACTION_TYPE_FOLDER = 0x04,  // Folder navigation
 } action_type_t;
 
 typedef struct {

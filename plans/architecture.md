@@ -51,9 +51,6 @@ firmware/
 │   │   ├── profile_types.h         # Типы данных профилей
 │   │   └── action_executor.c/h     # Выполнение действий кнопок
 │   │
-│   ├── network/                    # Сетевая функциональность
-│   │   ├── wifi_manager.c/h        # Управление WiFi (обертка над esp_wifi)
-│   │   └── ota_updater.c/h         # OTA обновления (обертка над esp_https_ota)
 │   │
 │   ├── ui/                         # Пользовательский интерфейс
 │   │   ├── display_manager.c/h     # Менеджер отображения
