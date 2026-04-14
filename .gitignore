@@ -1,3 +1,4 @@
 *.log
 firmware/build/
 firmware/managed_components/
+example/
