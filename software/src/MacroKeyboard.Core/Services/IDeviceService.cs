@@ -89,6 +89,16 @@ public interface IDeviceService
     /// Сохранить профиль в энергонезависимую память
     /// </summary>
     Task<bool> SaveProfileAsync(byte profileId, CancellationToken cancellationToken = default);
+    
+    /// <summary>
+    /// Получить действие кнопки с устройства
+    /// </summary>
+    Task<ActionConfig?> GetButtonActionAsync(byte profileId, byte buttonId, CancellationToken cancellationToken = default);
+    
+    /// <summary>
+    /// Получить цвет LED кнопки с устройства
+    /// </summary>
+    Task<LedConfig?> GetLedColorAsync(byte profileId, byte buttonId, CancellationToken cancellationToken = default);
 }
 
 /// <summary>

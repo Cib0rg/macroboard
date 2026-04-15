@@ -23,6 +23,8 @@ public class DeviceService : IDeviceService
     private readonly ImageTransferCommand _imageTransferCommand;
     private readonly SetButtonActionCommand _setButtonActionCommand;
     private readonly SetLedColorCommand _setLedColorCommand;
+    private readonly GetButtonActionCommand _getButtonActionCommand;
+    private readonly GetLedColorCommand _getLedColorCommand;
     
     public event EventHandler<DeviceEventArgs>? DeviceConnected;
     public event EventHandler<DeviceEventArgs>? DeviceDisconnected;
@@ -50,6 +52,8 @@ public class DeviceService : IDeviceService
         _imageTransferCommand = new ImageTransferCommand(_protocol, loggerFactory.CreateLogger<ImageTransferCommand>());
         _setButtonActionCommand = new SetButtonActionCommand(_protocol, loggerFactory.CreateLogger<SetButtonActionCommand>());
         _setLedColorCommand = new SetLedColorCommand(_protocol, loggerFactory.CreateLogger<SetLedColorCommand>());
+        _getButtonActionCommand = new GetButtonActionCommand(_protocol, loggerFactory.CreateLogger<GetButtonActionCommand>());
+        _getLedColorCommand = new GetLedColorCommand(_protocol, loggerFactory.CreateLogger<GetLedColorCommand>());
         
         // Подписаться на события устройства
         _deviceManager.DeviceConnected += OnDeviceConnected;
@@ -205,7 +209,7 @@ public class DeviceService : IDeviceService
         var newProfileId = payload[1];
         var reason = (ProfileChangeReason)payload[2];
         
-        _logger.LogInformation("Profile changed from {Old} to {New}, reason: {Reason}", 
+        _logger.LogInformation("Profile changed from {Old} to {New}, reason: {Reason}",
             oldProfileId, newProfileId, reason);
         
         ProfileChanged?.Invoke(this, new ProfileChangedEventArgs
@@ -214,5 +218,15 @@ public class DeviceService : IDeviceService
             NewProfileId = newProfileId,
             Reason = reason
         });
+    }
+    
+    public async Task<ActionConfig?> GetButtonActionAsync(byte profileId, byte buttonId, CancellationToken cancellationToken = default)
+    {
+        return await _getButtonActionCommand.ExecuteAsync(profileId, buttonId, cancellationToken);
+    }
+    
+    public async Task<LedConfig?> GetLedColorAsync(byte profileId, byte buttonId, CancellationToken cancellationToken = default)
+    {
+        return await _getLedColorCommand.ExecuteAsync(profileId, buttonId, cancellationToken);
     }
 }

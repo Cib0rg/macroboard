@@ -2,6 +2,8 @@ using MacroKeyboard.Shared.Plugin;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using System.Collections.Concurrent;
+using System.Reflection;
+using System.Runtime.Loader;
 
 namespace MacroKeyboard.Backend.Plugin;
 
@@ -279,24 +281,195 @@ public class ExecutablePluginInstance : PluginInstance
 /// </summary>
 public class ManagedPluginInstance : PluginInstance
 {
+    private AssemblyLoadContext? _loadContext;
+    private IPlugin? _pluginInstance;
+    private Assembly? _pluginAssembly;
+
     public ManagedPluginInstance(PluginManifest manifest, string pluginDirectory, ILogger logger)
         : base(manifest, pluginDirectory, logger)
     {
     }
 
-    public override Task StartAsync(CancellationToken cancellationToken = default)
+    public override async Task StartAsync(CancellationToken cancellationToken = default)
     {
-        // TODO: Implement managed plugin loading using Assembly.LoadFrom
-        Logger.LogWarning("Managed plugins are not yet implemented");
-        return Task.CompletedTask;
+        if (IsRunning)
+        {
+            Logger.LogWarning("Plugin {PluginId} is already running", Manifest.Id);
+            return;
+        }
+
+        if (string.IsNullOrEmpty(Manifest.EntryPoint))
+        {
+            throw new InvalidOperationException("EntryPoint must be specified for managed plugins");
+        }
+
+        try
+        {
+            var assemblyPath = Path.Combine(PluginDirectory, Manifest.EntryPoint);
+            
+            if (!File.Exists(assemblyPath))
+            {
+                throw new FileNotFoundException($"Plugin assembly not found: {assemblyPath}");
+            }
+
+            Logger.LogInformation("Loading managed plugin from: {AssemblyPath}", assemblyPath);
+
+            // Create isolated AssemblyLoadContext for plugin
+            _loadContext = new AssemblyLoadContext($"Plugin_{Manifest.Id}", isCollectible: true);
+            
+            // Load the plugin assembly
+            _pluginAssembly = _loadContext.LoadFromAssemblyPath(assemblyPath);
+            
+            // Find types that implement IPlugin
+            var pluginType = _pluginAssembly.GetTypes()
+                .FirstOrDefault(t => typeof(IPlugin).IsAssignableFrom(t) && !t.IsInterface && !t.IsAbstract);
+
+            if (pluginType == null)
+            {
+                throw new InvalidOperationException($"No type implementing IPlugin found in assembly: {assemblyPath}");
+            }
+
+            Logger.LogInformation("Found plugin type: {PluginType}", pluginType.FullName);
+
+            // Create plugin instance
+            _pluginInstance = Activator.CreateInstance(pluginType) as IPlugin;
+            
+            if (_pluginInstance == null)
+            {
+                throw new InvalidOperationException($"Failed to create instance of plugin type: {pluginType.FullName}");
+            }
+
+            // Create plugin context (simplified - would need actual implementation)
+            var context = new PluginContext(Manifest.Id, Logger);
+            
+            // Initialize and start the plugin
+            await _pluginInstance.InitializeAsync(context, cancellationToken);
+            await _pluginInstance.StartAsync(cancellationToken);
+
+            IsRunning = true;
+            Logger.LogInformation("Started managed plugin: {PluginId}", Manifest.Id);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error starting managed plugin {PluginId}", Manifest.Id);
+            
+            // Cleanup on error
+            _pluginInstance?.Dispose();
+            _pluginInstance = null;
+            _loadContext?.Unload();
+            _loadContext = null;
+            
+            throw;
+        }
     }
 
-    public override Task StopAsync(CancellationToken cancellationToken = default)
+    public override async Task StopAsync(CancellationToken cancellationToken = default)
     {
-        return Task.CompletedTask;
+        if (!IsRunning || _pluginInstance == null)
+        {
+            return;
+        }
+
+        try
+        {
+            Logger.LogInformation("Stopping managed plugin: {PluginId}", Manifest.Id);
+            
+            await _pluginInstance.StopAsync(cancellationToken);
+            _pluginInstance.Dispose();
+            _pluginInstance = null;
+
+            // Unload the plugin assembly context
+            _loadContext?.Unload();
+            _loadContext = null;
+            _pluginAssembly = null;
+
+            IsRunning = false;
+            Logger.LogInformation("Stopped managed plugin: {PluginId}", Manifest.Id);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error stopping managed plugin {PluginId}", Manifest.Id);
+        }
     }
 
     public override void Dispose()
     {
+        StopAsync().GetAwaiter().GetResult();
+    }
+}
+
+/// <summary>
+/// Simple plugin context implementation
+/// </summary>
+internal class PluginContext : IPluginContext
+{
+    private readonly ILogger _logger;
+
+    public string PluginId { get; }
+
+    public PluginContext(string pluginId, ILogger logger)
+    {
+        PluginId = pluginId;
+        _logger = logger;
+    }
+
+    public Task SetButtonImageAsync(int buttonIndex, byte[] imageData, CancellationToken cancellationToken = default)
+    {
+        _logger.LogInformation("[{PluginId}] SetButtonImage: Button {ButtonIndex}, {Size} bytes",
+            PluginId, buttonIndex, imageData.Length);
+        // TODO: Implement actual device communication
+        return Task.CompletedTask;
+    }
+
+    public Task SetButtonTitleAsync(int buttonIndex, string title, CancellationToken cancellationToken = default)
+    {
+        _logger.LogInformation("[{PluginId}] SetButtonTitle: Button {ButtonIndex}, Title: {Title}",
+            PluginId, buttonIndex, title);
+        // TODO: Implement actual device communication
+        return Task.CompletedTask;
+    }
+
+    public Task SetLedColorAsync(int buttonIndex, byte r, byte g, byte b, CancellationToken cancellationToken = default)
+    {
+        _logger.LogInformation("[{PluginId}] SetLedColor: Button {ButtonIndex}, RGB({R},{G},{B})",
+            PluginId, buttonIndex, r, g, b);
+        // TODO: Implement actual device communication
+        return Task.CompletedTask;
+    }
+
+    public Task ShowAlertAsync(int buttonIndex, CancellationToken cancellationToken = default)
+    {
+        _logger.LogInformation("[{PluginId}] ShowAlert: Button {ButtonIndex}", PluginId, buttonIndex);
+        // TODO: Implement actual device communication
+        return Task.CompletedTask;
+    }
+
+    public void LogInfo(string message)
+    {
+        _logger.LogInformation("[{PluginId}] {Message}", PluginId, message);
+    }
+
+    public void LogWarning(string message)
+    {
+        _logger.LogWarning("[{PluginId}] {Message}", PluginId, message);
+    }
+
+    public void LogError(string message, Exception? exception = null)
+    {
+        _logger.LogError(exception, "[{PluginId}] {Message}", PluginId, message);
+    }
+
+    public Task<T?> GetSettingsAsync<T>(CancellationToken cancellationToken = default) where T : class
+    {
+        _logger.LogInformation("[{PluginId}] GetSettings<{Type}>", PluginId, typeof(T).Name);
+        // TODO: Implement settings storage
+        return Task.FromResult<T?>(null);
+    }
+
+    public Task SaveSettingsAsync<T>(T settings, CancellationToken cancellationToken = default) where T : class
+    {
+        _logger.LogInformation("[{PluginId}] SaveSettings<{Type}>", PluginId, typeof(T).Name);
+        // TODO: Implement settings storage
+        return Task.CompletedTask;
     }
 }

@@ -186,10 +186,64 @@ public class ProfileService : IProfileService
         }
     }
     
-    public Task<Profile?> LoadProfileFromDeviceAsync(byte profileId, CancellationToken cancellationToken = default)
+    public async Task<Profile?> LoadProfileFromDeviceAsync(byte profileId, CancellationToken cancellationToken = default)
     {
-        // TODO: Реализовать загрузку профиля с устройства
-        throw new NotImplementedException("Loading profile from device is not yet implemented");
+        try
+        {
+            _logger.LogInformation("Loading profile {ProfileId} from device", profileId);
+            
+            // Проверить подключение к устройству
+            if (!_deviceService.IsConnected)
+            {
+                _logger.LogWarning("Device is not connected");
+                return null;
+            }
+            
+            // Создать профиль
+            var profile = Profile.CreateEmpty(profileId, $"Profile {profileId}");
+            
+            // Загрузить конфигурацию каждой кнопки
+            for (byte buttonId = 0; buttonId < profile.Buttons.Count; buttonId++)
+            {
+                if (cancellationToken.IsCancellationRequested)
+                    return null;
+                
+                var button = profile.Buttons[buttonId];
+                
+                // Получить действие кнопки
+                var action = await _deviceService.GetButtonActionAsync(profileId, buttonId, cancellationToken);
+                if (action != null)
+                {
+                    button.Action = action;
+                    _logger.LogDebug("Loaded action for button {ButtonId}: {ActionType}", buttonId, action.ActionType);
+                }
+                
+                // Получить цвет LED
+                var led = await _deviceService.GetLedColorAsync(profileId, buttonId, cancellationToken);
+                if (led != null)
+                {
+                    button.Led = led;
+                    _logger.LogDebug("Loaded LED for button {ButtonId}: RGB({R},{G},{B})",
+                        buttonId, led.R, led.G, led.B);
+                }
+                
+                // Примечание: Изображения не загружаются, так как они могут быть большими
+                // и требуют отдельной реализации потоковой передачи.
+                // Пользователь может загрузить изображения отдельно или использовать существующие.
+            }
+            
+            // Сохранить профиль локально
+            await _repository.SaveAsync(profile);
+            
+            _logger.LogInformation("Profile {ProfileId} loaded from device successfully", profileId);
+            
+            return profile;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error loading profile from device");
+            return null;
+        }
     }
     
     public async Task<bool> ExportProfileAsync(Profile profile, string filePath, CancellationToken cancellationToken = default)

@@ -33,69 +33,111 @@ public class EventRouter
 
     private async void OnDeviceConnected(object? sender, SharedEvents.DeviceEventArgs e)
     {
-        _logger.LogInformation("Device connected: {DeviceName} (FW: {FirmwareVersion})", 
-            e.DeviceName, e.FirmwareVersion);
-
-        await _ipcServer.BroadcastAsync(new IpcMessage
+        try
         {
-            MessageType = IpcMessageTypes.DeviceConnected,
-            Data = e
-        });
+            _logger.LogInformation("Device connected: {DeviceName} (FW: {FirmwareVersion})",
+                e.DeviceName, e.FirmwareVersion);
+
+            await _ipcServer.BroadcastAsync(new IpcMessage
+            {
+                MessageType = IpcMessageTypes.DeviceConnected,
+                Data = e
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error broadcasting device connected event");
+        }
     }
 
     private async void OnDeviceDisconnected(object? sender, SharedEvents.DeviceEventArgs e)
     {
-        _logger.LogInformation("Device disconnected");
-
-        await _ipcServer.BroadcastAsync(new IpcMessage
+        try
         {
-            MessageType = IpcMessageTypes.DeviceDisconnected,
-            Data = e
-        });
+            _logger.LogInformation("Device disconnected");
+
+            await _ipcServer.BroadcastAsync(new IpcMessage
+            {
+                MessageType = IpcMessageTypes.DeviceDisconnected,
+                Data = e
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error broadcasting device disconnected event");
+        }
     }
 
     private async void OnButtonPressed(object? sender, SharedEvents.ButtonEventArgs e)
     {
-        _logger.LogDebug("Button pressed: {ButtonIndex}", e.ButtonIndex);
-
-        await _ipcServer.BroadcastAsync(new IpcMessage
+        try
         {
-            MessageType = IpcMessageTypes.ButtonPressed,
-            Data = e
-        });
+            _logger.LogDebug("Button pressed: {ButtonIndex}", e.ButtonIndex);
+
+            await _ipcServer.BroadcastAsync(new IpcMessage
+            {
+                MessageType = IpcMessageTypes.ButtonPressed,
+                Data = e
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error broadcasting button pressed event");
+        }
     }
 
     private async void OnButtonReleased(object? sender, SharedEvents.ButtonEventArgs e)
     {
-        _logger.LogDebug("Button released: {ButtonIndex}", e.ButtonIndex);
-
-        await _ipcServer.BroadcastAsync(new IpcMessage
+        try
         {
-            MessageType = IpcMessageTypes.ButtonReleased,
-            Data = e
-        });
+            _logger.LogDebug("Button released: {ButtonIndex}", e.ButtonIndex);
+
+            await _ipcServer.BroadcastAsync(new IpcMessage
+            {
+                MessageType = IpcMessageTypes.ButtonReleased,
+                Data = e
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error broadcasting button released event");
+        }
     }
 
     private async void OnEncoderRotated(object? sender, SharedEvents.EncoderEventArgs e)
     {
-        _logger.LogDebug("Encoder rotated: {Delta}", e.Delta);
-
-        await _ipcServer.BroadcastAsync(new IpcMessage
+        try
         {
-            MessageType = IpcMessageTypes.EncoderRotated,
-            Data = e
-        });
+            _logger.LogDebug("Encoder rotated: {Delta}", e.Delta);
+
+            await _ipcServer.BroadcastAsync(new IpcMessage
+            {
+                MessageType = IpcMessageTypes.EncoderRotated,
+                Data = e
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error broadcasting encoder rotated event");
+        }
     }
 
     private async void OnProfileChanged(object? sender, SharedEvents.ProfileChangedEventArgs e)
     {
-        _logger.LogInformation("Profile changed: {ProfileIndex} - {ProfileName}", 
-            e.ProfileIndex, e.ProfileName);
-
-        await _ipcServer.BroadcastAsync(new IpcMessage
+        try
         {
-            MessageType = IpcMessageTypes.ProfileChanged,
-            Data = e
-        });
+            _logger.LogInformation("Profile changed: {ProfileIndex} - {ProfileName}",
+                e.ProfileIndex, e.ProfileName);
+
+            await _ipcServer.BroadcastAsync(new IpcMessage
+            {
+                MessageType = IpcMessageTypes.ProfileChanged,
+                Data = e
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error broadcasting profile changed event");
+        }
     }
 }

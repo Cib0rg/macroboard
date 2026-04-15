@@ -27,8 +27,11 @@ static esp_err_t handle_get_profile_info(const uint8_t* payload, uint16_t length
 static esp_err_t handle_start_image_transfer(const uint8_t* payload, uint16_t length, uint8_t* response, uint16_t* response_len);
 static esp_err_t handle_image_data_chunk(const uint8_t* payload, uint16_t length, uint8_t* response, uint16_t* response_len);
 static esp_err_t handle_end_image_transfer(const uint8_t* payload, uint16_t length, uint8_t* response, uint16_t* response_len);
+static esp_err_t handle_get_button_image(const uint8_t* payload, uint16_t length, uint8_t* response, uint16_t* response_len);
 static esp_err_t handle_set_button_action(const uint8_t* payload, uint16_t length, uint8_t* response, uint16_t* response_len);
+static esp_err_t handle_get_button_action(const uint8_t* payload, uint16_t length, uint8_t* response, uint16_t* response_len);
 static esp_err_t handle_set_led_color(const uint8_t* payload, uint16_t length, uint8_t* response, uint16_t* response_len);
+static esp_err_t handle_get_led_color(const uint8_t* payload, uint16_t length, uint8_t* response, uint16_t* response_len);
 static esp_err_t handle_set_backlight(const uint8_t* payload, uint16_t length, uint8_t* response, uint16_t* response_len);
 static esp_err_t handle_save_profile(const uint8_t* payload, uint16_t length, uint8_t* response, uint16_t* response_len);
 
@@ -46,8 +49,11 @@ static const command_entry_t command_table[] = {
     {CMD_START_IMAGE_TRANSFER, handle_start_image_transfer},
     {CMD_IMAGE_DATA_CHUNK, handle_image_data_chunk},
     {CMD_END_IMAGE_TRANSFER, handle_end_image_transfer},
+    {CMD_GET_BUTTON_IMAGE, handle_get_button_image},
     {CMD_SET_BUTTON_ACTION, handle_set_button_action},
+    {CMD_GET_BUTTON_ACTION, handle_get_button_action},
     {CMD_SET_LED_COLOR, handle_set_led_color},
+    {CMD_GET_LED_COLOR, handle_get_led_color},
     {CMD_SET_BACKLIGHT, handle_set_backlight},
     {CMD_SAVE_PROFILE, handle_save_profile},
 };
@@ -368,5 +374,100 @@ static esp_err_t handle_save_profile(const uint8_t* payload, uint16_t length,
     memcpy(&response[1], &bytes_written, 4);
     
     *response_len = 5;
+    return ESP_OK;
+}
+
+static esp_err_t handle_get_button_action(const uint8_t* payload, uint16_t length,
+                                           uint8_t* response, uint16_t* response_len) {
+    if (length < 2) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    
+    uint8_t profile_id = payload[0];
+    uint8_t button_id = payload[1];
+    
+    // Get profile
+    profile_t* profile = profile_get(profile_id);
+    if (profile == NULL || button_id >= NUM_BUTTONS) {
+        response[0] = STATUS_ERROR;
+        *response_len = 1;
+        return ESP_OK;
+    }
+    
+    button_config_t* button = &profile->buttons[button_id];
+    
+    // Response format: status + action_type + action_len (2 bytes) + action_data
+    response[0] = STATUS_OK;
+    response[1] = button->action_type;
+    memcpy(&response[2], &button->action_data_len, 2);
+    
+    uint16_t copy_len = button->action_data_len;
+    if (copy_len > PROTOCOL_PAYLOAD_SIZE - 4) {
+        copy_len = PROTOCOL_PAYLOAD_SIZE - 4;
+    }
+    
+    memcpy(&response[4], button->action_data, copy_len);
+    *response_len = 4 + copy_len;
+    
+    return ESP_OK;
+}
+
+static esp_err_t handle_get_led_color(const uint8_t* payload, uint16_t length,
+                                       uint8_t* response, uint16_t* response_len) {
+    if (length < 2) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    
+    uint8_t profile_id = payload[0];
+    uint8_t button_id = payload[1];
+    
+    // Get profile
+    profile_t* profile = profile_get(profile_id);
+    if (profile == NULL || button_id >= NUM_BUTTONS) {
+        response[0] = STATUS_ERROR;
+        *response_len = 1;
+        return ESP_OK;
+    }
+    
+    button_config_t* button = &profile->buttons[button_id];
+    
+    // Response format: status + r + g + b + brightness + effect
+    response[0] = STATUS_OK;
+    response[1] = button->led_r;
+    response[2] = button->led_g;
+    response[3] = button->led_b;
+    response[4] = button->led_brightness;
+    response[5] = button->led_effect;
+    *response_len = 6;
+    
+    return ESP_OK;
+}
+
+static esp_err_t handle_get_button_image(const uint8_t* payload, uint16_t length,
+                                          uint8_t* response, uint16_t* response_len) {
+    if (length < 2) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    
+    uint8_t profile_id = payload[0];
+    uint8_t button_id = payload[1];
+    
+    // Get profile
+    profile_t* profile = profile_get(profile_id);
+    if (profile == NULL || button_id >= NUM_BUTTONS) {
+        response[0] = STATUS_ERROR;
+        *response_len = 1;
+        return ESP_OK;
+    }
+    
+    button_config_t* button = &profile->buttons[button_id];
+    
+    // Response format: status + image_offset (4 bytes) + image_size (4 bytes) + image_format
+    response[0] = STATUS_OK;
+    memcpy(&response[1], &button->image_offset, 4);
+    memcpy(&response[5], &button->image_size, 4);
+    response[9] = button->image_format;
+    *response_len = 10;
+    
     return ESP_OK;
 }

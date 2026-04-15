@@ -25,9 +25,12 @@ public static class ProtocolConstants
     public const byte CMD_START_IMAGE_TRANSFER = 0x20;
     public const byte CMD_IMAGE_DATA_CHUNK = 0x21;
     public const byte CMD_END_IMAGE_TRANSFER = 0x22;
+    public const byte CMD_GET_BUTTON_IMAGE = 0x23;
     public const byte CMD_SET_BUTTON_ACTION = 0x30;
+    public const byte CMD_GET_BUTTON_ACTION = 0x31;
     public const byte CMD_SET_LED_COLOR = 0x40;
     public const byte CMD_SET_BACKLIGHT = 0x41;
+    public const byte CMD_GET_LED_COLOR = 0x42;
     public const byte CMD_SAVE_PROFILE = 0x50;
     public const byte CMD_LOAD_PROFILE = 0x51;
     public const byte CMD_DELETE_PROFILE = 0x52;
