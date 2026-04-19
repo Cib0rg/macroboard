@@ -11,7 +11,7 @@
 
 | Компонент | Статус | Готовность | Примечания |
 |-----------|--------|------------|------------|
-| **Прошивка (ESP32-S3)** | ✅ Стабильно | 95% | Основной функционал работает |
+| **Прошивка (ESP32-S3)** | ✅ Стабильно | 95% | USB Composite device (HID+Vendor) |
 | **Backend (C#)** | ✅ Стабильно | 90% | Все критичные функции реализованы |
 | **TrayApp** | 🟡 Работает | 80% | Нужно добавить запуск UI |
 | **UI (Avalonia)** | 🟡 Работает | 75% | Нужны UX улучшения |
@@ -25,7 +25,7 @@
 ## ✅ Реализованные функции
 
 ### Прошивка
-- ✅ USB HID (Keyboard + Raw HID)
+- ✅ USB Composite Device (HID Keyboard + Vendor)
 - ✅ 10 кнопок с RGB LED
 - ✅ Круглые дисплеи GC9A01 (160x160)
 - ✅ Энкодер для переключения профилей
@@ -58,7 +58,35 @@
 
 ---
 
-## 🔧 Недавние исправления (2026-04-14)
+## 🔧 Недавние исправления
+
+### 2026-04-19: USB Composite Device ✅
+
+**Проблема:** Прошивка использовала два HID-интерфейса (HID Keyboard + HID Raw), что не создавало настоящее составное устройство. ОС не распознавала его корректно.
+
+**Решение:** Переход на архитектуру **HID + Vendor** (как в рабочем примере):
+- Заменён второй HID-интерфейс на Vendor-specific (класс 0xFF)
+- Обновлены дескрипторы USB (device, configuration, strings)
+- Создан новый модуль [`usb_vendor.c/h`](firmware/main/usb/usb_vendor.c) вместо `usb_hid_raw.c/h`
+- Исправлена инициализация TinyUSB для новой версии `esp_tinyusb`
+- Удалены конфликтующие callback-функции (предоставляются библиотекой)
+
+**Результат:**
+- ✅ Устройство определяется как **Composite USB Device**
+- ✅ HID Keyboard работает (эмуляция клавиатуры)
+- ✅ Vendor Interface работает (кастомный протокол связи с ПК)
+- ✅ VID/PID: `0x1209:0x0001` (pid.codes Open Source)
+- ✅ Product Name: `"Stream Deck"` (на уровне устройства)
+
+**Файлы:**
+- [`tusb_config.h`](firmware/main/tusb_config.h) — CFG_TUD_HID=1, CFG_TUD_VENDOR=1
+- [`usb_descriptors.c`](firmware/main/usb/usb_descriptors.c) — TUD_VENDOR_DESCRIPTOR
+- [`usb_vendor.c/h`](firmware/main/usb/usb_vendor.c) — Vendor class API
+- [`main.c`](firmware/main/main.c) — tinyusb_config_t с правильными дескрипторами
+- [`CMakeLists.txt`](firmware/main/CMakeLists.txt) — добавлен esp_tinyusb в REQUIRES
+- [`sdkconfig.defaults`](firmware/sdkconfig.defaults) — CONFIG_TINYUSB_VENDOR_COUNT=1
+
+### 2026-04-14: Критичные исправления ✅
 
 ### Критичные проблемы (все исправлены)
 
@@ -216,7 +244,7 @@
 ┌──────────────────────────▼───────────────────────────────┐
 │                    ESP32-S3 Firmware                     │
 │  ┌────────────────────────────────────────────────────┐ │
-│  │  USB HID (Keyboard + Raw)                          │ │
+│  │  USB Composite (HID Keyboard + Vendor)             │ │
 │  │  Protocol Handler  │  Profile Manager              │ │
 │  │  Action Executor   │  Image Storage                │ │
 │  │  Button Handler    │  LED Controller               │ │
@@ -324,17 +352,29 @@ dotnet run
 
 ### Некритичные
 
-1. **SixLabors.ImageSharp уязвимости**
+1. **Отображение имён USB-интерфейсов**
+   - **Проблема:** Vendor-интерфейс (класс 0xFF) отображается как "Vendor Interface" вместо "Stream Deck"
+   - **Причина:** ОС использует строку интерфейса (iInterface) вместо строки продукта (iProduct) для vendor-класса
+   - **Решение:** Требуется кастомный драйвер или INF-файл (Windows) / udev rules (Linux)
+   - **Текущее состояние:**
+     - Device Product Name: `"Stream Deck"` (VID=0x1209, PID=0x0001) ✅
+     - HID Interface: Отображается как "USB устройство ввода" (стандартный HID-драйвер) ✅
+     - Vendor Interface: Отображается как "Vendor Interface" (нет стандартного драйвера) ⚠️
+     - Composite Device: Отображается как "Составное USB устройство" ✅
+   - **Файлы:** [`usb_descriptors.c:89-95`](firmware/main/usb/usb_descriptors.c), [`config.h:106-110`](firmware/main/config.h)
+   - **Приоритет:** Низкий (не влияет на функциональность)
+
+2. **SixLabors.ImageSharp уязвимости**
    - Версия 3.1.0 имеет известные уязвимости
    - Рекомендация: Обновить до последней версии
    - Приоритет: Средний
 
-2. **Отсутствие валидации профилей**
+3. **Отсутствие валидации профилей**
    - Нет проверки на максимум 5 профилей
    - Может привести к ошибкам
    - Приоритет: Низкий
 
-3. **Таймауты команд**
+4. **Таймауты команд**
    - Некоторые команды могут зависнуть
    - Рекомендация: Добавить глобальный таймаут
    - Приоритет: Низкий
