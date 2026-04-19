@@ -13,7 +13,7 @@
 #include "hardware/encoder.h"
 #include "hardware/leds.h"
 #include "usb/usb_hid_keyboard.h"
-#include "usb/usb_hid_raw.h"
+#include "usb/usb_vendor.h"
 #include "protocol/protocol_handler.h"
 #include "storage/nvs_manager.h"
 #include "storage/profile_storage.h"
@@ -22,8 +22,11 @@
 
 static const char* TAG = "MAIN";
 
-// External USB configuration descriptor
+// External USB descriptors (defined in usb_descriptors.c)
+extern const tusb_desc_device_t desc_device;
 extern const uint8_t desc_configuration[];
+extern const char *desc_string_arr[];
+extern const int desc_string_count;
 
 void app_main(void) {
     esp_err_t ret;
@@ -109,36 +112,41 @@ void app_main(void) {
     
     ESP_LOGI(TAG, "Phase 3: USB Init");
     
-    // 3.1 Initialize TinyUSB
+    // 3.1 Initialize TinyUSB — composite device (HID + Vendor)
+    // Device descriptor, config descriptor, and string descriptors are
+    // provided via TinyUSB callbacks in usb_descriptors.c.
+    // We also pass them here for the esp_tinyusb wrapper.
     tinyusb_config_t tusb_cfg = {
+        .port = TINYUSB_PORT_FULL_SPEED_0,
         .task = {
             .size = 4096,
             .priority = 5,
             .xCoreID = 0,
         },
         .descriptor = {
-            .device = NULL,  // Use default from Kconfig
-            .string = NULL,  // Use default from Kconfig
-            .string_count = 0,
+            .device = &desc_device,
+            .string = desc_string_arr,
+            .string_count = desc_string_count,
             .full_speed_config = desc_configuration,
             .high_speed_config = NULL,
         },
     };
-    
+
     ret = tinyusb_driver_install(&tusb_cfg);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to initialize TinyUSB: %s", esp_err_to_name(ret));
         ESP_LOGI(TAG, "Continuing without USB...");
     } else {
-        ESP_LOGI(TAG, "✓ TinyUSB initialized");
+        ESP_LOGI(TAG, "✓ TinyUSB driver installed (composite: HID + Vendor)");
     }
     
-    // 3.2 Initialize USB HID interfaces
+    // 3.2 Initialize USB HID Keyboard interface
     usb_hid_keyboard_init();
     ESP_LOGI(TAG, "✓ USB HID Keyboard ready");
     
-    usb_hid_raw_init();
-    ESP_LOGI(TAG, "✓ USB HID Raw ready");
+    // 3.3 Initialize USB Vendor interface
+    usb_vendor_init();
+    ESP_LOGI(TAG, "✓ USB Vendor interface ready");
     
     // Wait for USB enumeration
     ESP_LOGI(TAG, "Waiting for USB enumeration...");
@@ -217,27 +225,27 @@ void app_main(void) {
     
     ESP_LOGI(TAG, "Phase 6: Creating FreeRTOS Tasks");
     
-    // 7.1 Create USB RX task
-    xTaskCreatePinnedToCore(usb_rx_task, "usb_rx", STACK_SIZE_USB_RX, NULL,
+    // 6.1 Create USB Vendor RX task
+    xTaskCreatePinnedToCore(usb_vendor_rx_task, "usb_vendor_rx", STACK_SIZE_USB_RX, NULL,
                             TASK_PRIORITY_USB_RX, NULL, 0);
-    ESP_LOGI(TAG, "✓ USB RX task created");
+    ESP_LOGI(TAG, "✓ USB Vendor RX task created");
     
-    // 7.2 Create button task
+    // 6.2 Create button task
     xTaskCreatePinnedToCore(button_task, "button", STACK_SIZE_BUTTON, NULL,
                             TASK_PRIORITY_BUTTON, NULL, 1);
     ESP_LOGI(TAG, "✓ Button task created");
     
-    // 7.3 Create encoder task
+    // 6.3 Create encoder task
     xTaskCreatePinnedToCore(encoder_task, "encoder", STACK_SIZE_ENCODER, NULL,
                             TASK_PRIORITY_ENCODER, NULL, 1);
     ESP_LOGI(TAG, "✓ Encoder task created");
     
-    // 7.4 Create protocol task
+    // 6.4 Create protocol task
     xTaskCreatePinnedToCore(protocol_task, "protocol", STACK_SIZE_PROTOCOL, NULL,
                             TASK_PRIORITY_PROTOCOL, NULL, 0);
     ESP_LOGI(TAG, "✓ Protocol task created");
     
-    // 7.5 Create LED task
+    // 6.5 Create LED task
     xTaskCreatePinnedToCore(led_task, "led", STACK_SIZE_LED, NULL,
                             TASK_PRIORITY_LED, NULL, 1);
     ESP_LOGI(TAG, "✓ LED task created");

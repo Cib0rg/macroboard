@@ -11,7 +11,7 @@
 #include "config.h"
 #include "profile/profile_manager.h"
 #include "storage/profile_storage.h"
-#include "usb/usb_hid_raw.h"
+#include "usb/usb_vendor.h"
 #include "esp_spiffs.h"
 
 static const char* TAG = "PROTOCOL";
@@ -97,7 +97,7 @@ esp_err_t protocol_send_response(uint8_t command_id, const uint8_t* payload, uin
         return ret;
     }
     
-    return usb_hid_raw_send((uint8_t*)&packet, sizeof(packet));
+    return usb_vendor_send((uint8_t*)&packet, sizeof(packet));
 }
 
 esp_err_t protocol_send_event(uint8_t event_id, const uint8_t* payload, uint16_t payload_len) {

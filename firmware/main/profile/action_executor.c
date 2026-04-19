@@ -7,7 +7,6 @@
 #include "action_executor.h"
 #include "profile_manager.h"
 #include "usb/usb_hid_keyboard.h"
-#include "usb/usb_hid_raw.h"
 #include "protocol/protocol_handler.h"
 #include "protocol/protocol_types.h"
 #include "config.h"

@@ -14,12 +14,113 @@
 
 ## 🔧 Прошивка ESP32-S3
 
-### Предварительные требования
+### Вариант 1: Через Docker (Рекомендуется)
+
+Docker позволяет собрать и прошить устройство без установки ESP-IDF локально.
+
+#### Предварительные требования
+
+- Docker установлен
+- ESP32-S3 подключен через USB
+
+#### Установка Docker (если еще нет)
+
+```bash
+# Установить Docker
+sudo apt-get update
+sudo apt-get install docker.io
+
+# Добавить пользователя в группу docker
+sudo usermod -aG docker $USER
+newgrp docker
+
+# Проверить установку
+docker --version
+```
+
+#### Сборка прошивки через Docker
+
+```bash
+# Перейти в директорию прошивки
+cd /home/andrewp/elgato/firmware
+
+# Собрать проект используя Docker
+./scripts/docker-build.sh
+
+# Или с очисткой перед сборкой
+./scripts/docker-build.sh --clean
+```
+
+#### Прошивка устройства через Docker
+
+```bash
+# Определить порт (обычно /dev/ttyUSB0 или /dev/ttyACM0)
+ls /dev/ttyUSB* /dev/ttyACM*
+
+# Прошить устройство
+docker run --rm \
+    -v "$PWD:/project" \
+    -w /project \
+    --device=/dev/ttyACM0:/dev/ttyUSB0 \
+    espressif/idf:v5.3 \
+    idf.py -p /dev/ttyUSB0 flash
+
+# Прошить и открыть монитор
+docker run --rm -it \
+    -v "$PWD:/project" \
+    -w /project \
+    --device=/dev/ttyUSB0:/dev/ttyUSB0 \
+    espressif/idf:v5.3 \
+    idf.py -p /dev/ttyUSB0 flash monitor
+```
+
+#### Быстрая команда (сборка и прошивка)
+
+```bash
+cd /home/andrewp/elgato/firmware && \
+./scripts/docker-build.sh && \
+docker run --rm -it \
+    -v "$PWD:/project" \
+    -w /project \
+    --device=/dev/ttyUSB0:/dev/ttyUSB0 \
+    espressif/idf:v5.3 \
+    idf.py -p /dev/ttyUSB0 flash monitor
+```
+
+#### Troubleshooting для Docker
+
+**Проблема: Permission denied для /dev/ttyUSB0**
+
+```bash
+# Решение 1: Добавить в группу dialout
+sudo usermod -aG dialout $USER
+newgrp dialout
+
+# Решение 2: Дать права на устройство (временно)
+sudo chmod 666 /dev/ttyUSB0
+```
+
+**Проблема: Docker не установлен**
+
+```bash
+# Установить Docker
+sudo apt-get update
+sudo apt-get install docker.io
+sudo systemctl start docker
+sudo usermod -aG docker $USER
+newgrp docker
+```
+
+---
+
+### Вариант 2: Локальная установка ESP-IDF
+
+#### Предварительные требования
 
 - ESP-IDF v5.3 установлен в `~/esp/esp-idf`
 - ESP32-S3 подключен через USB
 
-### Сборка прошивки
+#### Сборка прошивки
 
 ```bash
 # 1. Перейти в директорию прошивки

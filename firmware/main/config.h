@@ -103,14 +103,13 @@
 // ============================================
 // USB Configuration
 // ============================================
-#define USB_VID                 0x303A  // Espressif VID
-#define USB_PID                 0x4001  // Custom PID
+#define USB_VID                 0x1209  // pid.codes (Open Source VID)
+#define USB_PID                 0x0001  // MacroKeyboard PID
 #define USB_MANUFACTURER        "Elgato"
 #define USB_PRODUCT             "Stream Deck"
 #define USB_SERIAL              "123456"
 
 #define USB_HID_REPORT_SIZE     64
-#define USB_CDC_ENABLED         1
 
 // ============================================
 // Task Priorities
