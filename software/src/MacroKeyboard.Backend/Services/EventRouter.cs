@@ -13,6 +13,9 @@ public class EventRouter
     private readonly IIpcServer _ipcServer;
     private readonly ILogger<EventRouter> _logger;
 
+    // Cache the last device event so we can send it to newly connected IPC clients
+    private SharedEvents.DeviceEventArgs? _lastDeviceEvent;
+
     public EventRouter(
         DeviceManager deviceManager,
         IIpcServer ipcServer,
@@ -29,6 +32,30 @@ public class EventRouter
         _deviceManager.ButtonReleased += OnButtonReleased;
         _deviceManager.EncoderRotated += OnEncoderRotated;
         _deviceManager.ProfileChanged += OnProfileChanged;
+
+        // When a new IPC client connects, send current device status
+        _ipcServer.ClientConnected += OnIpcClientConnected;
+    }
+
+    private async void OnIpcClientConnected(object? sender, string clientId)
+    {
+        try
+        {
+            // If device is already connected, send the cached event to the new client
+            if (_deviceManager.IsDeviceConnected && _lastDeviceEvent != null)
+            {
+                _logger.LogInformation("Sending cached device status to new IPC client {ClientId}", clientId);
+                await _ipcServer.BroadcastAsync(new IpcMessage
+                {
+                    MessageType = IpcMessageTypes.DeviceConnected,
+                    Data = _lastDeviceEvent
+                });
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error sending device status to new IPC client");
+        }
     }
 
     private async void OnDeviceConnected(object? sender, SharedEvents.DeviceEventArgs e)
@@ -37,6 +64,9 @@ public class EventRouter
         {
             _logger.LogInformation("Device connected: {DeviceName} (FW: {FirmwareVersion})",
                 e.DeviceName, e.FirmwareVersion);
+
+            // Cache for newly connecting IPC clients
+            _lastDeviceEvent = e;
 
             await _ipcServer.BroadcastAsync(new IpcMessage
             {
@@ -55,6 +85,9 @@ public class EventRouter
         try
         {
             _logger.LogInformation("Device disconnected");
+
+            // Clear cache
+            _lastDeviceEvent = null;
 
             await _ipcServer.BroadcastAsync(new IpcMessage
             {

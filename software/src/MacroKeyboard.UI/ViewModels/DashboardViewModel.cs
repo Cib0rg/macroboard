@@ -2,6 +2,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using MacroKeyboard.Shared.Events;
 using MacroKeyboard.Shared.IPC;
 using Microsoft.Extensions.Logging;
+using Newtonsoft.Json.Linq;
 using System;
 using System.Collections.ObjectModel;
 
@@ -40,40 +41,82 @@ public partial class DashboardViewModel : ViewModelBase
 
     private void OnIpcMessageReceived(object? sender, IpcMessage message)
     {
-        switch (message.MessageType)
+        try
         {
-            case IpcMessageTypes.DeviceConnected:
-                if (message.Data is DeviceEventArgs deviceEvent)
+            switch (message.MessageType)
+            {
+                case IpcMessageTypes.DeviceConnected:
                 {
-                    DeviceName = deviceEvent.DeviceName;
-                    FirmwareVersion = deviceEvent.FirmwareVersion;
-                    IsDeviceConnected = true;
-                    AddEvent($"Device connected: {deviceEvent.DeviceName}");
+                    var deviceEvent = TryConvertData<DeviceEventArgs>(message.Data);
+                    if (deviceEvent != null)
+                    {
+                        DeviceName = deviceEvent.DeviceName;
+                        FirmwareVersion = deviceEvent.FirmwareVersion;
+                        IsDeviceConnected = true;
+                        AddEvent($"Device connected: {deviceEvent.DeviceName}");
+                    }
+                    break;
                 }
-                break;
 
-            case IpcMessageTypes.DeviceDisconnected:
-                DeviceName = "No device";
-                FirmwareVersion = "N/A";
-                IsDeviceConnected = false;
-                AddEvent("Device disconnected");
-                break;
+                case IpcMessageTypes.DeviceDisconnected:
+                    DeviceName = "No device";
+                    FirmwareVersion = "N/A";
+                    IsDeviceConnected = false;
+                    AddEvent("Device disconnected");
+                    break;
 
-            case IpcMessageTypes.ButtonPressed:
-                if (message.Data is ButtonEventArgs buttonEvent)
+                case IpcMessageTypes.ButtonPressed:
                 {
-                    AddEvent($"Button {buttonEvent.ButtonIndex} pressed");
+                    var buttonEvent = TryConvertData<ButtonEventArgs>(message.Data);
+                    if (buttonEvent != null)
+                    {
+                        AddEvent($"Button {buttonEvent.ButtonIndex} pressed");
+                    }
+                    break;
                 }
-                break;
 
-            case IpcMessageTypes.ProfileChanged:
-                if (message.Data is ProfileChangedEventArgs profileEvent)
+                case IpcMessageTypes.ProfileChanged:
                 {
-                    CurrentProfile = profileEvent.ProfileName;
-                    AddEvent($"Profile changed to: {profileEvent.ProfileName}");
+                    var profileEvent = TryConvertData<ProfileChangedEventArgs>(message.Data);
+                    if (profileEvent != null)
+                    {
+                        CurrentProfile = profileEvent.ProfileName;
+                        AddEvent($"Profile changed to: {profileEvent.ProfileName}");
+                    }
+                    break;
                 }
-                break;
+            }
         }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error processing IPC message: {MessageType}", message.MessageType);
+        }
+    }
+
+    /// <summary>
+    /// Safely convert IPC message Data to the expected type.
+    /// Handles both direct type match and JObject deserialization (from JSON).
+    /// </summary>
+    private T? TryConvertData<T>(object? data) where T : class
+    {
+        if (data is T typed)
+            return typed;
+
+        if (data is JObject jObject)
+        {
+            try
+            {
+                return jObject.ToObject<T>();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to convert JObject to {Type}", typeof(T).Name);
+            }
+        }
+
+        _logger.LogWarning("Cannot convert IPC data to {Type}, actual type: {ActualType}",
+            typeof(T).Name, data?.GetType().Name ?? "null");
+        return null;
     }
 
     private void AddEvent(string eventText)
