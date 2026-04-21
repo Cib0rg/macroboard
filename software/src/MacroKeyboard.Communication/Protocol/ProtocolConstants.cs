@@ -14,8 +14,12 @@ public static class ProtocolConstants
     public const byte EndByte = 0x5A;
     
     // USB VID/PID
-    public const int VendorId = 0x303A;  // Espressif
-    public const int ProductId = 0x4008; // Auto-calculated: 0x4000 | (HID_COUNT=2 << 2)
+    public const int VendorId = 0x1209;  // pid.codes (Open Source VID)
+    public const int ProductId = 0x0001; // MacroKeyboard
+    
+    // Device identification (must match firmware config.h USB_MANUFACTURER / USB_PRODUCT)
+    public const string ManufacturerName = "Elgato";
+    public const string ProductName = "Stream Deck";
     
     // Команды от PC к устройству
     public const byte CMD_PING = 0x01;

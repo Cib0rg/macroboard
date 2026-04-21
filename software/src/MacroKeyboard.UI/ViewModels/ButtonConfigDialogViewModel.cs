@@ -1,9 +1,11 @@
+using Avalonia.Platform.Storage;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using MacroKeyboard.Core.Models;
 using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.ObjectModel;
+using System.Linq;
 using System.Threading.Tasks;
 
 namespace MacroKeyboard.UI.ViewModels;
@@ -14,6 +16,7 @@ namespace MacroKeyboard.UI.ViewModels;
 public partial class ButtonConfigDialogViewModel : ViewModelBase
 {
     private readonly ILogger<ButtonConfigDialogViewModel> _logger;
+    private IStorageProvider? _storageProvider;
 
     [ObservableProperty]
     private ButtonConfig _buttonConfig;
@@ -61,12 +64,56 @@ public partial class ButtonConfigDialogViewModel : ViewModelBase
         LedColor = ((uint)buttonConfig.Led.R << 16) | ((uint)buttonConfig.Led.G << 8) | buttonConfig.Led.B;
     }
 
+    /// <summary>
+    /// Set the storage provider for file dialogs (called from View)
+    /// </summary>
+    public void SetStorageProvider(IStorageProvider storageProvider)
+    {
+        _storageProvider = storageProvider;
+    }
+
     [RelayCommand]
     private async Task BrowseImage()
     {
-        // TODO: Open file dialog
-        _logger.LogInformation("Browse image clicked");
-        await Task.CompletedTask;
+        try
+        {
+            _logger.LogInformation("Browse image clicked");
+            
+            if (_storageProvider == null)
+            {
+                _logger.LogWarning("StorageProvider not set");
+                return;
+            }
+            
+            var fileTypes = new FilePickerFileType[]
+            {
+                new("Images")
+                {
+                    Patterns = new[] { "*.jpg", "*.jpeg", "*.png", "*.bmp", "*.gif" },
+                    MimeTypes = new[] { "image/*" }
+                }
+            };
+            
+            var options = new FilePickerOpenOptions
+            {
+                Title = "Select Button Image",
+                AllowMultiple = false,
+                FileTypeFilter = fileTypes
+            };
+            
+            var result = await _storageProvider.OpenFilePickerAsync(options);
+            
+            if (result != null && result.Count > 0)
+            {
+                var file = result[0];
+                ImagePath = file.Path.LocalPath;
+                _logger.LogInformation("Image selected: {Path}", ImagePath);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error browsing for image");
+        }
     }
 
     [RelayCommand]

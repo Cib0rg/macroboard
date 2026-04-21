@@ -90,7 +90,7 @@ const char *desc_string_arr[] = {
     USB_PRODUCT,                   // 2: Product
     USB_SERIAL,                    // 3: Serial Number
     "HID Keyboard",                // 4: HID Keyboard Interface
-    "Stream Deck",                 // 5: Vendor Interface
+    USB_PRODUCT,                   // 5: Vendor Interface
 };
 
 const int desc_string_count = sizeof(desc_string_arr) / sizeof(desc_string_arr[0]);

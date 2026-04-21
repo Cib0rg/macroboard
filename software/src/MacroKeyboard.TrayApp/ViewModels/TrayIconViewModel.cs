@@ -4,6 +4,9 @@ using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Diagnostics;
+using System.IO;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 
@@ -172,8 +175,68 @@ public class TrayIconViewModel : INotifyPropertyChanged, IDisposable
 
     public void ShowConfiguration()
     {
-        _logger.LogInformation("Opening configuration UI...");
-        // TODO: Launch MacroKeyboard.UI
+        try
+        {
+            _logger.LogInformation("Opening configuration UI...");
+            
+            // Check if UI is already running
+            var uiProcessName = "MacroKeyboard.UI";
+            var runningProcesses = Process.GetProcessesByName(uiProcessName);
+            
+            if (runningProcesses.Length > 0)
+            {
+                _logger.LogInformation("UI is already running, bringing to front");
+                // UI is already running, just bring it to front
+                // Note: Actual window activation would require platform-specific code
+                return;
+            }
+            
+            // Find UI executable
+            var baseDirectory = AppContext.BaseDirectory;
+            var uiExecutable = Path.Combine(baseDirectory, $"{uiProcessName}.exe");
+            
+            // On Linux/Mac, try without .exe extension
+            if (!File.Exists(uiExecutable))
+            {
+                uiExecutable = Path.Combine(baseDirectory, uiProcessName);
+            }
+            
+            // Try parent directory (common in development)
+            if (!File.Exists(uiExecutable))
+            {
+                var parentDir = Directory.GetParent(baseDirectory)?.FullName;
+                if (parentDir != null)
+                {
+                    uiExecutable = Path.Combine(parentDir, uiProcessName, $"{uiProcessName}.exe");
+                    if (!File.Exists(uiExecutable))
+                    {
+                        uiExecutable = Path.Combine(parentDir, uiProcessName, uiProcessName);
+                    }
+                }
+            }
+            
+            if (!File.Exists(uiExecutable))
+            {
+                _logger.LogError("UI executable not found. Searched: {BaseDirectory}", baseDirectory);
+                return;
+            }
+            
+            _logger.LogInformation("Launching UI from: {Path}", uiExecutable);
+            
+            var startInfo = new ProcessStartInfo
+            {
+                FileName = uiExecutable,
+                UseShellExecute = true,
+                WorkingDirectory = Path.GetDirectoryName(uiExecutable)
+            };
+            
+            Process.Start(startInfo);
+            _logger.LogInformation("UI launched successfully");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error launching configuration UI");
+        }
     }
 
     public void Exit()

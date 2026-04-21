@@ -1,5 +1,7 @@
 using Microsoft.Extensions.Logging;
+using SixLabors.Fonts;
 using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.Drawing.Processing;
 using SixLabors.ImageSharp.Processing;
 using SixLabors.ImageSharp.Formats.Jpeg;
 
@@ -81,22 +83,70 @@ public class ImageService
     /// <summary>
     /// Создать изображение с текстом
     /// </summary>
-    public async Task<byte[]?> CreateTextImageAsync(string text, int fontSize = 24)
+    public async Task<byte[]?> CreateTextImageAsync(string text, int fontSize = 24, Color? backgroundColor = null, Color? textColor = null)
     {
         try
         {
             using var image = new Image<SixLabors.ImageSharp.PixelFormats.Rgba32>(TargetSize, TargetSize);
             
-            // Заполнить черным фоном
-            image.Mutate(x => x.BackgroundColor(Color.Black));
+            // Заполнить фоном
+            var bgColor = backgroundColor ?? Color.Black;
+            var fgColor = textColor ?? Color.White;
             
-            // TODO: Добавить текст (требует SixLabors.Fonts)
-            // Пока просто возвращаем черное изображение
+            image.Mutate(x => x.BackgroundColor(bgColor));
             
+            // Загрузить системный шрифт
+            FontFamily fontFamily;
+            
+            try
+            {
+                // Попытаться загрузить системные шрифты
+                fontFamily = SystemFonts.Get("Arial");
+            }
+            catch
+            {
+                try
+                {
+                    // Fallback на другие распространенные шрифты
+                    fontFamily = SystemFonts.Get("DejaVu Sans");
+                }
+                catch
+                {
+                    // Использовать первый доступный шрифт
+                    if (!SystemFonts.Families.Any())
+                    {
+                        throw new InvalidOperationException("No system fonts available");
+                    }
+                    fontFamily = SystemFonts.Families.First();
+                }
+            }
+            
+            var font = fontFamily.CreateFont(fontSize, FontStyle.Bold);
+            
+            // Настройки рендеринга текста
+            var textOptions = new RichTextOptions(font)
+            {
+                Origin = new PointF(TargetSize / 2, TargetSize / 2),
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+                WrappingLength = TargetSize - 20, // Отступы по краям
+                TextAlignment = TextAlignment.Center
+            };
+            
+            // Нарисовать текст
+            image.Mutate(x => x.DrawText(textOptions, text, fgColor));
+            
+            // Применить круглую маску
+            ApplyCircularMask(image);
+            
+            // Конвертировать в JPEG
             using var ms = new MemoryStream();
             await image.SaveAsJpegAsync(ms, new JpegEncoder { Quality = 90 });
             
-            return ms.ToArray();
+            var result = ms.ToArray();
+            _logger.LogInformation("Text image created: {Text}, {Size} bytes", text, result.Length);
+            
+            return result;
         }
         catch (Exception ex)
         {

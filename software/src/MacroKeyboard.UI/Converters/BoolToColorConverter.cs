@@ -1,3 +1,4 @@
+using Avalonia.Data;
 using Avalonia.Data.Converters;
 using Avalonia.Media;
 using System;
@@ -21,6 +22,7 @@ public class BoolToColorConverter : IValueConverter
 
     public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
     {
-        throw new NotImplementedException();
+        // One-way binding only - ConvertBack is not supported
+        return BindingOperations.DoNothing;
     }
 }

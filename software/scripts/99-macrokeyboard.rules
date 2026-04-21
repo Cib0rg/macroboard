@@ -1,0 +1,8 @@
+# MacroKeyboard (Elgato Stream Deck) USB device access rule
+# Install: sudo cp 99-macrokeyboard.rules /etc/udev/rules.d/
+# Reload: sudo udevadm control --reload-rules && sudo udevadm trigger
+#
+# This rule grants read/write access to the device for all users in the "plugdev" group.
+# VID=0x1209 (pid.codes Open Source), PID=0x0001 (MacroKeyboard)
+
+SUBSYSTEM=="usb", ATTR{idVendor}=="1209", ATTR{idProduct}=="0001", MODE="0666", GROUP="plugdev", TAG+="uaccess"

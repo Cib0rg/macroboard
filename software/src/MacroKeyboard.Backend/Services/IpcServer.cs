@@ -40,15 +40,58 @@ public class IpcServer : IIpcServer, IDisposable
 
         _logger.LogInformation("Starting IPC Server on port {Port}...", _port);
         
-        _listener = new TcpListener(IPAddress.Loopback, _port);
-        _listener.Start();
-        
-        _isRunning = true;
-        _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        try
+        {
+            // Check if port is already in use
+            if (IsPortInUse(_port))
+            {
+                _logger.LogError("Port {Port} is already in use. Another instance of Backend may be running.", _port);
+                _logger.LogError("Please stop the other instance or change the port in appsettings.json");
+                throw new InvalidOperationException($"Port {_port} is already in use");
+            }
+            
+            _listener = new TcpListener(IPAddress.Loopback, _port);
+            
+            // Enable SO_REUSEADDR to allow quick restart
+            _listener.Server.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
+            
+            _listener.Start();
+            
+            _isRunning = true;
+            _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 
-        _ = Task.Run(() => AcceptClientsAsync(_cts.Token), _cts.Token);
-        
-        _logger.LogInformation("IPC Server started successfully");
+            _ = Task.Run(() => AcceptClientsAsync(_cts.Token), _cts.Token);
+            
+            _logger.LogInformation("IPC Server started successfully on port {Port}", _port);
+        }
+        catch (SocketException ex) when (ex.ErrorCode == 10048)
+        {
+            _logger.LogError("Port {Port} is already in use (SocketException 10048)", _port);
+            _logger.LogError("Possible causes:");
+            _logger.LogError("  1. Another instance of MacroKeyboard.Backend is running");
+            _logger.LogError("  2. Another application is using port {Port}", _port);
+            _logger.LogError("  3. Port is in TIME_WAIT state from recent shutdown");
+            _logger.LogError("Solutions:");
+            _logger.LogError("  - Stop other Backend instances");
+            _logger.LogError("  - Change port in appsettings.json");
+            _logger.LogError("  - Wait 1-2 minutes for TIME_WAIT to expire");
+            throw;
+        }
+    }
+    
+    private bool IsPortInUse(int port)
+    {
+        try
+        {
+            using var testListener = new TcpListener(IPAddress.Loopback, port);
+            testListener.Start();
+            testListener.Stop();
+            return false;
+        }
+        catch (SocketException)
+        {
+            return true;
+        }
     }
 
     public async Task StopAsync(CancellationToken cancellationToken = default)
