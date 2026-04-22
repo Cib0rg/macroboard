@@ -12,33 +12,55 @@
             <!-- Device Status Card -->
             <Border Background="#2D2D30" CornerRadius="8" Padding="20">
                 <StackPanel Spacing="12">
-                    <TextBlock Text="Device Status" 
-                               FontSize="20" 
-                               FontWeight="Bold" />
+                    <Grid ColumnDefinitions="*,Auto">
+                        <TextBlock Text="Device Status" 
+                                   FontSize="20" 
+                                   FontWeight="Bold" />
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                            <Button Content="🔄 Refresh" 
+                                    Command="{Binding RequestDeviceInfoCommand}"
+                                    Padding="8,4" />
+                            <Button Content="📡 Ping" 
+                                    Command="{Binding PingBackendCommand}"
+                                    Padding="8,4" />
+                        </StackPanel>
+                    </Grid>
                     
                     <Separator />
                     
-                    <Grid ColumnDefinitions="150,*" RowDefinitions="Auto,Auto,Auto,Auto" 
+                    <Grid ColumnDefinitions="150,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto" 
                           RowSpacing="8">
-                        <TextBlock Grid.Row="0" Grid.Column="0" Text="Device:" />
-                        <TextBlock Grid.Row="0" Grid.Column="1" 
+                        <TextBlock Grid.Row="0" Grid.Column="0" Text="Status:" />
+                        <StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                            <Ellipse Width="12" Height="12"
+                                     Fill="{Binding IsDeviceConnected, Converter={StaticResource BoolToColorConverter}}" />
+                            <TextBlock Text="{Binding ConnectionStatus}" FontWeight="Bold" />
+                        </StackPanel>
+                        
+                        <TextBlock Grid.Row="1" Grid.Column="0" Text="Device:" />
+                        <TextBlock Grid.Row="1" Grid.Column="1" 
                                    Text="{Binding DeviceName}" 
                                    FontWeight="Bold" />
                         
-                        <TextBlock Grid.Row="1" Grid.Column="0" Text="Firmware:" />
-                        <TextBlock Grid.Row="1" Grid.Column="1" 
+                        <TextBlock Grid.Row="2" Grid.Column="0" Text="Firmware:" />
+                        <TextBlock Grid.Row="2" Grid.Column="1" 
                                    Text="{Binding FirmwareVersion}" />
                         
-                        <TextBlock Grid.Row="2" Grid.Column="0" Text="Current Profile:" />
-                        <TextBlock Grid.Row="2" Grid.Column="1" 
+                        <TextBlock Grid.Row="3" Grid.Column="0" Text="Current Profile:" />
+                        <TextBlock Grid.Row="3" Grid.Column="1" 
                                    Text="{Binding CurrentProfile}" />
                         
-                        <TextBlock Grid.Row="3" Grid.Column="0" Text="Status:" />
-                        <StackPanel Grid.Row="3" Grid.Column="1" Orientation="Horizontal" Spacing="8">
-                            <Ellipse Width="12" Height="12"
-                                     Fill="{Binding IsDeviceConnected, Converter={StaticResource BoolToColorConverter}}" />
-                            <TextBlock Text="{Binding IsDeviceConnected}" />
-                        </StackPanel>
+                        <TextBlock Grid.Row="4" Grid.Column="0" Text="Buttons:" />
+                        <TextBlock Grid.Row="4" Grid.Column="1" 
+                                   Text="{Binding ButtonCount}" />
+                        
+                        <TextBlock Grid.Row="5" Grid.Column="0" Text="Profiles:" />
+                        <TextBlock Grid.Row="5" Grid.Column="1" 
+                                   Text="{Binding ProfileCount}" />
+                        
+                        <TextBlock Grid.Row="6" Grid.Column="0" Text="Free Space:" />
+                        <TextBlock Grid.Row="6" Grid.Column="1" 
+                                   Text="{Binding FreeSpace}" />
                     </Grid>
                 </StackPanel>
             </Border>
@@ -53,13 +75,13 @@
                     <Separator />
                     
                     <ListBox ItemsSource="{Binding RecentEvents}"
-                             Height="300"
+                             Height="350"
                              Background="Transparent"
                              BorderThickness="0">
                         <ListBox.ItemTemplate>
                             <DataTemplate>
                                 <TextBlock Text="{Binding}" 
-                                           FontFamily="Consolas" 
+                                           FontFamily="Consolas,Courier New,monospace" 
                                            FontSize="12" />
                             </DataTemplate>
                         </ListBox.ItemTemplate>

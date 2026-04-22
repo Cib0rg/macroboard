@@ -14,6 +14,8 @@ namespace MacroKeyboard.Communication.HidDevice;
 ///   - Single reader thread (MonitorDeviceAsync) reads all incoming USB data
 ///   - Command responses are routed to pending TaskCompletionSource via response queue
 ///   - Unsolicited events (button presses, etc.) are fired via DataReceived event
+///   - On disconnect: cleans up USB resources, fires DeviceDisconnected event
+///   - DeviceManager handles reconnection by calling ConnectAsync() again
 ///
 /// Требования:
 ///   - Linux: libusb-1.0-0 (apt install libusb-1.0-0) + udev rules для доступа без root
@@ -26,10 +28,14 @@ public class HidDeviceManager : IDisposable
     private nint _ctx;
     private nint _devHandle;
     private bool _interfaceClaimed;
-    private bool _isMonitoring;
+    private volatile bool _isMonitoring;
     private CancellationTokenSource? _monitoringCts;
     private bool _disposed;
     private readonly object _writeLock = new();
+    private readonly object _connectLock = new();
+
+    // Flag set by ReadFromUsb when LIBUSB_ERROR_NO_DEVICE is detected
+    private volatile bool _deviceLost;
 
     // Pending response queue: the monitor thread routes responses here
     private readonly ConcurrentDictionary<int, TaskCompletionSource<byte[]?>> _pendingResponses = new();
@@ -40,11 +46,14 @@ public class HidDeviceManager : IDisposable
     private const byte EP_VENDOR_OUT = 0x02;  // Bulk OUT
     private const byte EP_VENDOR_IN = 0x82;   // Bulk IN
 
+    // Max consecutive USB errors before treating as disconnect
+    private const int MAX_CONSECUTIVE_ERRORS = 5;
+
     public event EventHandler? DeviceConnected;
     public event EventHandler? DeviceDisconnected;
     public event EventHandler<byte[]>? DataReceived;
 
-    public bool IsConnected => _devHandle != 0;
+    public bool IsConnected => _devHandle != 0 && !_deviceLost;
 
     public HidDeviceManager(ILogger<HidDeviceManager> logger)
     {
@@ -56,10 +65,31 @@ public class HidDeviceManager : IDisposable
     /// </summary>
     public async Task<bool> ConnectAsync()
     {
+        lock (_connectLock)
+        {
+            if (IsConnected)
+            {
+                _logger.LogDebug("Already connected to device");
+                return true;
+            }
+
+            // If there's a stale connection, clean it up first
+            if (_devHandle != 0 || _ctx != 0)
+            {
+                _logger.LogInformation("Cleaning up stale USB connection before reconnect...");
+                StopMonitoring();
+                CancelAllPendingResponses();
+                CleanupDevice();
+            }
+        }
+
         try
         {
             _logger.LogInformation("Searching for device (VID: 0x{VID:X4}, PID: 0x{PID:X4})...",
                 ProtocolConstants.VendorId, ProtocolConstants.ProductId);
+
+            // Reset device-lost flag
+            _deviceLost = false;
 
             // Initialize libusb
             int rc = LibUsb.libusb_init(out _ctx);
@@ -77,9 +107,7 @@ public class HidDeviceManager : IDisposable
 
             if (_devHandle == 0)
             {
-                _logger.LogWarning("Device not found (VID: 0x{VID:X4}, PID: 0x{PID:X4}). " +
-                    "Check: 1) Device is plugged in, 2) On Linux: udev rule installed " +
-                    "(sudo cp scripts/99-macrokeyboard.rules /etc/udev/rules.d/ && sudo udevadm control --reload-rules && sudo udevadm trigger)",
+                _logger.LogDebug("Device not found (VID: 0x{VID:X4}, PID: 0x{PID:X4})",
                     ProtocolConstants.VendorId, ProtocolConstants.ProductId);
                 LibUsb.libusb_exit(_ctx);
                 _ctx = 0;
@@ -131,16 +159,41 @@ public class HidDeviceManager : IDisposable
     }
 
     /// <summary>
-    /// Отключиться от устройства
+    /// Отключиться от устройства (explicit disconnect)
     /// </summary>
     public void Disconnect()
     {
-        StopMonitoring();
-        CancelAllPendingResponses();
-        CleanupDevice();
+        _logger.LogInformation("Explicit device disconnect requested");
+        HandleDisconnect(fireEvent: true);
+    }
 
-        _logger.LogInformation("Device disconnected");
-        DeviceDisconnected?.Invoke(this, EventArgs.Empty);
+    /// <summary>
+    /// Internal disconnect handler — cleans up and optionally fires event.
+    /// Thread-safe: can be called from monitor thread or externally.
+    /// </summary>
+    private void HandleDisconnect(bool fireEvent)
+    {
+        lock (_connectLock)
+        {
+            if (_devHandle == 0 && _ctx == 0)
+            {
+                // Already disconnected
+                return;
+            }
+
+            _logger.LogInformation("Handling device disconnect (fireEvent={FireEvent})", fireEvent);
+
+            _deviceLost = true;
+            StopMonitoring();
+            CancelAllPendingResponses();
+            CleanupDevice();
+        }
+
+        if (fireEvent)
+        {
+            _logger.LogInformation("Device disconnected — ready for reconnection");
+            DeviceDisconnected?.Invoke(this, EventArgs.Empty);
+        }
     }
 
     /// <summary>
@@ -148,9 +201,9 @@ public class HidDeviceManager : IDisposable
     /// </summary>
     public async Task<bool> WriteAsync(byte[] data)
     {
-        if (_devHandle == 0)
+        if (!IsConnected)
         {
-            _logger.LogWarning("Device not connected or cannot write");
+            _logger.LogWarning("Cannot write: device not connected");
             return false;
         }
 
@@ -165,6 +218,9 @@ public class HidDeviceManager : IDisposable
             int rc;
             lock (_writeLock)
             {
+                if (_devHandle == 0 || _deviceLost)
+                    return false;
+
                 rc = LibUsb.libusb_bulk_transfer(
                     _devHandle,
                     EP_VENDOR_OUT,
@@ -172,6 +228,13 @@ public class HidDeviceManager : IDisposable
                     packet.Length,
                     out int bytesWritten,
                     1000); // 1 second timeout
+            }
+
+            if (rc == LibUsb.LIBUSB_ERROR_NO_DEVICE)
+            {
+                _logger.LogWarning("Device lost during write");
+                _deviceLost = true;
+                return false;
             }
 
             if (rc != LibUsb.LIBUSB_SUCCESS)
@@ -245,10 +308,12 @@ public class HidDeviceManager : IDisposable
 
     /// <summary>
     /// Read raw data from USB (used only by the monitor thread).
+    /// Returns the data, or null on timeout/error.
+    /// Sets _deviceLost = true on LIBUSB_ERROR_NO_DEVICE.
     /// </summary>
     private byte[]? ReadFromUsb(int timeout = 100)
     {
-        if (_devHandle == 0) return null;
+        if (_devHandle == 0 || _deviceLost) return null;
 
         try
         {
@@ -271,16 +336,23 @@ public class HidDeviceManager : IDisposable
 
             if (rc == LibUsb.LIBUSB_ERROR_NO_DEVICE)
             {
-                _logger.LogWarning("Device disconnected during read");
+                _logger.LogWarning("USB device lost (LIBUSB_ERROR_NO_DEVICE)");
+                _deviceLost = true;
                 return null;
             }
 
             // LIBUSB_ERROR_TIMEOUT is normal — no data available
+            // Other errors are logged but not treated as disconnect (yet)
+            if (rc != LibUsb.LIBUSB_SUCCESS && rc != LibUsb.LIBUSB_ERROR_TIMEOUT)
+            {
+                _logger.LogDebug("USB read returned: {Error}", LibUsb.GetErrorString(rc));
+            }
+
             return null;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error reading from USB");
+            _logger.LogError(ex, "Exception reading from USB");
             return null;
         }
     }
@@ -318,71 +390,110 @@ public class HidDeviceManager : IDisposable
 
         _isMonitoring = false;
         _monitoringCts?.Cancel();
-        _monitoringCts?.Dispose();
+        
+        // Don't dispose here — the monitor thread may still be using it
+        // It will be replaced on next StartMonitoring()
         _monitoringCts = null;
 
-        _logger.LogDebug("Device monitoring stopped");
+        _logger.LogDebug("Device monitoring stop requested");
     }
 
     /// <summary>
     /// Single reader thread: reads all incoming USB data and routes it.
     /// - If there are pending response waiters → complete the oldest one
     /// - Otherwise → fire DataReceived event (unsolicited device events)
+    /// - On device loss → clean up and fire DeviceDisconnected
     /// </summary>
     private async Task MonitorDeviceAsync(CancellationToken cancellationToken)
     {
-        _logger.LogDebug("Monitoring device events (single reader thread)...");
+        _logger.LogDebug("Monitor thread started");
+        int consecutiveErrors = 0;
 
-        while (!cancellationToken.IsCancellationRequested && _devHandle != 0)
+        try
         {
-            try
+            while (!cancellationToken.IsCancellationRequested && !_deviceLost)
             {
-                var data = ReadFromUsb(100);
-
-                if (data != null && data.Length > 0)
+                try
                 {
-                    // Try to route to a pending response waiter
-                    bool routed = false;
+                    var data = ReadFromUsb(100);
 
-                    // Find the oldest pending response and complete it
-                    foreach (var kvp in _pendingResponses)
+                    // Check if device was lost during read
+                    if (_deviceLost)
                     {
-                        if (_pendingResponses.TryRemove(kvp.Key, out var tcs))
+                        _logger.LogWarning("Device lost detected in monitor loop — initiating disconnect");
+                        break;
+                    }
+
+                    if (data != null && data.Length > 0)
+                    {
+                        consecutiveErrors = 0; // Reset error counter on successful read
+
+                        // Try to route to a pending response waiter
+                        bool routed = false;
+
+                        // Find the oldest pending response and complete it
+                        foreach (var kvp in _pendingResponses)
                         {
-                            tcs.TrySetResult(data);
-                            routed = true;
-                            _logger.LogDebug("Routed {Length} bytes to pending response (id={Id})",
-                                data.Length, kvp.Key);
-                            break;
+                            if (_pendingResponses.TryRemove(kvp.Key, out var tcs))
+                            {
+                                tcs.TrySetResult(data);
+                                routed = true;
+                                _logger.LogDebug("Routed {Length} bytes to pending response (id={Id})",
+                                    data.Length, kvp.Key);
+                                break;
+                            }
+                        }
+
+                        if (!routed)
+                        {
+                            // No pending response — this is an unsolicited event from device
+                            _logger.LogDebug("Received unsolicited {Length} bytes, firing DataReceived", data.Length);
+                            DataReceived?.Invoke(this, data);
                         }
                     }
-
-                    if (!routed)
+                    else
                     {
-                        // No pending response — this is an unsolicited event from device
-                        _logger.LogDebug("Received unsolicited {Length} bytes, firing DataReceived", data.Length);
-                        DataReceived?.Invoke(this, data);
+                        // null data is normal (timeout) — don't count as error
                     }
                 }
-            }
-            catch (Exception ex)
-            {
-                if (cancellationToken.IsCancellationRequested) break;
-
-                _logger.LogError(ex, "Error in device monitoring loop");
-
-                if (_devHandle == 0)
+                catch (OperationCanceledException)
                 {
-                    _logger.LogWarning("Device disconnected during monitoring");
-                    DeviceDisconnected?.Invoke(this, EventArgs.Empty);
                     break;
                 }
+                catch (Exception ex)
+                {
+                    if (cancellationToken.IsCancellationRequested) break;
 
-                await Task.Delay(1000, cancellationToken);
+                    consecutiveErrors++;
+                    _logger.LogError(ex, "Error in monitor loop (consecutive: {Count})", consecutiveErrors);
+
+                    if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS)
+                    {
+                        _logger.LogError("Too many consecutive errors ({Count}) — treating as device disconnect",
+                            consecutiveErrors);
+                        _deviceLost = true;
+                        break;
+                    }
+
+                    // Brief delay before retrying
+                    try { await Task.Delay(200, cancellationToken); }
+                    catch (OperationCanceledException) { break; }
+                }
             }
         }
+        finally
+        {
+            _isMonitoring = false;
+            _logger.LogDebug("Monitor thread ended (deviceLost={DeviceLost}, cancelled={Cancelled})",
+                _deviceLost, cancellationToken.IsCancellationRequested);
 
-        _logger.LogDebug("Device monitoring loop ended");
+            // If device was lost (not an explicit disconnect/cancel), handle cleanup
+            if (_deviceLost && !cancellationToken.IsCancellationRequested)
+            {
+                // Run cleanup on a separate task to avoid deadlocks
+                _ = Task.Run(() => HandleDisconnect(fireEvent: true));
+            }
+        }
     }
 
     /// <summary>
@@ -390,17 +501,24 @@ public class HidDeviceManager : IDisposable
     /// </summary>
     private void CancelAllPendingResponses()
     {
+        int count = 0;
         foreach (var kvp in _pendingResponses)
         {
             if (_pendingResponses.TryRemove(kvp.Key, out var tcs))
             {
                 tcs.TrySetResult(null);
+                count++;
             }
+        }
+        if (count > 0)
+        {
+            _logger.LogDebug("Cancelled {Count} pending response waiters", count);
         }
     }
 
     /// <summary>
-    /// Clean up USB device resources
+    /// Clean up USB device resources.
+    /// After this, _devHandle and _ctx are 0, IsConnected returns false.
     /// </summary>
     private void CleanupDevice()
     {
@@ -410,23 +528,49 @@ public class HidDeviceManager : IDisposable
             {
                 if (_interfaceClaimed)
                 {
-                    LibUsb.libusb_release_interface(_devHandle, VENDOR_INTERFACE_NUMBER);
+                    try
+                    {
+                        LibUsb.libusb_release_interface(_devHandle, VENDOR_INTERFACE_NUMBER);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogDebug("Error releasing interface: {Message}", ex.Message);
+                    }
                     _interfaceClaimed = false;
                 }
 
-                LibUsb.libusb_close(_devHandle);
+                try
+                {
+                    LibUsb.libusb_close(_devHandle);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogDebug("Error closing device: {Message}", ex.Message);
+                }
                 _devHandle = 0;
             }
 
             if (_ctx != 0)
             {
-                LibUsb.libusb_exit(_ctx);
+                try
+                {
+                    LibUsb.libusb_exit(_ctx);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogDebug("Error exiting libusb: {Message}", ex.Message);
+                }
                 _ctx = 0;
             }
+
+            _logger.LogDebug("USB resources cleaned up (devHandle=0, ctx=0)");
         }
         catch (Exception ex)
         {
             _logger.LogDebug("Error during device cleanup: {Message}", ex.Message);
+            // Force zero even on error
+            _devHandle = 0;
+            _ctx = 0;
         }
     }
 
@@ -435,6 +579,6 @@ public class HidDeviceManager : IDisposable
         if (_disposed) return;
         _disposed = true;
 
-        Disconnect();
+        HandleDisconnect(fireEvent: false);
     }
 }

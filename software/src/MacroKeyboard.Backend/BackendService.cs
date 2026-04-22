@@ -13,17 +13,20 @@ public class BackendService : BackgroundService
     private readonly DeviceManager _deviceManager;
     private readonly IpcServer _ipcServer;
     private readonly EventRouter _eventRouter;
+    private readonly IpcCommandHandler _commandHandler;
 
     public BackendService(
         ILogger<BackendService> logger,
         DeviceManager deviceManager,
         IpcServer ipcServer,
-        EventRouter eventRouter)
+        EventRouter eventRouter,
+        IpcCommandHandler commandHandler)
     {
         _logger = logger;
         _deviceManager = deviceManager;
         _ipcServer = ipcServer;
         _eventRouter = eventRouter;
+        _commandHandler = commandHandler; // Resolved to activate event subscriptions
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)

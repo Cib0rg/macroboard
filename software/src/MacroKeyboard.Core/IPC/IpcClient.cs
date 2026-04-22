@@ -182,12 +182,23 @@ public class IpcClient : IIpcClient, IDisposable
                     {
                         try
                         {
-                            var message = JsonConvert.DeserializeObject<IpcMessage>(messages[i]);
-                            if (message != null)
+                            // Try to deserialize as IpcResponse first (has Success/Error fields)
+                            // If it has "Success" field, it's a response; otherwise it's a plain message
+                            var jObj = Newtonsoft.Json.Linq.JObject.Parse(messages[i]);
+                            IpcMessage message;
+                            
+                            if (jObj.ContainsKey("Success") || jObj.ContainsKey("success"))
                             {
-                                _logger.LogDebug("Received message: {MessageType}", message.MessageType);
-                                MessageReceived?.Invoke(this, message);
+                                message = jObj.ToObject<IpcResponse>()!;
                             }
+                            else
+                            {
+                                message = jObj.ToObject<IpcMessage>()!;
+                            }
+                            
+                            _logger.LogDebug("Received message: {MessageType} (type: {Type})",
+                                message.MessageType, message.GetType().Name);
+                            MessageReceived?.Invoke(this, message);
                         }
                         catch (Exception ex)
                         {

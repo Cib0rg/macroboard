@@ -71,6 +71,7 @@ public class DeviceManager : IDisposable
     private async Task MonitorDeviceAsync(CancellationToken cancellationToken)
     {
         _logger.LogInformation("Device monitoring started");
+        bool wasConnected = false;
 
         while (!cancellationToken.IsCancellationRequested)
         {
@@ -78,24 +79,45 @@ public class DeviceManager : IDisposable
             {
                 if (!_deviceService.IsConnected)
                 {
+                    if (wasConnected)
+                    {
+                        _logger.LogInformation("Device was connected, now disconnected — will attempt reconnection");
+                        wasConnected = false;
+                    }
+                    
                     _logger.LogDebug("Attempting to connect to device...");
                     
                     if (await _deviceService.ConnectAsync(cancellationToken))
                     {
                         _logger.LogInformation("Device connected successfully");
+                        wasConnected = true;
                         
-                        var deviceInfo = await _deviceService.GetDeviceInfoAsync(cancellationToken);
-                        
-                        DeviceConnected?.Invoke(this, new SharedEvents.DeviceEventArgs
+                        try
                         {
-                            DeviceId = deviceInfo.DeviceId,
-                            DeviceName = "MacroKeyboard",
-                            FirmwareVersion = deviceInfo.FirmwareVersion.ToString()
-                        });
+                            var deviceInfo = await _deviceService.GetDeviceInfoAsync(cancellationToken);
+                            
+                            DeviceConnected?.Invoke(this, new SharedEvents.DeviceEventArgs
+                            {
+                                DeviceId = deviceInfo.DeviceId,
+                                DeviceName = "MacroKeyboard",
+                                FirmwareVersion = deviceInfo.FirmwareVersion.ToString()
+                            });
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogWarning(ex, "Connected but failed to get device info — device may have disconnected again");
+                            wasConnected = false;
+                        }
+                    }
+                    else
+                    {
+                        // Device not found — wait before retrying
+                        await Task.Delay(TimeSpan.FromSeconds(3), cancellationToken);
+                        continue;
                     }
                 }
 
-                // Check every 5 seconds
+                // Device is connected — check less frequently
                 await Task.Delay(TimeSpan.FromSeconds(5), cancellationToken);
             }
             catch (OperationCanceledException)
@@ -105,7 +127,8 @@ public class DeviceManager : IDisposable
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error in device monitoring loop");
-                await Task.Delay(TimeSpan.FromSeconds(10), cancellationToken);
+                wasConnected = false;
+                await Task.Delay(TimeSpan.FromSeconds(5), cancellationToken);
             }
         }
 

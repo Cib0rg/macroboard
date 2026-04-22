@@ -220,19 +220,9 @@ public class IpcServer : IIpcServer, IDisposable
                             if (message != null)
                             {
                                 _logger.LogDebug("Received message from {ClientId}: {MessageType}", clientId, message.MessageType);
-                                MessageReceived?.Invoke(this, message);
-
-                                // Send response
-                                var response = new IpcResponse
-                                {
-                                    MessageType = message.MessageType + ".response",
-                                    RequestId = message.RequestId,
-                                    Success = true
-                                };
                                 
-                                var responseJson = JsonConvert.SerializeObject(response);
-                                var responseData = Encoding.UTF8.GetBytes(responseJson + "\n");
-                                await stream.WriteAsync(responseData, cancellationToken);
+                                // Fire event — IpcCommandHandler will process and send response
+                                MessageReceived?.Invoke(this, message);
                             }
                         }
                         catch (Exception ex)

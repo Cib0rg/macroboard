@@ -1,8 +1,12 @@
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
+
 namespace MacroKeyboard.Core.Models;
 
 /// <summary>
 /// Базовый класс для конфигурации действия кнопки
 /// </summary>
+[JsonConverter(typeof(ActionConfigConverter))]
 public abstract class ActionConfig
 {
     /// <summary>
@@ -110,5 +114,60 @@ public class ProfileSwitchAction : ActionConfig
     public override byte[] ToBytes()
     {
         return new[] { TargetProfileId };
+    }
+}
+
+/// <summary>
+/// JSON converter for ActionConfig abstract class.
+/// Uses the ActionType property to determine the concrete type during deserialization.
+/// </summary>
+public class ActionConfigConverter : JsonConverter<ActionConfig>
+{
+    public override ActionConfig? ReadJson(JsonReader reader, Type objectType, ActionConfig? existingValue, bool hasExistingValue, JsonSerializer serializer)
+    {
+        if (reader.TokenType == JsonToken.Null)
+            return null;
+
+        var jObject = JObject.Load(reader);
+        
+        // Determine the concrete type from ActionType
+        var actionTypeValue = jObject["ActionType"]?.Value<int>() ?? jObject["actionType"]?.Value<int>() ?? 0;
+        var actionType = (ActionType)actionTypeValue;
+
+        ActionConfig? result = actionType switch
+        {
+            ActionType.Keyboard => new KeyboardAction(),
+            ActionType.CustomHid => new CustomHidAction(),
+            ActionType.ProfileSwitch => new ProfileSwitchAction(),
+            ActionType.Folder => new ProfileSwitchAction(), // Fallback
+            _ => null
+        };
+
+        if (result == null)
+            return null;
+
+        // Populate the object from JSON (skip the converter to avoid recursion)
+        using var subReader = jObject.CreateReader();
+        serializer.Populate(subReader, result);
+
+        return result;
+    }
+
+    public override void WriteJson(JsonWriter writer, ActionConfig? value, JsonSerializer serializer)
+    {
+        if (value == null)
+        {
+            writer.WriteNull();
+            return;
+        }
+
+        // Write as the concrete type (includes all properties)
+        var jObject = JObject.FromObject(value, JsonSerializer.CreateDefault(new JsonSerializerSettings
+        {
+            // Don't use this converter during write to avoid recursion
+            Converters = new List<JsonConverter>()
+        }));
+        
+        jObject.WriteTo(writer);
     }
 }

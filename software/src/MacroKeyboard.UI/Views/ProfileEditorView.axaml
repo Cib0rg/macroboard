@@ -18,7 +18,7 @@
                 
                 <ListBox ItemsSource="{Binding Profiles}"
                          SelectedItem="{Binding SelectedProfile}"
-                         Height="400"
+                         Height="350"
                          Background="Transparent">
                     <ListBox.ItemTemplate>
                         <DataTemplate>
@@ -31,13 +31,36 @@
                     <Button Content="New Profile" 
                             Command="{Binding CreateNewProfileCommand}"
                             HorizontalAlignment="Stretch" />
-                    <Button Content="Save" 
+                    <Button Content="💾 Save" 
                             Command="{Binding SaveProfileCommand}"
                             HorizontalAlignment="Stretch" />
-                    <Button Content="Delete" 
+                    <Button Content="🗑 Delete" 
                             Command="{Binding DeleteProfileCommand}"
                             HorizontalAlignment="Stretch" />
+                    
+                    <Separator />
+                    
+                    <Button Content="📤 Send to Device" 
+                            Command="{Binding SendToDeviceCommand}"
+                            HorizontalAlignment="Stretch"
+                            Background="#0078D4"
+                            Foreground="White" />
+                    <Button Content="📥 Load from Device" 
+                            Command="{Binding LoadFromDeviceCommand}"
+                            HorizontalAlignment="Stretch"
+                            Background="#107C10"
+                            Foreground="White" />
                 </StackPanel>
+                
+                <!-- Status -->
+                <TextBlock Text="{Binding StatusMessage}" 
+                           FontSize="11"
+                           TextWrapping="Wrap"
+                           Opacity="0.8" />
+                
+                <!-- Sync Progress -->
+                <ProgressBar IsIndeterminate="True" 
+                             IsVisible="{Binding IsSyncing}" />
             </StackPanel>
         </Border>
 
@@ -59,6 +82,8 @@
                     <!-- Buttons Grid -->
                     <StackPanel Spacing="8">
                         <TextBlock Text="Buttons:" FontSize="16" FontWeight="Bold" />
+                        <TextBlock Text="Click a button to configure its action, image, and LED color"
+                                   FontSize="12" Opacity="0.7" />
                         
                         <ItemsControl ItemsSource="{Binding SelectedProfile.Buttons}">
                             <ItemsControl.ItemsPanel>
@@ -81,10 +106,14 @@
                                             <TextBlock Text="{Binding ButtonId, StringFormat='Button {0}'}"
                                                        FontWeight="Bold"
                                                        HorizontalAlignment="Center" />
-                                            <TextBlock Text="Click to configure"
-                                                       FontSize="12"
+                                            <TextBlock Text="{Binding Action.ActionType, FallbackValue='Not configured'}"
+                                                       FontSize="11"
                                                        HorizontalAlignment="Center"
-                                                       Opacity="0.7" />
+                                                       Opacity="0.8" />
+                                            <TextBlock Text="Click to configure"
+                                                       FontSize="10"
+                                                       HorizontalAlignment="Center"
+                                                       Opacity="0.5" />
                                         </StackPanel>
                                     </Button>
                                 </DataTemplate>
