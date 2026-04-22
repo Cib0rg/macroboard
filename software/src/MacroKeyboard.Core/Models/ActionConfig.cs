@@ -120,9 +120,16 @@ public class ProfileSwitchAction : ActionConfig
 /// <summary>
 /// JSON converter for ActionConfig abstract class.
 /// Uses the ActionType property to determine the concrete type during deserialization.
+/// Writing is handled by the default serializer (CanWrite = false).
 /// </summary>
 public class ActionConfigConverter : JsonConverter<ActionConfig>
 {
+    /// <summary>
+    /// Let the default serializer handle writing — it works fine for concrete types.
+    /// Only deserialization needs custom logic (to pick the right concrete type).
+    /// </summary>
+    public override bool CanWrite => false;
+
     public override ActionConfig? ReadJson(JsonReader reader, Type objectType, ActionConfig? existingValue, bool hasExistingValue, JsonSerializer serializer)
     {
         if (reader.TokenType == JsonToken.Null)
@@ -155,19 +162,7 @@ public class ActionConfigConverter : JsonConverter<ActionConfig>
 
     public override void WriteJson(JsonWriter writer, ActionConfig? value, JsonSerializer serializer)
     {
-        if (value == null)
-        {
-            writer.WriteNull();
-            return;
-        }
-
-        // Write as the concrete type (includes all properties)
-        var jObject = JObject.FromObject(value, JsonSerializer.CreateDefault(new JsonSerializerSettings
-        {
-            // Don't use this converter during write to avoid recursion
-            Converters = new List<JsonConverter>()
-        }));
-        
-        jObject.WriteTo(writer);
+        // This should never be called because CanWrite = false
+        throw new NotImplementedException("WriteJson should not be called when CanWrite is false");
     }
 }

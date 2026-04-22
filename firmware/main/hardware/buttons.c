@@ -9,6 +9,9 @@
 #include "driver/gpio.h"
 #include "esp_timer.h"
 #include "profile/action_executor.h"
+#include "profile/profile_manager.h"
+#include "protocol/protocol_handler.h"
+#include "protocol/protocol_types.h"
 
 static const char* TAG = "BUTTONS";
 
@@ -122,6 +125,16 @@ void button_task(void* arg) {
                     button_states[btn_id].long_press_sent = false;
                     
                     ESP_LOGI(TAG, "Button %d pressed", btn_id);
+                    
+                    // Send button press event to PC
+                    {
+                        uint8_t evt_payload[3];
+                        evt_payload[0] = btn_id;
+                        evt_payload[1] = profile_get_current_id();
+                        button_config_t* btn_cfg = profile_get_button_config(btn_id);
+                        evt_payload[2] = btn_cfg ? btn_cfg->action_type : 0;
+                        protocol_send_event(EVENT_BUTTON_PRESSED, evt_payload, 3);
+                    }
                     
                     // Execute button action
                     action_execute(btn_id);

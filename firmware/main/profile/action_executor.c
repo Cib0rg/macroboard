@@ -40,7 +40,25 @@ esp_err_t action_execute(uint8_t button_id) {
                 uint8_t modifier = btn->action_data[0];
                 uint8_t keycode = btn->action_data[1];
                 
-                usb_hid_keyboard_press(modifier, keycode);
+                if (keycode != 0) {
+                    // Single keypress with optional modifier
+                    usb_hid_keyboard_press(modifier, keycode);
+                } else if (btn->action_data_len > 7) {
+                    // Text typing mode: keycode=0, text starts at byte 7
+                    // Format: [modifier][keycode=0][5 reserved bytes][text...]
+                    char text_buf[ACTION_DATA_MAX_LEN - 7 + 1];
+                    uint16_t text_len = btn->action_data_len - 7;
+                    if (text_len > sizeof(text_buf) - 1) {
+                        text_len = sizeof(text_buf) - 1;
+                    }
+                    memcpy(text_buf, &btn->action_data[7], text_len);
+                    text_buf[text_len] = '\0';
+                    
+                    ESP_LOGI(TAG, "Typing text: '%s' (%d chars)", text_buf, text_len);
+                    usb_hid_keyboard_type_text(text_buf);
+                } else {
+                    ESP_LOGW(TAG, "Keyboard action with keycode=0 and no text data");
+                }
             }
             break;
         }
