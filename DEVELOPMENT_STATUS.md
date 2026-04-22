@@ -352,17 +352,25 @@ dotnet run
 
 ### Некритичные
 
-1. **Отображение имён USB-интерфейсов**
-   - **Проблема:** Vendor-интерфейс (класс 0xFF) отображается как "Vendor Interface" вместо "Stream Deck"
-   - **Причина:** ОС использует строку интерфейса (iInterface) вместо строки продукта (iProduct) для vendor-класса
-   - **Решение:** Требуется кастомный драйвер или INF-файл (Windows) / udev rules (Linux)
+1. **Отображение имён USB-интерфейсов в ОС**
+   - **Проблема:** Vendor-интерфейс (класс 0xFF) отображается как "Vendor Interface", HID — как "USB устройство ввода", общее — как "Составное USB устройство"
+   - **Причина:** ОС использует стандартные драйверы, которые показывают generic-имена. Поля `iManufacturer`, `iProduct`, `iSerialNumber` в дескрипторе устройства **корректны** (проверено 2026-04-19)
+   - **Решение:** Требуется кастомный INF-файл / драйвер (Windows) или udev rules (Linux) для отображения правильных имён
    - **Текущее состояние:**
-     - Device Product Name: `"Stream Deck"` (VID=0x1209, PID=0x0001) ✅
-     - HID Interface: Отображается как "USB устройство ввода" (стандартный HID-драйвер) ✅
+     - `iManufacturer`: `"Elgato"` ✅ (корректно в дескрипторе)
+     - `iProduct`: `"Stream Deck"` ✅ (корректно в дескрипторе)
+     - `iSerialNumber`: `"123456"` ✅ (корректно в дескрипторе)
+     - HID Interface: Отображается как "USB устройство ввода" (стандартный HID-драйвер) ⚠️
      - Vendor Interface: Отображается как "Vendor Interface" (нет стандартного драйвера) ⚠️
-     - Composite Device: Отображается как "Составное USB устройство" ✅
-   - **Файлы:** [`usb_descriptors.c:89-95`](firmware/main/usb/usb_descriptors.c), [`config.h:106-110`](firmware/main/config.h)
-   - **Приоритет:** Низкий (не влияет на функциональность)
+     - Composite Device: Отображается как "Составное USB устройство" ⚠️
+   - **Файлы:** [`usb_descriptors.c:89-96`](firmware/main/usb/usb_descriptors.c), [`config.h:106-110`](firmware/main/config.h)
+   - **Приоритет:** Средний (требуется драйвер)
+
+2. ~~**Backend использует HidSharp — не видит Vendor-интерфейс**~~ ✅ ИСПРАВЛЕНО (2026-04-21)
+   - **Проблема:** Библиотека HidSharp работала только с HID-устройствами (класс 0x03). Vendor-интерфейс (класс 0xFF) был невидим.
+   - **Решение:** HidSharp заменён на прямой P/Invoke к `libusb-1.0`. Создан [`LibUsb.cs`](software/src/MacroKeyboard.Communication/Usb/LibUsb.cs) — минимальный кроссплатформенный враппер.
+   - **Файлы:** [`HidDeviceManager.cs`](software/src/MacroKeyboard.Communication/HidDevice/HidDeviceManager.cs), [`LibUsb.cs`](software/src/MacroKeyboard.Communication/Usb/LibUsb.cs)
+   - **Требования:** libusb-1.0 (Linux: `apt install libusb-1.0-0`, macOS: `brew install libusb`, Windows: WinUSB через Zadig)
 
 2. **SixLabors.ImageSharp уязвимости**
    - Версия 3.1.0 имеет известные уязвимости

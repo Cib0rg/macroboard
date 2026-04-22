@@ -22,6 +22,5 @@
     <ProjectReference Include="..\MacroKeyboard.Core\MacroKeyboard.Core.csproj" />
     <ProjectReference Include="..\MacroKeyboard.Communication\MacroKeyboard.Communication.csproj" />
     <ProjectReference Include="..\MacroKeyboard.Infrastructure\MacroKeyboard.Infrastructure.csproj" />
-    <ProjectReference Include="..\MacroKeyboard.Shared\MacroKeyboard.Shared.csproj" />
   </ItemGroup>
 </Project>

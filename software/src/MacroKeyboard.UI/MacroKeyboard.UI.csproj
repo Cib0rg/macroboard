@@ -34,7 +34,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\MacroKeyboard.Core\MacroKeyboard.Core.csproj" />
-    <ProjectReference Include="..\MacroKeyboard.Shared\MacroKeyboard.Shared.csproj" />
     <ProjectReference Include="..\MacroKeyboard.Infrastructure\MacroKeyboard.Infrastructure.csproj" />
   </ItemGroup>
 </Project>
