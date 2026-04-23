@@ -99,6 +99,13 @@ esp_err_t profile_folder_enter(uint8_t folder_id);
 esp_err_t profile_folder_exit(void);
 
 /**
+ * @brief Show the embedded "back" icon on a button's display.
+ *        Called after entering a folder to mark the toggle-exit button.
+ * @param button_id Button ID to show the back icon on
+ */
+void profile_show_back_icon(uint8_t button_id);
+
+/**
  * @brief Get current folder ID
  * @return Current folder ID (0xFF if at root level)
  */

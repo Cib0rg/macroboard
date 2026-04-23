@@ -16,11 +16,21 @@ public partial class ProfileEditorView : UserControl
     {
         base.OnAttachedToVisualTree(e);
 
-        // Load profiles when the view is first shown
-        if (!_profilesLoaded && DataContext is ProfileEditorViewModel vm)
+        if (DataContext is ProfileEditorViewModel vm)
         {
-            _profilesLoaded = true;
-            await vm.LoadProfilesAsync();
+            // Provide StorageProvider from the top-level window
+            var topLevel = TopLevel.GetTopLevel(this);
+            if (topLevel != null)
+            {
+                vm.SetStorageProvider(topLevel.StorageProvider);
+            }
+
+            // Load profiles when the view is first shown
+            if (!_profilesLoaded)
+            {
+                _profilesLoaded = true;
+                await vm.LoadProfilesAsync();
+            }
         }
     }
 }

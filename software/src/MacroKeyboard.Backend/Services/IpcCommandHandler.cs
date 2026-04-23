@@ -49,6 +49,7 @@ public class IpcCommandHandler
                 IpcMessageTypes.ProfileDelete => await HandleProfileDelete(message),
                 IpcMessageTypes.ProfileSendToDevice => await HandleProfileSendToDevice(message),
                 IpcMessageTypes.ProfileLoadFromDevice => await HandleProfileLoadFromDevice(message),
+                IpcMessageTypes.ProfileGetInfo => await HandleProfileGetInfo(message),
                 IpcMessageTypes.SetButtonAction => await HandleSetButtonAction(message),
                 IpcMessageTypes.GetButtonAction => await HandleGetButtonAction(message),
                 IpcMessageTypes.SetLedColor => await HandleSetLedColor(message),
@@ -205,6 +206,28 @@ public class IpcCommandHandler
             : IpcResponse.Fail(message, $"Failed to load profile {profileId} from device");
     }
 
+    private async Task<IpcResponse> HandleProfileGetInfo(IpcMessage message)
+    {
+        if (!_deviceService.IsConnected)
+        {
+            return IpcResponse.Fail(message, "Device not connected");
+        }
+
+        var data = message.GetDataAsDictionary();
+        if (data == null || !data.ContainsKey("profileId"))
+        {
+            return IpcResponse.Fail(message, "Missing profileId");
+        }
+
+        var profileId = Convert.ToByte(data["profileId"]);
+        
+        var profileInfo = await _deviceService.GetProfileInfoAsync(profileId);
+        
+        return profileInfo != null
+            ? IpcResponse.Ok(message, profileInfo)
+            : IpcResponse.Fail(message, $"Failed to get info for profile {profileId}");
+    }
+
     private async Task<IpcResponse> HandleSetButtonAction(IpcMessage message)
     {
         if (!_deviceService.IsConnected)
@@ -231,6 +254,7 @@ public class IpcCommandHandler
                 ActionType.Keyboard => actionObj.ToObject<KeyboardAction>(),
                 ActionType.ProfileSwitch => actionObj.ToObject<ProfileSwitchAction>(),
                 ActionType.CustomHid => actionObj.ToObject<CustomHidAction>(),
+                ActionType.Folder => actionObj.ToObject<FolderAction>(),
                 _ => null
             };
         }

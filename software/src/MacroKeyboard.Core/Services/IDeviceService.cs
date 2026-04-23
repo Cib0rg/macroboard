@@ -38,6 +38,16 @@ public interface IDeviceService
     event EventHandler<ProfileChangedEventArgs>? ProfileChanged;
     
     /// <summary>
+    /// Событие входа в папку
+    /// </summary>
+    event EventHandler<FolderEventArgs>? FolderEntered;
+    
+    /// <summary>
+    /// Событие выхода из папки
+    /// </summary>
+    event EventHandler<FolderEventArgs>? FolderExited;
+    
+    /// <summary>
     /// Устройство подключено
     /// </summary>
     bool IsConnected { get; }
@@ -56,6 +66,11 @@ public interface IDeviceService
     /// Получить информацию об устройстве
     /// </summary>
     Task<DeviceInfo> GetDeviceInfoAsync(CancellationToken cancellationToken = default);
+    
+    /// <summary>
+    /// Получить информацию о профиле с устройства (CMD_GET_PROFILE_INFO 0x11)
+    /// </summary>
+    Task<ProfileInfoResult?> GetProfileInfoAsync(byte profileId, CancellationToken cancellationToken = default);
     
     /// <summary>
     /// Проверить связь с устройством (ping)
@@ -150,4 +165,25 @@ public enum ProfileChangeReason : byte
     Encoder = 0x01,
     Command = 0x02,
     Boot = 0x03
+}
+
+/// <summary>
+/// Аргументы события папки
+/// </summary>
+public class FolderEventArgs : EventArgs
+{
+    public byte FolderId { get; set; }
+    public byte FolderDepth { get; set; }
+    public byte ProfileId { get; set; }
+    public byte ParentFolderId { get; set; } = 0xFF; // 0xFF = root
+}
+
+/// <summary>
+/// Результат запроса информации о профиле с устройства (CMD_GET_PROFILE_INFO)
+/// </summary>
+public class ProfileInfoResult
+{
+    public byte ProfileId { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public bool IsConfigured { get; set; }
 }

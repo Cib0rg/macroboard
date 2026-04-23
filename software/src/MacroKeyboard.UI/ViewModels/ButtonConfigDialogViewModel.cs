@@ -33,16 +33,58 @@ public partial class ButtonConfigDialogViewModel : ViewModelBase
     [ObservableProperty]
     private uint _ledColor = 0xFFFFFF;
 
+    [ObservableProperty]
+    private byte _targetProfileId;
+
+    [ObservableProperty]
+    private byte _folderId;
+
     public ObservableCollection<ActionType> AvailableActionTypes { get; } = new()
     {
         ActionType.None,
         ActionType.Keyboard,
-        ActionType.CustomHid,
         ActionType.ProfileSwitch,
-        ActionType.Folder
+        ActionType.Folder,
+        ActionType.CustomHid,
+    };
+
+    /// <summary>
+    /// Available profile IDs for ProfileSwitch action
+    /// </summary>
+    public ObservableCollection<byte> AvailableProfileIds { get; } = new()
+    {
+        0, 1, 2, 3, 4
+    };
+
+    /// <summary>
+    /// Available folder IDs for Folder action
+    /// </summary>
+    public ObservableCollection<byte> AvailableFolderIds { get; } = new()
+    {
+        0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15
     };
 
     public bool DialogResult { get; private set; }
+
+    /// <summary>
+    /// Show keyboard-specific fields
+    /// </summary>
+    public bool IsKeyboardAction => SelectedActionType == ActionType.Keyboard;
+
+    /// <summary>
+    /// Show profile switch fields
+    /// </summary>
+    public bool IsProfileSwitchAction => SelectedActionType == ActionType.ProfileSwitch;
+
+    /// <summary>
+    /// Show folder fields
+    /// </summary>
+    public bool IsFolderAction => SelectedActionType == ActionType.Folder;
+
+    /// <summary>
+    /// Show custom HID fields
+    /// </summary>
+    public bool IsCustomHidAction => SelectedActionType == ActionType.CustomHid;
 
     public ButtonConfigDialogViewModel(ILogger<ButtonConfigDialogViewModel> logger, ButtonConfig buttonConfig)
     {
@@ -58,10 +100,24 @@ public partial class ButtonConfigDialogViewModel : ViewModelBase
             {
                 KeySequence = keyAction.Text ?? $"KeyCode: {keyAction.KeyCode}";
             }
+            else if (buttonConfig.Action is ProfileSwitchAction psAction)
+            {
+                TargetProfileId = psAction.TargetProfileId;
+            }
         }
 
+        FolderId = buttonConfig.FolderId;
         ImagePath = buttonConfig.ImagePath ?? string.Empty;
         LedColor = ((uint)buttonConfig.Led.R << 16) | ((uint)buttonConfig.Led.G << 8) | buttonConfig.Led.B;
+    }
+
+    partial void OnSelectedActionTypeChanged(ActionType value)
+    {
+        // Notify UI to show/hide action-specific fields
+        OnPropertyChanged(nameof(IsKeyboardAction));
+        OnPropertyChanged(nameof(IsProfileSwitchAction));
+        OnPropertyChanged(nameof(IsFolderAction));
+        OnPropertyChanged(nameof(IsCustomHidAction));
     }
 
     /// <summary>
@@ -121,25 +177,41 @@ public partial class ButtonConfigDialogViewModel : ViewModelBase
     {
         try
         {
-            // Update button configuration
+            // Update button configuration based on selected action type
             ButtonConfig.Action = SelectedActionType switch
             {
                 ActionType.Keyboard => new KeyboardAction
                 {
                     Text = KeySequence,
-                    KeyCode = 0, // Will be parsed from text
+                    KeyCode = 0, // Text mode: keycode=0, text in data bytes 7+
                     Modifiers = KeyModifiers.None
                 },
                 ActionType.ProfileSwitch => new ProfileSwitchAction
                 {
-                    TargetProfileId = byte.TryParse(KeySequence, out var profileId) ? profileId : (byte)0
+                    TargetProfileId = TargetProfileId
+                },
+                ActionType.Folder => new ProfileSwitchAction
+                {
+                    // Folder uses a special "marker" action — ActionType.Folder
+                    // but we store it as a ProfileSwitchAction-like object for serialization.
+                    // The actual folder navigation is handled by the firmware.
+                    TargetProfileId = 0
                 },
                 ActionType.CustomHid => new CustomHidAction
                 {
                     Data = Array.Empty<byte>()
                 },
+                ActionType.None => null,
                 _ => null
             };
+
+            // For Folder action, we need a special FolderAction class
+            // Since we don't have one, use a workaround: set the action type via a wrapper
+            if (SelectedActionType == ActionType.Folder)
+            {
+                ButtonConfig.Action = new FolderAction { FolderId = FolderId };
+                ButtonConfig.FolderId = FolderId;
+            }
 
             ButtonConfig.ImagePath = string.IsNullOrWhiteSpace(ImagePath) ? null : ImagePath;
             
@@ -149,7 +221,7 @@ public partial class ButtonConfigDialogViewModel : ViewModelBase
             ButtonConfig.Led.B = (byte)(LedColor & 0xFF);
 
             DialogResult = true;
-            _logger.LogInformation("Button configuration saved");
+            _logger.LogInformation("Button configuration saved: ActionType={ActionType}", SelectedActionType);
         }
         catch (Exception ex)
         {

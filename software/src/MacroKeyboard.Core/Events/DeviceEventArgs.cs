@@ -48,3 +48,16 @@ public class ProfileChangedEventArgs : EventArgs
     public string ProfileName { get; set; } = string.Empty;
     public DateTime Timestamp { get; set; } = DateTime.UtcNow;
 }
+
+/// <summary>
+/// Event arguments for folder navigation events
+/// </summary>
+public class FolderEventArgs : EventArgs
+{
+    public byte FolderId { get; set; }
+    public byte FolderDepth { get; set; }
+    public byte ProfileId { get; set; }
+    public byte ParentFolderId { get; set; } = 0xFF;
+    public bool IsEntering { get; set; }
+    public DateTime Timestamp { get; set; } = DateTime.UtcNow;
+}

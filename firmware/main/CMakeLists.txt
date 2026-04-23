@@ -34,6 +34,8 @@ idf_component_register(
         spiffs
         esp_timer
         esp_tinyusb
+    EMBED_FILES
+        "assets/back_icon.jpg"
 )
 
 # Add linker flags to force inclusion of TinyUSB callbacks

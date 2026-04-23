@@ -28,24 +28,27 @@
                 </ListBox>
                 
                 <StackPanel Spacing="8">
-                    <Button Content="New Profile" 
+                    <Button Content="New Profile"
                             Command="{Binding CreateNewProfileCommand}"
                             HorizontalAlignment="Stretch" />
-                    <Button Content="💾 Save" 
+                    <Button Content="💾 Save to File..."
                             Command="{Binding SaveProfileCommand}"
                             HorizontalAlignment="Stretch" />
-                    <Button Content="🗑 Delete" 
+                    <Button Content="📂 Load from File..."
+                            Command="{Binding LoadProfileCommand}"
+                            HorizontalAlignment="Stretch" />
+                    <Button Content="🗑 Delete"
                             Command="{Binding DeleteProfileCommand}"
                             HorizontalAlignment="Stretch" />
                     
                     <Separator />
                     
-                    <Button Content="📤 Send to Device" 
+                    <Button Content="📤 Send to Device"
                             Command="{Binding SendToDeviceCommand}"
                             HorizontalAlignment="Stretch"
                             Background="#0078D4"
                             Foreground="White" />
-                    <Button Content="📥 Load from Device" 
+                    <Button Content="📥 Load from Device"
                             Command="{Binding LoadFromDeviceCommand}"
                             HorizontalAlignment="Stretch"
                             Background="#107C10"
@@ -79,42 +82,36 @@
                                  Watermark="Enter profile name..." />
                     </StackPanel>
                     
-                    <!-- Buttons Grid -->
+                    <!-- Buttons Tree (flat list with indentation for folders) -->
                     <StackPanel Spacing="8">
                         <TextBlock Text="Buttons:" FontSize="16" FontWeight="Bold" />
-                        <TextBlock Text="Click a button to configure its action, image, and LED color"
+                        <TextBlock Text="Click a button to configure. Folder contents are shown indented below."
                                    FontSize="12" Opacity="0.7" />
                         
-                        <ItemsControl ItemsSource="{Binding SelectedProfile.Buttons}">
-                            <ItemsControl.ItemsPanel>
-                                <ItemsPanelTemplate>
-                                    <UniformGrid Columns="5" />
-                                </ItemsPanelTemplate>
-                            </ItemsControl.ItemsPanel>
+                        <ItemsControl ItemsSource="{Binding FlattenedButtons}">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
                                     <Button Background="#3E3E42"
-                                            CornerRadius="8"
-                                            Padding="16"
-                                            Margin="4"
-                                            Height="120"
+                                            CornerRadius="6"
+                                            Padding="12,8"
+                                            Margin="{Binding Margin}"
+                                            MinHeight="44"
+                                            HorizontalAlignment="Stretch"
                                             HorizontalContentAlignment="Stretch"
-                                            VerticalContentAlignment="Stretch"
-                                            Command="{Binding #ProfileEditorRoot.DataContext.ConfigureButtonCommand}"
+                                            Command="{Binding #ProfileEditorRoot.DataContext.ConfigureFlattenedButtonCommand}"
                                             CommandParameter="{Binding}">
-                                        <StackPanel Spacing="8">
-                                            <TextBlock Text="{Binding ButtonId, StringFormat='Button {0}'}"
-                                                       FontWeight="Bold"
-                                                       HorizontalAlignment="Center" />
-                                            <TextBlock Text="{Binding Action.ActionType, FallbackValue='Not configured'}"
-                                                       FontSize="11"
-                                                       HorizontalAlignment="Center"
-                                                       Opacity="0.8" />
-                                            <TextBlock Text="Click to configure"
-                                                       FontSize="10"
-                                                       HorizontalAlignment="Center"
-                                                       Opacity="0.5" />
-                                        </StackPanel>
+                                        <Grid ColumnDefinitions="Auto,*,Auto">
+                                            <TextBlock Grid.Column="0"
+                                                       Text="{Binding Label}"
+                                                       VerticalAlignment="Center"
+                                                       FontSize="13" />
+                                            <TextBlock Grid.Column="2"
+                                                       Text="📁"
+                                                       IsVisible="{Binding IsFolderHeader}"
+                                                       VerticalAlignment="Center"
+                                                       FontSize="16"
+                                                       Margin="8,0,0,0" />
+                                        </Grid>
                                     </Button>
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>

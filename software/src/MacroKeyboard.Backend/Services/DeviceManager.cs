@@ -21,6 +21,8 @@ public class DeviceManager : IDisposable
     public event EventHandler<SharedEvents.ButtonEventArgs>? ButtonReleased;
     public event EventHandler<SharedEvents.EncoderEventArgs>? EncoderRotated;
     public event EventHandler<SharedEvents.ProfileChangedEventArgs>? ProfileChanged;
+    public event EventHandler<SharedEvents.FolderEventArgs>? FolderEntered;
+    public event EventHandler<SharedEvents.FolderEventArgs>? FolderExited;
 
     public bool IsDeviceConnected => _deviceService.IsConnected;
 
@@ -34,6 +36,8 @@ public class DeviceManager : IDisposable
         _deviceService.ButtonReleased += OnButtonReleased;
         _deviceService.EncoderRotated += OnEncoderRotated;
         _deviceService.ProfileChanged += OnProfileChanged;
+        _deviceService.FolderEntered += OnFolderEntered;
+        _deviceService.FolderExited += OnFolderExited;
         _deviceService.DeviceDisconnected += OnDeviceDisconnected;
     }
 
@@ -178,6 +182,31 @@ public class DeviceManager : IDisposable
         });
     }
 
+    private void OnFolderEntered(object? sender, CoreEvents.FolderEventArgs e)
+    {
+        FolderEntered?.Invoke(this, new SharedEvents.FolderEventArgs
+        {
+            FolderId = e.FolderId,
+            FolderDepth = e.FolderDepth,
+            ProfileId = e.ProfileId,
+            IsEntering = true,
+            Timestamp = DateTime.UtcNow
+        });
+    }
+
+    private void OnFolderExited(object? sender, CoreEvents.FolderEventArgs e)
+    {
+        FolderExited?.Invoke(this, new SharedEvents.FolderEventArgs
+        {
+            FolderId = e.FolderId,
+            FolderDepth = e.FolderDepth,
+            ProfileId = e.ProfileId,
+            ParentFolderId = e.ParentFolderId,
+            IsEntering = false,
+            Timestamp = DateTime.UtcNow
+        });
+    }
+
     private void OnDeviceDisconnected(object? sender, EventArgs e)
     {
         _logger.LogWarning("Device disconnected");
@@ -199,6 +228,8 @@ public class DeviceManager : IDisposable
         _deviceService.ButtonReleased -= OnButtonReleased;
         _deviceService.EncoderRotated -= OnEncoderRotated;
         _deviceService.ProfileChanged -= OnProfileChanged;
+        _deviceService.FolderEntered -= OnFolderEntered;
+        _deviceService.FolderExited -= OnFolderExited;
         _deviceService.DeviceDisconnected -= OnDeviceDisconnected;
     }
 }

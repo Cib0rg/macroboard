@@ -32,6 +32,8 @@ public class DeviceService : IDeviceService
     public event EventHandler<ButtonEventArgs>? ButtonReleased;
     public event EventHandler<EncoderEventArgs>? EncoderRotated;
     public event EventHandler<ProfileChangedEventArgs>? ProfileChanged;
+    public event EventHandler<FolderEventArgs>? FolderEntered;
+    public event EventHandler<FolderEventArgs>? FolderExited;
     
     public bool IsConnected => _deviceManager.IsConnected;
     
@@ -77,6 +79,37 @@ public class DeviceService : IDeviceService
     {
         var info = await _getDeviceInfoCommand.ExecuteAsync(cancellationToken);
         return info ?? new DeviceInfo { IsConnected = false };
+    }
+    
+    public async Task<ProfileInfoResult?> GetProfileInfoAsync(byte profileId, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var payload = new byte[] { profileId };
+            var response = await _protocol.SendCommandAsync(
+                ProtocolConstants.CMD_GET_PROFILE_INFO,
+                payload,
+                cancellationToken: cancellationToken);
+            
+            if (response == null)
+                return null;
+            
+            // Parse response: byte 0 = profile_id, bytes 1-32 = name, byte 33 = is_configured
+            var name = System.Text.Encoding.UTF8.GetString(response.Payload, 1, 32).TrimEnd('\0');
+            var isConfigured = response.Payload[33] != 0;
+            
+            return new ProfileInfoResult
+            {
+                ProfileId = response.Payload[0],
+                Name = name,
+                IsConfigured = isConfigured
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting profile info for profile {ProfileId}", profileId);
+            return null;
+        }
     }
     
     public async Task<bool> PingAsync(CancellationToken cancellationToken = default)
@@ -163,6 +196,14 @@ public class DeviceService : IDeviceService
                 case ProtocolConstants.EVENT_PROFILE_CHANGED:
                     HandleProfileChanged(packet.Payload);
                     break;
+                    
+                case ProtocolConstants.EVENT_FOLDER_ENTERED:
+                    HandleFolderEntered(packet.Payload);
+                    break;
+                    
+                case ProtocolConstants.EVENT_FOLDER_EXITED:
+                    HandleFolderExited(packet.Payload);
+                    break;
             }
         }
         catch (Exception ex)
@@ -217,6 +258,42 @@ public class DeviceService : IDeviceService
             OldProfileId = oldProfileId,
             NewProfileId = newProfileId,
             Reason = reason
+        });
+    }
+    
+    private void HandleFolderEntered(byte[] payload)
+    {
+        var folderId = payload[0];
+        var depth = payload[1];
+        var profileId = payload[2];
+        
+        _logger.LogInformation("Folder entered: {FolderId}, depth: {Depth}, profile: {ProfileId}",
+            folderId, depth, profileId);
+        
+        FolderEntered?.Invoke(this, new FolderEventArgs
+        {
+            FolderId = folderId,
+            FolderDepth = depth,
+            ProfileId = profileId
+        });
+    }
+    
+    private void HandleFolderExited(byte[] payload)
+    {
+        var exitedFolderId = payload[0];
+        var depth = payload[1];
+        var profileId = payload[2];
+        var parentFolderId = payload[3];
+        
+        _logger.LogInformation("Folder exited: {FolderId}, new depth: {Depth}, parent: {ParentId}",
+            exitedFolderId, depth, parentFolderId);
+        
+        FolderExited?.Invoke(this, new FolderEventArgs
+        {
+            FolderId = exitedFolderId,
+            FolderDepth = depth,
+            ProfileId = profileId,
+            ParentFolderId = parentFolderId
         });
     }
     

@@ -6,10 +6,18 @@
 #include "common.h"
 #include "profile_manager.h"
 #include "storage/profile_storage.h"
+#include "storage/image_storage.h"
 #include "storage/nvs_manager.h"
 #include "hardware/leds.h"
+#include "hardware/gc9a01.h"
+#include "protocol/protocol_handler.h"
+#include "protocol/protocol_types.h"
 #include "utils/crc.h"
 #include "config.h"
+
+// Embedded firmware assets (compiled into binary via EMBED_FILES in CMakeLists.txt)
+extern const uint8_t back_icon_jpg_start[] asm("_binary_back_icon_jpg_start");
+extern const uint8_t back_icon_jpg_end[]   asm("_binary_back_icon_jpg_end");
 
 static const char* TAG = "PROFILE";
 
@@ -238,6 +246,47 @@ esp_err_t profile_create_defaults(void) {
 }
 
 // ============================================
+// Display Helper
+// ============================================
+
+/**
+ * @brief Update a single button's display with its image or clear to black.
+ *        Loads JPEG from storage and renders to the GC9A01 display.
+ *        If no image is available, clears the display.
+ *        NOTE: JPEG decode is not yet implemented — currently just clears display.
+ * @param button_id Button/display ID (0-9)
+ * @param btn Button configuration (for image metadata)
+ */
+static void profile_update_button_display(uint8_t button_id, button_config_t* btn) {
+    if (button_id >= NUM_BUTTONS || btn == NULL) return;
+    
+    if (btn->image_size > 0) {
+        // Image exists in config — try to load from storage
+        uint8_t* image_data = NULL;
+        size_t image_size = 0;
+        
+        esp_err_t ret = image_storage_load(current_profile_id, button_id, &image_data, &image_size);
+        if (ret == ESP_OK && image_data != NULL) {
+            // TODO: JPEG decode → RGB565 → gc9a01_draw_image()
+            // For now, just log and free
+            ESP_LOGD(TAG, "Image loaded for button %d (%d bytes), decode not yet implemented",
+                     button_id, image_size);
+            free(image_data);
+            
+            // Clear display with a color based on LED config (visual feedback)
+            uint16_t color = ((btn->led_r >> 3) << 11) | ((btn->led_g >> 2) << 5) | (btn->led_b >> 3);
+            gc9a01_clear(button_id, color);
+        } else {
+            gc9a01_clear(button_id, COLOR_BLACK);
+        }
+    } else {
+        // No image — clear display with LED color as fallback
+        uint16_t color = ((btn->led_r >> 3) << 11) | ((btn->led_g >> 2) << 5) | (btn->led_b >> 3);
+        gc9a01_clear(button_id, color);
+    }
+}
+
+// ============================================
 // Folder Navigation Functions
 // ============================================
 
@@ -269,12 +318,22 @@ esp_err_t profile_folder_enter(uint8_t folder_id) {
         button_config_t* btn = &folder->buttons[i];
         led_set_color(i, btn->led_r, btn->led_g, btn->led_b, btn->led_brightness);
         
-        // NOTE: Display update would load and show folder button image
-        // Requires: image_storage_load() + JPEG decode + GC9A01 display
+        // Update display: try to load button image, otherwise clear to black
+        profile_update_button_display(i, btn);
     }
     led_update();
     
     xSemaphoreGive(profile_mutex);
+    
+    // Send folder entered event to PC
+    {
+        uint8_t evt_payload[4];
+        evt_payload[0] = folder_id;
+        evt_payload[1] = folder_stack_depth;
+        evt_payload[2] = current_profile_id;
+        evt_payload[3] = 0; // reserved
+        protocol_send_event(EVENT_FOLDER_ENTERED, evt_payload, 4);
+    }
     
     return ESP_OK;
 }
@@ -311,12 +370,22 @@ esp_err_t profile_folder_exit(void) {
         button_config_t* btn = &buttons[i];
         led_set_color(i, btn->led_r, btn->led_g, btn->led_b, btn->led_brightness);
         
-        // NOTE: Display update would restore original button image
-        // Requires: image_storage_load() + JPEG decode + GC9A01 display
+        // Update display: try to load button image, otherwise clear to black
+        profile_update_button_display(i, btn);
     }
     led_update();
     
     xSemaphoreGive(profile_mutex);
+    
+    // Send folder exited event to PC
+    {
+        uint8_t evt_payload[4];
+        evt_payload[0] = exited_folder;
+        evt_payload[1] = folder_stack_depth;
+        evt_payload[2] = current_profile_id;
+        evt_payload[3] = (folder_stack_depth > 0) ? folder_stack[folder_stack_depth - 1] : 0xFF;
+        protocol_send_event(EVENT_FOLDER_EXITED, evt_payload, 4);
+    }
     
     return ESP_OK;
 }
@@ -334,4 +403,17 @@ bool profile_is_in_folder(void) {
 
 uint8_t profile_get_folder_depth(void) {
     return folder_stack_depth;
+}
+
+void profile_show_back_icon(uint8_t button_id) {
+    if (button_id >= NUM_BUTTONS) return;
+    
+    size_t back_icon_size = back_icon_jpg_end - back_icon_jpg_start;
+    
+    ESP_LOGI(TAG, "Showing back icon on button %d (%d bytes)", button_id, back_icon_size);
+    
+    // TODO: When JPEG decode is implemented, decode back_icon_jpg_start and render to display.
+    // For now, show a distinctive color (white) to indicate "back" button.
+    // The JPEG data is available at back_icon_jpg_start with size back_icon_size.
+    gc9a01_clear(button_id, COLOR_WHITE);
 }

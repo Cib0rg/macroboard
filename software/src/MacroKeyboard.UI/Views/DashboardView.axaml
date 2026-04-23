@@ -28,7 +28,7 @@
                     
                     <Separator />
                     
-                    <Grid ColumnDefinitions="150,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto" 
+                    <Grid ColumnDefinitions="150,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto"
                           RowSpacing="8">
                         <TextBlock Grid.Row="0" Grid.Column="0" Text="Status:" />
                         <StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal" Spacing="8">
@@ -47,19 +47,25 @@
                                    Text="{Binding FirmwareVersion}" />
                         
                         <TextBlock Grid.Row="3" Grid.Column="0" Text="Current Profile:" />
-                        <TextBlock Grid.Row="3" Grid.Column="1" 
+                        <TextBlock Grid.Row="3" Grid.Column="1"
                                    Text="{Binding CurrentProfile}" />
                         
-                        <TextBlock Grid.Row="4" Grid.Column="0" Text="Buttons:" />
-                        <TextBlock Grid.Row="4" Grid.Column="1" 
+                        <TextBlock Grid.Row="4" Grid.Column="0" Text="Folder:" />
+                        <StackPanel Grid.Row="4" Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                            <TextBlock Text="{Binding FolderState}" />
+                            <TextBlock Text="📁" IsVisible="{Binding IsInFolder}" />
+                        </StackPanel>
+                        
+                        <TextBlock Grid.Row="5" Grid.Column="0" Text="Buttons:" />
+                        <TextBlock Grid.Row="5" Grid.Column="1"
                                    Text="{Binding ButtonCount}" />
                         
-                        <TextBlock Grid.Row="5" Grid.Column="0" Text="Profiles:" />
-                        <TextBlock Grid.Row="5" Grid.Column="1" 
+                        <TextBlock Grid.Row="6" Grid.Column="0" Text="Profiles:" />
+                        <TextBlock Grid.Row="6" Grid.Column="1"
                                    Text="{Binding ProfileCount}" />
                         
-                        <TextBlock Grid.Row="6" Grid.Column="0" Text="Free Space:" />
-                        <TextBlock Grid.Row="6" Grid.Column="1" 
+                        <TextBlock Grid.Row="7" Grid.Column="0" Text="Free Space:" />
+                        <TextBlock Grid.Row="7" Grid.Column="1"
                                    Text="{Binding FreeSpace}" />
                     </Grid>
                 </StackPanel>

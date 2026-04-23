@@ -32,6 +32,8 @@ public class EventRouter
         _deviceManager.ButtonReleased += OnButtonReleased;
         _deviceManager.EncoderRotated += OnEncoderRotated;
         _deviceManager.ProfileChanged += OnProfileChanged;
+        _deviceManager.FolderEntered += OnFolderEntered;
+        _deviceManager.FolderExited += OnFolderExited;
 
         // When a new IPC client connects, send current device status
         _ipcServer.ClientConnected += OnIpcClientConnected;
@@ -171,6 +173,44 @@ public class EventRouter
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error broadcasting profile changed event");
+        }
+    }
+
+    private async void OnFolderEntered(object? sender, SharedEvents.FolderEventArgs e)
+    {
+        try
+        {
+            _logger.LogInformation("Folder entered: {FolderId}, depth: {Depth}",
+                e.FolderId, e.FolderDepth);
+
+            await _ipcServer.BroadcastAsync(new IpcMessage
+            {
+                MessageType = IpcMessageTypes.FolderEntered,
+                Data = e
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error broadcasting folder entered event");
+        }
+    }
+
+    private async void OnFolderExited(object? sender, SharedEvents.FolderEventArgs e)
+    {
+        try
+        {
+            _logger.LogInformation("Folder exited: {FolderId}, new depth: {Depth}",
+                e.FolderId, e.FolderDepth);
+
+            await _ipcServer.BroadcastAsync(new IpcMessage
+            {
+                MessageType = IpcMessageTypes.FolderExited,
+                Data = e
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error broadcasting folder exited event");
         }
     }
 }

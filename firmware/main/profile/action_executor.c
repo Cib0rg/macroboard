@@ -103,6 +103,8 @@ esp_err_t action_execute(uint8_t button_id) {
                 esp_err_t ret = profile_folder_enter(folder_id);
                 if (ret == ESP_OK) {
                     folder_entry_button_id = button_id;
+                    // Show the embedded "back" icon on the entry button's display
+                    profile_show_back_icon(button_id);
                 }
             }
             break;

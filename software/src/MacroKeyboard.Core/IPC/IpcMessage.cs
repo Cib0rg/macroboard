@@ -83,6 +83,7 @@ public static class IpcMessageTypes
     public const string ProfileDelete = "profile.delete";
     public const string ProfileSendToDevice = "profile.sendtodevice";
     public const string ProfileLoadFromDevice = "profile.loadfromdevice";
+    public const string ProfileGetInfo = "profile.getinfo";
     
     // Button messages
     public const string ButtonPressed = "button.pressed";
@@ -99,6 +100,10 @@ public static class IpcMessageTypes
     // Encoder messages
     public const string EncoderRotated = "encoder.rotated";
     public const string EncoderPressed = "encoder.pressed";
+    
+    // Folder messages
+    public const string FolderEntered = "folder.entered";
+    public const string FolderExited = "folder.exited";
     
     // System messages
     public const string Ping = "system.ping";

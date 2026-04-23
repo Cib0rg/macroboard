@@ -43,6 +43,12 @@ public partial class DashboardViewModel : ViewModelBase
     [ObservableProperty]
     private string _freeSpace = "N/A";
 
+    [ObservableProperty]
+    private string _folderState = "Root";
+
+    [ObservableProperty]
+    private bool _isInFolder;
+
     public ObservableCollection<string> RecentEvents { get; } = new();
 
     public DashboardViewModel(IpcClient ipcClient, ILogger<DashboardViewModel> logger)
@@ -242,7 +248,35 @@ public partial class DashboardViewModel : ViewModelBase
                     if (profileEvent != null)
                     {
                         CurrentProfile = profileEvent.ProfileName;
+                        FolderState = "Root";
+                        IsInFolder = false;
                         AddEvent($"📋 Profile changed to: {profileEvent.ProfileName}");
+                    }
+                    break;
+                }
+
+                case IpcMessageTypes.FolderEntered:
+                {
+                    var folderEvent = message.GetData<FolderEventArgs>();
+                    if (folderEvent != null)
+                    {
+                        IsInFolder = true;
+                        FolderState = $"Folder {folderEvent.FolderId} (depth: {folderEvent.FolderDepth})";
+                        AddEvent($"📁 Entered folder {folderEvent.FolderId} (depth: {folderEvent.FolderDepth})");
+                    }
+                    break;
+                }
+
+                case IpcMessageTypes.FolderExited:
+                {
+                    var folderEvent = message.GetData<FolderEventArgs>();
+                    if (folderEvent != null)
+                    {
+                        IsInFolder = folderEvent.FolderDepth > 0;
+                        FolderState = folderEvent.FolderDepth > 0
+                            ? $"Folder {folderEvent.ParentFolderId} (depth: {folderEvent.FolderDepth})"
+                            : "Root";
+                        AddEvent($"📂 Exited folder {folderEvent.FolderId} → {FolderState}");
                     }
                     break;
                 }

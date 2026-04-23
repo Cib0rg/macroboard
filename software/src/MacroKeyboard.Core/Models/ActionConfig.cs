@@ -118,6 +118,24 @@ public class ProfileSwitchAction : ActionConfig
 }
 
 /// <summary>
+/// Конфигурация действия "Папка" (открытие папки)
+/// </summary>
+public class FolderAction : ActionConfig
+{
+    public override ActionType ActionType => ActionType.Folder;
+    
+    /// <summary>
+    /// ID папки для открытия
+    /// </summary>
+    public byte FolderId { get; set; }
+    
+    public override byte[] ToBytes()
+    {
+        return new[] { FolderId };
+    }
+}
+
+/// <summary>
 /// JSON converter for ActionConfig abstract class.
 /// Uses the ActionType property to determine the concrete type during deserialization.
 /// Writing is handled by the default serializer (CanWrite = false).
@@ -146,7 +164,7 @@ public class ActionConfigConverter : JsonConverter<ActionConfig>
             ActionType.Keyboard => new KeyboardAction(),
             ActionType.CustomHid => new CustomHidAction(),
             ActionType.ProfileSwitch => new ProfileSwitchAction(),
-            ActionType.Folder => new ProfileSwitchAction(), // Fallback
+            ActionType.Folder => new FolderAction(),
             _ => null
         };
 

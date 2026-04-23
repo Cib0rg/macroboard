@@ -44,6 +44,8 @@
 #define EVENT_ENCODER_BUTTON        0xF2
 #define EVENT_PROFILE_CHANGED       0xF3
 #define EVENT_DEVICE_READY          0xF4
+#define EVENT_FOLDER_ENTERED        0xF5
+#define EVENT_FOLDER_EXITED         0xF6
 #define EVENT_ERROR                 0xFF
 
 // Status codes

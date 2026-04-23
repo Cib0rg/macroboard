@@ -1,5 +1,6 @@
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
+using Avalonia.Platform.Storage;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using MacroKeyboard.Core.Models;
@@ -7,8 +8,10 @@ using MacroKeyboard.Core.Services;
 using MacroKeyboard.Shared.IPC;
 using MacroKeyboard.UI.Views;
 using Microsoft.Extensions.Logging;
+using Newtonsoft.Json;
 using System;
 using System.Collections.ObjectModel;
+using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 
@@ -23,6 +26,13 @@ public partial class ProfileEditorViewModel : ViewModelBase
     private readonly IpcClient _ipcClient;
     private readonly ILogger<ProfileEditorViewModel> _logger;
     private readonly ILogger<ButtonConfigDialogViewModel> _dialogLogger;
+    private IStorageProvider? _storageProvider;
+
+    /// <summary>
+    /// Default profiles directory (relative to app working directory)
+    /// </summary>
+    private static readonly string DefaultProfilesDir = Path.Combine(
+        AppDomain.CurrentDomain.BaseDirectory, "Profiles");
 
     [ObservableProperty]
     private Profile? _selectedProfile;
@@ -40,6 +50,11 @@ public partial class ProfileEditorViewModel : ViewModelBase
     private bool _isSyncing;
 
     public ObservableCollection<Profile> Profiles { get; } = new();
+    
+    /// <summary>
+    /// Flattened list of buttons including folder contents, for the nested tree view
+    /// </summary>
+    public ObservableCollection<FlattenedButtonItem> FlattenedButtons { get; } = new();
 
     public ProfileEditorViewModel(
         IProfileService profileService,
@@ -51,6 +66,67 @@ public partial class ProfileEditorViewModel : ViewModelBase
         _ipcClient = ipcClient;
         _logger = logger;
         _dialogLogger = dialogLogger;
+    }
+
+    /// <summary>
+    /// Called by source generator when SelectedProfile changes
+    /// </summary>
+    partial void OnSelectedProfileChanged(Profile? value)
+    {
+        BuildFlattenedButtons();
+    }
+
+    /// <summary>
+    /// Build the flattened button list from the selected profile.
+    /// Root buttons at level 0, folder contents at level 1+.
+    /// </summary>
+    public void BuildFlattenedButtons()
+    {
+        FlattenedButtons.Clear();
+        
+        if (SelectedProfile == null)
+            return;
+
+        foreach (var button in SelectedProfile.Buttons)
+        {
+            // Add root button
+            FlattenedButtons.Add(new FlattenedButtonItem(button, 0));
+            
+            // If this button opens a folder, add the folder's buttons indented
+            if (button.Action?.ActionType == ActionType.Folder)
+            {
+                var folderId = button.FolderId;
+                var folder = SelectedProfile.Folders.FirstOrDefault(f => f.FolderId == folderId);
+                
+                if (folder == null)
+                {
+                    // Auto-create folder if it doesn't exist
+                    folder = new Folder
+                    {
+                        FolderId = folderId,
+                        Name = $"Folder {folderId}"
+                    };
+                    
+                    // Initialize 10 empty buttons
+                    for (byte i = 0; i < 10; i++)
+                    {
+                        folder.Buttons.Add(new ButtonConfig
+                        {
+                            ButtonId = i,
+                            Action = null,
+                            Led = LedConfig.FromRgb(80, 80, 80)
+                        });
+                    }
+                    
+                    SelectedProfile.Folders.Add(folder);
+                }
+                
+                foreach (var folderButton in folder.Buttons)
+                {
+                    FlattenedButtons.Add(new FlattenedButtonItem(folderButton, 1, folderId));
+                }
+            }
+        }
     }
 
     public async Task LoadProfilesAsync()
@@ -108,6 +184,14 @@ public partial class ProfileEditorViewModel : ViewModelBase
         }
     }
 
+    /// <summary>
+    /// Set the storage provider for file dialogs (called from View code-behind)
+    /// </summary>
+    public void SetStorageProvider(IStorageProvider storageProvider)
+    {
+        _storageProvider = storageProvider;
+    }
+
     [RelayCommand]
     private async Task SaveProfile()
     {
@@ -116,15 +200,126 @@ public partial class ProfileEditorViewModel : ViewModelBase
 
         try
         {
-            _logger.LogInformation("Saving profile: {ProfileName}", SelectedProfile.Name);
+            if (_storageProvider == null)
+            {
+                _logger.LogWarning("StorageProvider not set, saving to default location");
+                await _profileService.UpdateProfileAsync(SelectedProfile);
+                StatusMessage = $"Saved: {SelectedProfile.Name}";
+                return;
+            }
+
+            // Ensure default directory exists
+            Directory.CreateDirectory(DefaultProfilesDir);
+
+            var suggestedName = $"{SelectedProfile.Name.Replace(' ', '_')}.json";
+
+            var options = new FilePickerSaveOptions
+            {
+                Title = "Save Profile",
+                SuggestedFileName = suggestedName,
+                DefaultExtension = "json",
+                FileTypeChoices = new[]
+                {
+                    new FilePickerFileType("Profile JSON") { Patterns = new[] { "*.json" } },
+                    new FilePickerFileType("All Files") { Patterns = new[] { "*" } }
+                },
+                SuggestedStartLocation = await _storageProvider.TryGetFolderFromPathAsync(DefaultProfilesDir)
+            };
+
+            var file = await _storageProvider.SaveFilePickerAsync(options);
+            if (file == null)
+            {
+                StatusMessage = "Save cancelled";
+                return;
+            }
+
+            var filePath = file.Path.LocalPath;
+            _logger.LogInformation("Saving profile to: {Path}", filePath);
+
+            var json = JsonConvert.SerializeObject(SelectedProfile, Formatting.Indented);
+            await File.WriteAllTextAsync(filePath, json);
+
+            // Also save to internal storage
             await _profileService.UpdateProfileAsync(SelectedProfile);
-            _logger.LogInformation("Profile saved successfully");
-            StatusMessage = $"Saved: {SelectedProfile.Name}";
+
+            StatusMessage = $"Saved: {Path.GetFileName(filePath)}";
+            _logger.LogInformation("Profile saved to {Path}", filePath);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error saving profile");
             StatusMessage = $"Error saving: {ex.Message}";
+        }
+    }
+
+    /// <summary>
+    /// Load a profile from a JSON file via file dialog
+    /// </summary>
+    [RelayCommand]
+    private async Task LoadProfile()
+    {
+        try
+        {
+            if (_storageProvider == null)
+            {
+                _logger.LogWarning("StorageProvider not set");
+                StatusMessage = "Cannot open file dialog";
+                return;
+            }
+
+            // Ensure default directory exists
+            Directory.CreateDirectory(DefaultProfilesDir);
+
+            var options = new FilePickerOpenOptions
+            {
+                Title = "Load Profile",
+                AllowMultiple = false,
+                FileTypeFilter = new[]
+                {
+                    new FilePickerFileType("Profile JSON") { Patterns = new[] { "*.json" } },
+                    new FilePickerFileType("All Files") { Patterns = new[] { "*" } }
+                },
+                SuggestedStartLocation = await _storageProvider.TryGetFolderFromPathAsync(DefaultProfilesDir)
+            };
+
+            var files = await _storageProvider.OpenFilePickerAsync(options);
+            if (files == null || files.Count == 0)
+            {
+                StatusMessage = "Load cancelled";
+                return;
+            }
+
+            var filePath = files[0].Path.LocalPath;
+            _logger.LogInformation("Loading profile from: {Path}", filePath);
+
+            var json = await File.ReadAllTextAsync(filePath);
+            var profile = JsonConvert.DeserializeObject<Profile>(json);
+
+            if (profile == null)
+            {
+                StatusMessage = "Invalid profile file";
+                return;
+            }
+
+            // Check if profile with same ID already exists
+            var existing = Profiles.FirstOrDefault(p => p.ProfileId == profile.ProfileId);
+            if (existing != null)
+            {
+                Profiles.Remove(existing);
+            }
+
+            // Save to internal storage and add to list
+            await _profileService.UpdateProfileAsync(profile);
+            Profiles.Add(profile);
+            SelectedProfile = profile;
+
+            StatusMessage = $"Loaded: {profile.Name} from {Path.GetFileName(filePath)}";
+            _logger.LogInformation("Profile loaded: {Name}", profile.Name);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error loading profile");
+            StatusMessage = $"Error loading: {ex.Message}";
         }
     }
 
@@ -298,6 +493,26 @@ public partial class ProfileEditorViewModel : ViewModelBase
         if (button == null)
             return;
 
+        await OpenButtonConfigDialogAsync(button);
+    }
+
+    /// <summary>
+    /// Configure a button from the flattened list (used by the nested tree view)
+    /// </summary>
+    [RelayCommand]
+    private async Task ConfigureFlattenedButton(FlattenedButtonItem? item)
+    {
+        if (item == null)
+            return;
+
+        await OpenButtonConfigDialogAsync(item.Button);
+    }
+
+    /// <summary>
+    /// Open the button configuration dialog for a given button
+    /// </summary>
+    private async Task OpenButtonConfigDialogAsync(ButtonConfig button)
+    {
         _logger.LogInformation("🔘 Configuring button {ButtonId}", button.ButtonId);
         
         try
@@ -309,6 +524,9 @@ public partial class ProfileEditorViewModel : ViewModelBase
                 _logger.LogWarning("Main window not found");
                 return;
             }
+
+            // Remember old action type to detect folder changes
+            var oldActionType = button.Action?.ActionType;
 
             // Create dialog
             var dialogViewModel = new ButtonConfigDialogViewModel(_dialogLogger, button);
@@ -330,6 +548,13 @@ public partial class ProfileEditorViewModel : ViewModelBase
                 {
                     await _profileService.UpdateProfileAsync(SelectedProfile);
                     StatusMessage = $"Button {button.ButtonId} configured";
+                }
+
+                // Rebuild flattened list if action type changed (folder added/removed)
+                var newActionType = button.Action?.ActionType;
+                if (oldActionType != newActionType)
+                {
+                    BuildFlattenedButtons();
                 }
 
                 // If connected, also send button action and LED to device

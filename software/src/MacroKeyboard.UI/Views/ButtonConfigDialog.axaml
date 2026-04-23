@@ -3,11 +3,11 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:vm="using:MacroKeyboard.UI.ViewModels"
-        mc:Ignorable="d" d:DesignWidth="600" d:DesignHeight="500"
+        mc:Ignorable="d" d:DesignWidth="600" d:DesignHeight="550"
         x:Class="MacroKeyboard.UI.Views.ButtonConfigDialog"
         x:DataType="vm:ButtonConfigDialogViewModel"
         Title="Configure Button"
-        Width="600" Height="500"
+        Width="600" Height="550"
         WindowStartupLocation="CenterOwner"
         CanResize="False">
 
@@ -32,16 +32,51 @@
                     </StackPanel>
                 </Border>
 
-                <!-- Key Sequence / Text -->
-                <Border Background="#2D2D30" CornerRadius="8" Padding="16">
+                <!-- Keyboard: Text / Key Sequence -->
+                <Border Background="#2D2D30" CornerRadius="8" Padding="16"
+                        IsVisible="{Binding IsKeyboardAction}">
                     <StackPanel Spacing="12">
-                        <TextBlock Text="Keys / Text" FontSize="16" FontWeight="Bold" />
-                        <TextBlock Text="Enter key sequence (e.g., Ctrl+C) or text to type"
-                                   FontSize="12"
-                                   Opacity="0.7" />
+                        <TextBlock Text="Text to Type" FontSize="16" FontWeight="Bold" />
+                        <TextBlock Text="Enter text that will be typed when the button is pressed"
+                                   FontSize="12" Opacity="0.7" />
                         <TextBox Text="{Binding KeySequence}"
-                                 PlaceholderText="e.g., Ctrl+C or Hello World"
-                                 Watermark="e.g., Ctrl+C or Hello World" />
+                                 PlaceholderText="e.g., Hello World" />
+                    </StackPanel>
+                </Border>
+
+                <!-- ProfileSwitch: Target Profile -->
+                <Border Background="#2D2D30" CornerRadius="8" Padding="16"
+                        IsVisible="{Binding IsProfileSwitchAction}">
+                    <StackPanel Spacing="12">
+                        <TextBlock Text="Target Profile" FontSize="16" FontWeight="Bold" />
+                        <TextBlock Text="Select which profile to switch to"
+                                   FontSize="12" Opacity="0.7" />
+                        <ComboBox ItemsSource="{Binding AvailableProfileIds}"
+                                  SelectedItem="{Binding TargetProfileId}"
+                                  HorizontalAlignment="Stretch" />
+                    </StackPanel>
+                </Border>
+
+                <!-- Folder: Folder ID -->
+                <Border Background="#2D2D30" CornerRadius="8" Padding="16"
+                        IsVisible="{Binding IsFolderAction}">
+                    <StackPanel Spacing="12">
+                        <TextBlock Text="Folder ID" FontSize="16" FontWeight="Bold" />
+                        <TextBlock Text="Select which folder to open (0-15)"
+                                   FontSize="12" Opacity="0.7" />
+                        <ComboBox ItemsSource="{Binding AvailableFolderIds}"
+                                  SelectedItem="{Binding FolderId}"
+                                  HorizontalAlignment="Stretch" />
+                    </StackPanel>
+                </Border>
+
+                <!-- CustomHID: placeholder -->
+                <Border Background="#2D2D30" CornerRadius="8" Padding="16"
+                        IsVisible="{Binding IsCustomHidAction}">
+                    <StackPanel Spacing="12">
+                        <TextBlock Text="Custom HID" FontSize="16" FontWeight="Bold" />
+                        <TextBlock Text="Custom HID report configuration (coming soon)"
+                                   FontSize="12" Opacity="0.7" />
                     </StackPanel>
                 </Border>
 
@@ -52,8 +87,7 @@
                         <Grid ColumnDefinitions="*,Auto">
                             <TextBox Grid.Column="0"
                                      Text="{Binding ImagePath}"
-                                     PlaceholderText="Path to image file"
-                                     Watermark="Path to image file"
+                                     PlaceholderText="Path to image file (160x160 JPEG)"
                                      Margin="0,0,8,0" />
                             <Button Grid.Column="1"
                                     Content="Browse..."
@@ -67,8 +101,7 @@
                     <StackPanel Spacing="12">
                         <TextBlock Text="LED Color (Hex)" FontSize="16" FontWeight="Bold" />
                         <TextBox Text="{Binding LedColor, StringFormat='0x{0:X6}'}"
-                                 PlaceholderText="0xFFFFFF"
-                                 Watermark="0xFFFFFF" />
+                                 PlaceholderText="0xFFFFFF" />
                         <TextBlock Text="Example: 0xFF0000 (Red), 0x00FF00 (Green), 0x0000FF (Blue)"
                                    FontSize="11"
                                    Opacity="0.6" />
@@ -85,11 +118,9 @@
                     Margin="0,20,0,0">
             <Button Content="Cancel" 
                     Width="100"
-                    Command="{Binding CancelCommand}"
                     Click="OnCancelClick" />
             <Button Content="Save" 
                     Width="100"
-                    Command="{Binding SaveCommand}"
                     Click="OnSaveClick"
                     Classes="accent" />
         </StackPanel>

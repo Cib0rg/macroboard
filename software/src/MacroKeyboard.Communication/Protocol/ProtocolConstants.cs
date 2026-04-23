@@ -51,6 +51,8 @@ public static class ProtocolConstants
     public const byte EVENT_ENCODER_BUTTON = 0xF2;
     public const byte EVENT_PROFILE_CHANGED = 0xF3;
     public const byte EVENT_DEVICE_READY = 0xF4;
+    public const byte EVENT_FOLDER_ENTERED = 0xF5;
+    public const byte EVENT_FOLDER_EXITED = 0xF6;
     public const byte EVENT_ERROR = 0xFF;
     
     // Коды статуса
