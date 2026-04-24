@@ -4,3 +4,6 @@ firmware/managed_components/
 example/
 software/src/*/bin/
 software/src/*/obj/
+firmware/build/
+firmware/build_*_*/
+firmware/sdkconfig
