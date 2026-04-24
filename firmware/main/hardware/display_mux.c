@@ -1,6 +1,13 @@
 /**
  * @file display_mux.c
- * @brief Display multiplexer implementation using 74HC138 decoders
+ * @brief Display multiplexer implementation using two 74HC138 decoders
+ * 
+ * Hardware scheme:
+ *   - Two 74HC138 3-to-8 decoders, each driving 5 displays (outputs 0-4 used)
+ *   - Decoder 1 (SEL=1): Displays 0-4 (top row)
+ *   - Decoder 2 (SEL=0): Displays 5-9 (bottom row)
+ *   - Address lines A0, A1, A2 select which output (0-4) within the decoder
+ *   - SEL pin selects which decoder is active
  */
 
 #include "common.h"
@@ -11,7 +18,7 @@
 static const char* TAG = "DISP_MUX";
 
 esp_err_t display_mux_init(void) {
-    ESP_LOGI(TAG, "Initializing display multiplexer");
+    ESP_LOGI(TAG, "Initializing display multiplexer (2x 74HC138, 5+5 displays)");
     
     // Configure multiplexer control pins
     gpio_config_t io_conf = {
@@ -46,26 +53,29 @@ esp_err_t display_mux_select(uint8_t display_id) {
     }
     
     /*
-     * Multiplexer scheme:
-     * - Displays 0-7: First 74HC138 (SEL=1)
-     * - Displays 8-9: Second 74HC138 (SEL=0)
+     * Multiplexer scheme (5+5):
+     *   - Displays 0-4: First 74HC138 decoder (SEL=1), outputs 0-4
+     *   - Displays 5-9: Second 74HC138 decoder (SEL=0), outputs 0-4
      * 
-     * Address lines A0, A1, A2 select which output (0-7)
+     * Address lines A0, A1, A2 select which output (0-4) within the active decoder.
+     * Only outputs 0-4 are wired; outputs 5-7 of each decoder are unused.
      */
     
-    if (display_id < 8) {
-        // First decoder (displays 0-7)
+    uint8_t local_id;  // Output index within the decoder (0-4)
+    
+    if (display_id < 5) {
+        // First decoder (displays 0-4)
         gpio_set_level(PIN_MUX_SEL, 1);
-        gpio_set_level(PIN_MUX_A0, (display_id >> 0) & 1);
-        gpio_set_level(PIN_MUX_A1, (display_id >> 1) & 1);
-        gpio_set_level(PIN_MUX_A2, (display_id >> 2) & 1);
+        local_id = display_id;
     } else {
-        // Second decoder (displays 8-9)
+        // Second decoder (displays 5-9)
         gpio_set_level(PIN_MUX_SEL, 0);
-        gpio_set_level(PIN_MUX_A0, (display_id - 8) & 1);
-        gpio_set_level(PIN_MUX_A1, 0);
-        gpio_set_level(PIN_MUX_A2, 0);
+        local_id = display_id - 5;
     }
+    
+    gpio_set_level(PIN_MUX_A0, (local_id >> 0) & 1);
+    gpio_set_level(PIN_MUX_A1, (local_id >> 1) & 1);
+    gpio_set_level(PIN_MUX_A2, (local_id >> 2) & 1);
     
     // Small delay for signal stabilization
     esp_rom_delay_us(1);

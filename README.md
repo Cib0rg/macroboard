@@ -16,7 +16,7 @@
 - **Rotary encoder** для быстрого переключения между профилями
 - **3-5 профилей** с сохранением в энергонезависимую память
 - **WiFi OTA обновление** прошивки
-- **USB HID** - работает как обычная клавиатура + custom HID device
+- **USB Composite Device** — HID Keyboard + Vendor Bulk интерфейс для управления
 - **Управляющий софт** на C# с красивым интерфейсом
 
 ## Структура проекта
@@ -90,11 +90,11 @@ elgato/
 - ✅ JPEG декодер - аппаратный в ESP32-S3
 
 **Что нужно написать** (~20% кода):
-- ❌ GC9A01 display driver
-- ❌ Display multiplexer (4 GPIO)
-- ❌ Protocol handler
-- ❌ Profile manager
-- ❌ Application glue
+- ✅ GC9A01 display driver
+- ✅ Display multiplexer (2× 74HC138, 5+5 дисплеев)
+- ✅ Protocol handler (USB Vendor Bulk)
+- ✅ Profile manager (с папками, до 4 уровней вложенности)
+- ✅ Action executor (Keyboard, ProfileSwitch, Folder, CustomHID)
 
 ### Управляющий софт (Software)
 
