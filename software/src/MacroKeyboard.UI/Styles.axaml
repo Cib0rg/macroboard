@@ -1,0 +1,9 @@
+<Style xmlns="https://github.com/avaloniaui"
+       xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    
+    <Style Selector="Border.PanelBorder">
+        <Setter Property="Background" Value="#2D2D30" />
+        <Setter Property="CornerRadius" Value="8" />
+    </Style>
+
+</Style>
