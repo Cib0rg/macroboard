@@ -10,7 +10,7 @@
 
     <Grid ColumnDefinitions="250,*" Margin="20">
         <!-- Left Panel - Profile List -->
-        <Border Grid.Column="0" Background="#2D2D30" CornerRadius="8" Padding="16" Margin="0,0,10,0">
+        <Border Grid.Column="0"  Padding="16" Margin="0,0,10,0">
             <StackPanel Spacing="12">
                 <TextBlock Text="Profiles" FontSize="18" FontWeight="Bold" />
                 
@@ -68,7 +68,7 @@
         </Border>
 
         <!-- Right Panel - Profile Editor -->
-        <Border Grid.Column="1" Background="#2D2D30" CornerRadius="8" Padding="20">
+        <Border Grid.Column="1" Classes="PanelBorder" Padding="20">
             <ScrollViewer>
                 <StackPanel Spacing="16" IsVisible="{Binding SelectedProfile, Converter={x:Static ObjectConverters.IsNotNull}}">
                     <TextBlock Text="Profile Editor" FontSize="20" FontWeight="Bold" />

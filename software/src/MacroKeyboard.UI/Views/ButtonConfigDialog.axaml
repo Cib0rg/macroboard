@@ -9,6 +9,7 @@
         Title="Configure Button"
         Width="600" Height="550"
         WindowStartupLocation="CenterOwner"
+        Classes="Tron"
         CanResize="False">
 
     <Grid Margin="20" RowDefinitions="Auto,*,Auto">
@@ -39,7 +40,7 @@
                         <TextBlock Text="Text to Type" FontSize="16" FontWeight="Bold" />
                         <TextBlock Text="Enter text that will be typed when the button is pressed"
                                    FontSize="12" Opacity="0.7" />
-                        <TextBox Text="{Binding KeySequence}"
+                        <TextBox Classes="Tron" Text="{Binding KeySequence}"
                                  PlaceholderText="e.g., Hello World" />
                     </StackPanel>
                 </Border>
