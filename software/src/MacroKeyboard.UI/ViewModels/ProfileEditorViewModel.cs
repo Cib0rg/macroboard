@@ -525,9 +525,6 @@ public partial class ProfileEditorViewModel : ViewModelBase
                 return;
             }
 
-            // Remember old action type to detect folder changes
-            var oldActionType = button.Action?.ActionType;
-
             // Create dialog
             var dialogViewModel = new ButtonConfigDialogViewModel(_dialogLogger, button);
 
@@ -550,12 +547,8 @@ public partial class ProfileEditorViewModel : ViewModelBase
                     StatusMessage = $"Button {button.ButtonId} configured";
                 }
 
-                // Rebuild flattened list if action type changed (folder added/removed)
-                var newActionType = button.Action?.ActionType;
-                if (oldActionType != newActionType)
-                {
-                    BuildFlattenedButtons();
-                }
+                // Rebuild flattened list to update button labels
+                BuildFlattenedButtons();
 
                 // If connected, also send button action and LED to device
                 if (_ipcClient.IsConnected && SelectedProfile != null)

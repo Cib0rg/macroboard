@@ -5,6 +5,7 @@ using CommunityToolkit.Mvvm.Input;
 using MacroKeyboard.Core.Models;
 using Microsoft.Extensions.Logging;
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Globalization;
 using System.Linq;
@@ -28,6 +29,23 @@ public partial class ButtonConfigDialogViewModel : ViewModelBase
 
     [ObservableProperty]
     private string _keySequence = string.Empty;
+
+    [ObservableProperty]
+    private string _textToType = string.Empty;
+
+    [ObservableProperty]
+    private bool _isCapturingKeys = false;
+
+    [ObservableProperty]
+    private byte _capturedKeyCode = 0;
+
+    [ObservableProperty]
+    private KeyModifiers _capturedModifiers = KeyModifiers.None;
+
+    /// <summary>
+    /// List of captured key combinations (for sequence recording)
+    /// </summary>
+    private readonly List<CapturedKey> _capturedKeys = new();
 
     [ObservableProperty]
     private string _imagePath = string.Empty;
@@ -104,6 +122,76 @@ public partial class ButtonConfigDialogViewModel : ViewModelBase
     /// Color preview for the LED color picker
     /// </summary>
     public Color LedColorPreview => Color.FromRgb((byte)ColorR, (byte)ColorG, (byte)ColorB);
+
+    /// <summary>
+    /// Display text for the key capture field
+    /// </summary>
+    public string KeySequenceDisplay
+    {
+        get
+        {
+            if (IsCapturingKeys)
+            {
+                if (_capturedKeys.Count == 0)
+                    return "Press keys... (click 'Stop' when done)";
+                return FormatKeySequence() + " ...";
+            }
+            
+            if (_capturedKeys.Count == 0)
+                return "Click here to capture keys";
+            
+            return FormatKeySequence();
+        }
+    }
+
+    /// <summary>
+    /// Background color for key capture field
+    /// </summary>
+    public IBrush KeyCaptureBackground => IsCapturingKeys
+        ? new SolidColorBrush(Color.FromRgb(60, 60, 80))
+        : new SolidColorBrush(Color.FromRgb(45, 45, 48));
+
+    /// <summary>
+    /// Border color for key capture field
+    /// </summary>
+    public IBrush KeyCaptureBorderBrush => IsCapturingKeys
+        ? new SolidColorBrush(Color.FromRgb(0, 122, 204))
+        : new SolidColorBrush(Color.FromRgb(85, 85, 85));
+
+    /// <summary>
+    /// Button text for key capture toggle
+    /// </summary>
+    public string KeyCaptureButtonText => IsCapturingKeys ? "Stop Recording" : "Start Recording";
+
+    /// <summary>
+    /// Whether any keys have been captured
+    /// </summary>
+    public bool HasCapturedKeys => _capturedKeys.Count > 0;
+
+    /// <summary>
+    /// Display text for captured modifiers
+    /// </summary>
+    public string CapturedModifiersText
+    {
+        get
+        {
+            var mods = new List<string>();
+            if (CapturedModifiers.HasFlag(KeyModifiers.LeftCtrl) || CapturedModifiers.HasFlag(KeyModifiers.RightCtrl))
+                mods.Add("Ctrl");
+            if (CapturedModifiers.HasFlag(KeyModifiers.LeftShift) || CapturedModifiers.HasFlag(KeyModifiers.RightShift))
+                mods.Add("Shift");
+            if (CapturedModifiers.HasFlag(KeyModifiers.LeftAlt) || CapturedModifiers.HasFlag(KeyModifiers.RightAlt))
+                mods.Add("Alt");
+            if (CapturedModifiers.HasFlag(KeyModifiers.LeftGui) || CapturedModifiers.HasFlag(KeyModifiers.RightGui))
+                mods.Add("Win");
+            return mods.Count > 0 ? string.Join(" + ", mods) : "None";
+        }
+    }
+
+    /// <summary>
+    /// Display text for captured key
+    /// </summary>
+    public string CapturedKeyText => CapturedKeyCode != 0 ? $"0x{CapturedKeyCode:X2}" : "None";
 
     public ButtonConfigDialogViewModel(ILogger<ButtonConfigDialogViewModel> logger, ButtonConfig buttonConfig)
     {
@@ -213,6 +301,208 @@ public partial class ButtonConfigDialogViewModel : ViewModelBase
         IsColorPickerVisible = !IsColorPickerVisible;
     }
 
+    [RelayCommand]
+    private void ToggleKeyCapture()
+    {
+        IsCapturingKeys = !IsCapturingKeys;
+        NotifyKeyCapturePropertiesChanged();
+    }
+
+    /// <summary>
+    /// Start key capture mode (called from View when field is clicked)
+    /// </summary>
+    public void StartKeyCapture()
+    {
+        IsCapturingKeys = true;
+        NotifyKeyCapturePropertiesChanged();
+    }
+
+    /// <summary>
+    /// Stop key capture mode
+    /// </summary>
+    public void StopKeyCapture()
+    {
+        IsCapturingKeys = false;
+        NotifyKeyCapturePropertiesChanged();
+    }
+
+    /// <summary>
+    /// Handle key down event during capture
+    /// </summary>
+    public void HandleKeyDown(Avalonia.Input.Key key, Avalonia.Input.KeyModifiers modifiers)
+    {
+        if (!IsCapturingKeys)
+            return;
+
+        // Skip modifier-only keys (they will be captured with the main key)
+        if (key == Avalonia.Input.Key.LeftCtrl || key == Avalonia.Input.Key.RightCtrl ||
+            key == Avalonia.Input.Key.LeftShift || key == Avalonia.Input.Key.RightShift ||
+            key == Avalonia.Input.Key.LeftAlt || key == Avalonia.Input.Key.RightAlt ||
+            key == Avalonia.Input.Key.LWin || key == Avalonia.Input.Key.RWin)
+        {
+            return;
+        }
+
+        // Convert modifiers
+        var keyMods = KeyModifiers.None;
+        if (modifiers.HasFlag(Avalonia.Input.KeyModifiers.Control))
+            keyMods |= KeyModifiers.LeftCtrl;
+        if (modifiers.HasFlag(Avalonia.Input.KeyModifiers.Shift))
+            keyMods |= KeyModifiers.LeftShift;
+        if (modifiers.HasFlag(Avalonia.Input.KeyModifiers.Alt))
+            keyMods |= KeyModifiers.LeftAlt;
+        if (modifiers.HasFlag(Avalonia.Input.KeyModifiers.Meta))
+            keyMods |= KeyModifiers.LeftGui;
+
+        // Convert Avalonia key to HID keycode
+        var hidKeyCode = ConvertToHidKeyCode(key);
+        
+        // Build display name for this key combination
+        var displayName = FormatSingleKey(hidKeyCode, keyMods);
+        
+        // Add to the captured keys list
+        _capturedKeys.Add(new CapturedKey(hidKeyCode, keyMods, displayName));
+        
+        // Also update the single-key properties for backward compatibility
+        CapturedKeyCode = hidKeyCode;
+        CapturedModifiers = keyMods;
+
+        NotifyKeyCapturePropertiesChanged();
+        _logger.LogDebug("Key captured: {Key}, Modifiers: {Modifiers}, HID: 0x{HidCode:X2}, Total keys: {Count}",
+            key, modifiers, hidKeyCode, _capturedKeys.Count);
+    }
+
+    /// <summary>
+    /// Clear captured keys
+    /// </summary>
+    public void ClearCapturedKeys()
+    {
+        _capturedKeys.Clear();
+        CapturedKeyCode = 0;
+        CapturedModifiers = KeyModifiers.None;
+        NotifyKeyCapturePropertiesChanged();
+    }
+
+    private void NotifyKeyCapturePropertiesChanged()
+    {
+        OnPropertyChanged(nameof(KeySequenceDisplay));
+        OnPropertyChanged(nameof(KeyCaptureBackground));
+        OnPropertyChanged(nameof(KeyCaptureBorderBrush));
+        OnPropertyChanged(nameof(KeyCaptureButtonText));
+        OnPropertyChanged(nameof(HasCapturedKeys));
+        OnPropertyChanged(nameof(CapturedModifiersText));
+        OnPropertyChanged(nameof(CapturedKeyText));
+    }
+
+    private string FormatKeySequence()
+    {
+        if (_capturedKeys.Count == 0)
+            return "No keys captured";
+        
+        // Join all captured keys with ", " separator
+        return string.Join(", ", _capturedKeys.Select(k => k.DisplayName));
+    }
+    
+    /// <summary>
+    /// Format a single key with its modifiers for display
+    /// </summary>
+    private string FormatSingleKey(byte hidKeyCode, KeyModifiers modifiers)
+    {
+        var parts = new List<string>();
+        
+        if (modifiers.HasFlag(KeyModifiers.LeftCtrl) || modifiers.HasFlag(KeyModifiers.RightCtrl))
+            parts.Add("Ctrl");
+        if (modifiers.HasFlag(KeyModifiers.LeftShift) || modifiers.HasFlag(KeyModifiers.RightShift))
+            parts.Add("Shift");
+        if (modifiers.HasFlag(KeyModifiers.LeftAlt) || modifiers.HasFlag(KeyModifiers.RightAlt))
+            parts.Add("Alt");
+        if (modifiers.HasFlag(KeyModifiers.LeftGui) || modifiers.HasFlag(KeyModifiers.RightGui))
+            parts.Add("Win");
+        
+        if (hidKeyCode != 0)
+            parts.Add(GetKeyName(hidKeyCode));
+        
+        return parts.Count > 0 ? string.Join("+", parts) : "";
+    }
+
+    private static string GetKeyName(byte hidKeyCode)
+    {
+        // Common HID keycodes to names
+        return hidKeyCode switch
+        {
+            0x04 => "A", 0x05 => "B", 0x06 => "C", 0x07 => "D", 0x08 => "E",
+            0x09 => "F", 0x0A => "G", 0x0B => "H", 0x0C => "I", 0x0D => "J",
+            0x0E => "K", 0x0F => "L", 0x10 => "M", 0x11 => "N", 0x12 => "O",
+            0x13 => "P", 0x14 => "Q", 0x15 => "R", 0x16 => "S", 0x17 => "T",
+            0x18 => "U", 0x19 => "V", 0x1A => "W", 0x1B => "X", 0x1C => "Y",
+            0x1D => "Z",
+            0x1E => "1", 0x1F => "2", 0x20 => "3", 0x21 => "4", 0x22 => "5",
+            0x23 => "6", 0x24 => "7", 0x25 => "8", 0x26 => "9", 0x27 => "0",
+            0x28 => "Enter", 0x29 => "Escape", 0x2A => "Backspace", 0x2B => "Tab",
+            0x2C => "Space", 0x2D => "-", 0x2E => "=", 0x2F => "[", 0x30 => "]",
+            0x31 => "\\", 0x33 => ";", 0x34 => "'", 0x35 => "`", 0x36 => ",",
+            0x37 => ".", 0x38 => "/",
+            0x39 => "CapsLock", 0x3A => "F1", 0x3B => "F2", 0x3C => "F3",
+            0x3D => "F4", 0x3E => "F5", 0x3F => "F6", 0x40 => "F7", 0x41 => "F8",
+            0x42 => "F9", 0x43 => "F10", 0x44 => "F11", 0x45 => "F12",
+            0x46 => "PrintScreen", 0x47 => "ScrollLock", 0x48 => "Pause",
+            0x49 => "Insert", 0x4A => "Home", 0x4B => "PageUp", 0x4C => "Delete",
+            0x4D => "End", 0x4E => "PageDown", 0x4F => "Right", 0x50 => "Left",
+            0x51 => "Down", 0x52 => "Up",
+            _ => $"Key(0x{hidKeyCode:X2})"
+        };
+    }
+
+    private static byte ConvertToHidKeyCode(Avalonia.Input.Key key)
+    {
+        // Convert Avalonia Key to USB HID keycode
+        return key switch
+        {
+            Avalonia.Input.Key.A => 0x04, Avalonia.Input.Key.B => 0x05,
+            Avalonia.Input.Key.C => 0x06, Avalonia.Input.Key.D => 0x07,
+            Avalonia.Input.Key.E => 0x08, Avalonia.Input.Key.F => 0x09,
+            Avalonia.Input.Key.G => 0x0A, Avalonia.Input.Key.H => 0x0B,
+            Avalonia.Input.Key.I => 0x0C, Avalonia.Input.Key.J => 0x0D,
+            Avalonia.Input.Key.K => 0x0E, Avalonia.Input.Key.L => 0x0F,
+            Avalonia.Input.Key.M => 0x10, Avalonia.Input.Key.N => 0x11,
+            Avalonia.Input.Key.O => 0x12, Avalonia.Input.Key.P => 0x13,
+            Avalonia.Input.Key.Q => 0x14, Avalonia.Input.Key.R => 0x15,
+            Avalonia.Input.Key.S => 0x16, Avalonia.Input.Key.T => 0x17,
+            Avalonia.Input.Key.U => 0x18, Avalonia.Input.Key.V => 0x19,
+            Avalonia.Input.Key.W => 0x1A, Avalonia.Input.Key.X => 0x1B,
+            Avalonia.Input.Key.Y => 0x1C, Avalonia.Input.Key.Z => 0x1D,
+            Avalonia.Input.Key.D1 => 0x1E, Avalonia.Input.Key.D2 => 0x1F,
+            Avalonia.Input.Key.D3 => 0x20, Avalonia.Input.Key.D4 => 0x21,
+            Avalonia.Input.Key.D5 => 0x22, Avalonia.Input.Key.D6 => 0x23,
+            Avalonia.Input.Key.D7 => 0x24, Avalonia.Input.Key.D8 => 0x25,
+            Avalonia.Input.Key.D9 => 0x26, Avalonia.Input.Key.D0 => 0x27,
+            Avalonia.Input.Key.Return => 0x28, Avalonia.Input.Key.Escape => 0x29,
+            Avalonia.Input.Key.Back => 0x2A, Avalonia.Input.Key.Tab => 0x2B,
+            Avalonia.Input.Key.Space => 0x2C,
+            Avalonia.Input.Key.OemMinus => 0x2D, Avalonia.Input.Key.OemPlus => 0x2E,
+            Avalonia.Input.Key.OemOpenBrackets => 0x2F, Avalonia.Input.Key.OemCloseBrackets => 0x30,
+            Avalonia.Input.Key.OemPipe => 0x31, Avalonia.Input.Key.OemSemicolon => 0x33,
+            Avalonia.Input.Key.OemQuotes => 0x34, Avalonia.Input.Key.OemTilde => 0x35,
+            Avalonia.Input.Key.OemComma => 0x36, Avalonia.Input.Key.OemPeriod => 0x37,
+            Avalonia.Input.Key.OemQuestion => 0x38,
+            Avalonia.Input.Key.CapsLock => 0x39,
+            Avalonia.Input.Key.F1 => 0x3A, Avalonia.Input.Key.F2 => 0x3B,
+            Avalonia.Input.Key.F3 => 0x3C, Avalonia.Input.Key.F4 => 0x3D,
+            Avalonia.Input.Key.F5 => 0x3E, Avalonia.Input.Key.F6 => 0x3F,
+            Avalonia.Input.Key.F7 => 0x40, Avalonia.Input.Key.F8 => 0x41,
+            Avalonia.Input.Key.F9 => 0x42, Avalonia.Input.Key.F10 => 0x43,
+            Avalonia.Input.Key.F11 => 0x44, Avalonia.Input.Key.F12 => 0x45,
+            Avalonia.Input.Key.PrintScreen => 0x46, Avalonia.Input.Key.Scroll => 0x47,
+            Avalonia.Input.Key.Pause => 0x48, Avalonia.Input.Key.Insert => 0x49,
+            Avalonia.Input.Key.Home => 0x4A, Avalonia.Input.Key.PageUp => 0x4B,
+            Avalonia.Input.Key.Delete => 0x4C, Avalonia.Input.Key.End => 0x4D,
+            Avalonia.Input.Key.PageDown => 0x4E, Avalonia.Input.Key.Right => 0x4F,
+            Avalonia.Input.Key.Left => 0x50, Avalonia.Input.Key.Down => 0x51,
+            Avalonia.Input.Key.Up => 0x52,
+            _ => 0 // Unknown key
+        };
+    }
+
     partial void OnSelectedActionTypeChanged(ActionType value)
     {
         // Notify UI to show/hide action-specific fields
@@ -220,6 +510,33 @@ public partial class ButtonConfigDialogViewModel : ViewModelBase
         OnPropertyChanged(nameof(IsProfileSwitchAction));
         OnPropertyChanged(nameof(IsFolderAction));
         OnPropertyChanged(nameof(IsCustomHidAction));
+    }
+
+    /// <summary>
+    /// Create a KeyboardAction from captured keys
+    /// </summary>
+    private KeyboardAction CreateKeyboardAction()
+    {
+        if (_capturedKeys.Count == 0)
+        {
+            // No keys captured - use text mode with KeySequence field (backward compatibility)
+            return new KeyboardAction
+            {
+                Text = KeySequence,
+                KeyCode = 0,
+                Modifiers = KeyModifiers.None
+            };
+        }
+        
+        // Use captured keys - store the display text and first key's code/modifiers
+        // For multiple keys, the Text field contains the full sequence for display
+        var firstKey = _capturedKeys[0];
+        return new KeyboardAction
+        {
+            Text = FormatKeySequence(), // Store the formatted sequence for display
+            KeyCode = firstKey.KeyCode,
+            Modifiers = firstKey.Modifiers
+        };
     }
 
     /// <summary>
@@ -282,12 +599,7 @@ public partial class ButtonConfigDialogViewModel : ViewModelBase
             // Update button configuration based on selected action type
             ButtonConfig.Action = SelectedActionType switch
             {
-                ActionType.Keyboard => new KeyboardAction
-                {
-                    Text = KeySequence,
-                    KeyCode = 0, // Text mode: keycode=0, text in data bytes 7+
-                    Modifiers = KeyModifiers.None
-                },
+                ActionType.Keyboard => CreateKeyboardAction(),
                 ActionType.ProfileSwitch => new ProfileSwitchAction
                 {
                     TargetProfileId = TargetProfileId
@@ -338,3 +650,8 @@ public partial class ButtonConfigDialogViewModel : ViewModelBase
         _logger.LogInformation("Button configuration cancelled");
     }
 }
+
+/// <summary>
+/// Represents a captured key with modifiers
+/// </summary>
+public record CapturedKey(byte KeyCode, KeyModifiers Modifiers, string DisplayName);

@@ -33,15 +33,56 @@
                     </StackPanel>
                 </Border>
 
-                <!-- Keyboard: Text / Key Sequence -->
+                <!-- Keyboard: Key Capture -->
                 <Border Background="#2D2D30" CornerRadius="8" Padding="16"
                         IsVisible="{Binding IsKeyboardAction}">
                     <StackPanel Spacing="12">
-                        <TextBlock Text="Text to Type" FontSize="16" FontWeight="Bold" />
-                        <TextBlock Text="Enter text that will be typed when the button is pressed"
+                        <TextBlock Text="Key Combination" FontSize="16" FontWeight="Bold" />
+                        <TextBlock Text="Click the field below and press keys to capture (Ctrl, Shift, Alt, etc.)"
                                    FontSize="12" Opacity="0.7" />
-                        <TextBox Classes="Tron" Text="{Binding KeySequence}"
-                                 PlaceholderText="e.g., Hello World" />
+                        <Grid ColumnDefinitions="*,Auto">
+                            <!-- Key Capture Field -->
+                            <Border Grid.Column="0"
+                                    Background="{Binding KeyCaptureBackground}"
+                                    BorderBrush="{Binding KeyCaptureBorderBrush}"
+                                    BorderThickness="2"
+                                    CornerRadius="4"
+                                    Padding="12,8"
+                                    Margin="0,0,8,0"
+                                    Cursor="Hand"
+                                    PointerPressed="OnKeyCaptureFieldPressed"
+                                    Focusable="True"
+                                    Name="KeyCaptureField"
+                                    KeyDown="OnKeyCaptureKeyDown"
+                                    KeyUp="OnKeyCaptureKeyUp">
+                                <TextBlock Text="{Binding KeySequenceDisplay}"
+                                           VerticalAlignment="Center"
+                                           FontFamily="Consolas, Courier New, monospace"
+                                           FontSize="14" />
+                            </Border>
+                            
+                            <!-- Stop Recording Button -->
+                            <Button Grid.Column="1"
+                                    Content="{Binding KeyCaptureButtonText}"
+                                    Width="120"
+                                    Command="{Binding ToggleKeyCaptureCommand}"
+                                    VerticalAlignment="Stretch" />
+                        </Grid>
+                        
+                        <!-- Captured Keys Info -->
+                        <StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding HasCapturedKeys}">
+                            <TextBlock Text="Modifiers:" Opacity="0.7" VerticalAlignment="Center" />
+                            <TextBlock Text="{Binding CapturedModifiersText}" FontWeight="Bold" VerticalAlignment="Center" />
+                            <TextBlock Text="Key:" Opacity="0.7" VerticalAlignment="Center" Margin="16,0,0,0" />
+                            <TextBlock Text="{Binding CapturedKeyText}" FontWeight="Bold" VerticalAlignment="Center" />
+                        </StackPanel>
+                        
+                        <!-- Or enter text directly -->
+                        <Separator Margin="0,8" />
+                        <TextBlock Text="Or enter text to type:" FontSize="12" Opacity="0.7" />
+                        <TextBox Text="{Binding TextToType}"
+                                 PlaceholderText="e.g., Hello World"
+                                 IsEnabled="{Binding !IsCapturingKeys}" />
                     </StackPanel>
                 </Border>
 
