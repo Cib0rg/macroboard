@@ -101,11 +101,81 @@
                 <Border Background="#2D2D30" CornerRadius="8" Padding="16">
                     <StackPanel Spacing="12">
                         <TextBlock Text="LED Color (Hex)" FontSize="16" FontWeight="Bold" />
-                        <TextBox Text="{Binding LedColor, StringFormat='0x{0:X6}'}"
-                                 PlaceholderText="0xFFFFFF" />
-                        <TextBlock Text="Example: 0xFF0000 (Red), 0x00FF00 (Green), 0x0000FF (Blue)"
+                        <Grid ColumnDefinitions="Auto,*,Auto">
+                            <!-- Color Preview -->
+                            <Border Grid.Column="0"
+                                    Width="32" Height="32"
+                                    CornerRadius="4"
+                                    BorderBrush="#555"
+                                    BorderThickness="1"
+                                    Margin="0,0,8,0"
+                                    VerticalAlignment="Center">
+                                <Border.Background>
+                                    <SolidColorBrush Color="{Binding LedColorPreview}" />
+                                </Border.Background>
+                            </Border>
+                            
+                            <!-- Hex Input Field -->
+                            <TextBox Grid.Column="1"
+                                     Text="{Binding LedColorHex}"
+                                     PlaceholderText="#FFFFFF"
+                                     VerticalAlignment="Center" />
+                            
+                            <!-- Pick Color Button -->
+                            <Button Grid.Column="2"
+                                    Content="Pick Color..."
+                                    Margin="8,0,0,0"
+                                    VerticalAlignment="Center"
+                                    Command="{Binding ToggleColorPickerCommand}" />
+                        </Grid>
+                        
+                        <!-- RGB Sliders (shown when picking) -->
+                        <Border Background="#1E1E1E"
+                                CornerRadius="8"
+                                Padding="16"
+                                IsVisible="{Binding IsColorPickerVisible}">
+                            <StackPanel Spacing="12">
+                                <!-- Red -->
+                                <Grid ColumnDefinitions="50,*,50">
+                                    <TextBlock Grid.Column="0" Text="R:" VerticalAlignment="Center" Foreground="#FF6666" />
+                                    <Slider Grid.Column="1"
+                                            Minimum="0" Maximum="255"
+                                            Value="{Binding ColorR}"
+                                            VerticalAlignment="Center" />
+                                    <TextBlock Grid.Column="2" Text="{Binding ColorR}" VerticalAlignment="Center" HorizontalAlignment="Right" />
+                                </Grid>
+                                
+                                <!-- Green -->
+                                <Grid ColumnDefinitions="50,*,50">
+                                    <TextBlock Grid.Column="0" Text="G:" VerticalAlignment="Center" Foreground="#66FF66" />
+                                    <Slider Grid.Column="1"
+                                            Minimum="0" Maximum="255"
+                                            Value="{Binding ColorG}"
+                                            VerticalAlignment="Center" />
+                                    <TextBlock Grid.Column="2" Text="{Binding ColorG}" VerticalAlignment="Center" HorizontalAlignment="Right" />
+                                </Grid>
+                                
+                                <!-- Blue -->
+                                <Grid ColumnDefinitions="50,*,50">
+                                    <TextBlock Grid.Column="0" Text="B:" VerticalAlignment="Center" Foreground="#6666FF" />
+                                    <Slider Grid.Column="1"
+                                            Minimum="0" Maximum="255"
+                                            Value="{Binding ColorB}"
+                                            VerticalAlignment="Center" />
+                                    <TextBlock Grid.Column="2" Text="{Binding ColorB}" VerticalAlignment="Center" HorizontalAlignment="Right" />
+                                </Grid>
+                                
+                                <Button Content="Done"
+                                        HorizontalAlignment="Center"
+                                        Width="100"
+                                        Command="{Binding ToggleColorPickerCommand}" />
+                            </StackPanel>
+                        </Border>
+                        
+                        <TextBlock Text="Enter hex value (e.g., #FF0000) or click 'Pick Color...' to select"
                                    FontSize="11"
-                                   Opacity="0.6" />
+                                   Opacity="0.6"
+                                   IsVisible="{Binding !IsColorPickerVisible}" />
                     </StackPanel>
                 </Border>
             </StackPanel>

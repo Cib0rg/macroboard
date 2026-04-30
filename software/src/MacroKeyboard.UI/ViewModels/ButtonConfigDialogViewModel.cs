@@ -1,3 +1,4 @@
+using Avalonia.Media;
 using Avalonia.Platform.Storage;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -5,6 +6,7 @@ using MacroKeyboard.Core.Models;
 using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.ObjectModel;
+using System.Globalization;
 using System.Linq;
 using System.Threading.Tasks;
 
@@ -31,7 +33,19 @@ public partial class ButtonConfigDialogViewModel : ViewModelBase
     private string _imagePath = string.Empty;
 
     [ObservableProperty]
-    private uint _ledColor = 0xFFFFFF;
+    private string _ledColorHex = "#FFFFFF";
+
+    [ObservableProperty]
+    private double _colorR = 255;
+
+    [ObservableProperty]
+    private double _colorG = 255;
+
+    [ObservableProperty]
+    private double _colorB = 255;
+
+    [ObservableProperty]
+    private bool _isColorPickerVisible = false;
 
     [ObservableProperty]
     private byte _targetProfileId;
@@ -86,6 +100,11 @@ public partial class ButtonConfigDialogViewModel : ViewModelBase
     /// </summary>
     public bool IsCustomHidAction => SelectedActionType == ActionType.CustomHid;
 
+    /// <summary>
+    /// Color preview for the LED color picker
+    /// </summary>
+    public Color LedColorPreview => Color.FromRgb((byte)ColorR, (byte)ColorG, (byte)ColorB);
+
     public ButtonConfigDialogViewModel(ILogger<ButtonConfigDialogViewModel> logger, ButtonConfig buttonConfig)
     {
         _logger = logger;
@@ -108,7 +127,90 @@ public partial class ButtonConfigDialogViewModel : ViewModelBase
 
         FolderId = buttonConfig.FolderId;
         ImagePath = buttonConfig.ImagePath ?? string.Empty;
-        LedColor = ((uint)buttonConfig.Led.R << 16) | ((uint)buttonConfig.Led.G << 8) | buttonConfig.Led.B;
+        
+        // Initialize LED color from button config
+        ColorR = buttonConfig.Led.R;
+        ColorG = buttonConfig.Led.G;
+        ColorB = buttonConfig.Led.B;
+        UpdateHexFromRgb();
+    }
+
+    partial void OnColorRChanged(double value)
+    {
+        UpdateHexFromRgb();
+        OnPropertyChanged(nameof(LedColorPreview));
+    }
+
+    partial void OnColorGChanged(double value)
+    {
+        UpdateHexFromRgb();
+        OnPropertyChanged(nameof(LedColorPreview));
+    }
+
+    partial void OnColorBChanged(double value)
+    {
+        UpdateHexFromRgb();
+        OnPropertyChanged(nameof(LedColorPreview));
+    }
+
+    partial void OnLedColorHexChanged(string value)
+    {
+        // Try to parse hex string and update RGB values
+        if (TryParseHexColor(value, out byte r, out byte g, out byte b))
+        {
+            // Avoid infinite loop by checking if values are different
+            if ((byte)ColorR != r || (byte)ColorG != g || (byte)ColorB != b)
+            {
+                ColorR = r;
+                ColorG = g;
+                ColorB = b;
+                OnPropertyChanged(nameof(LedColorPreview));
+            }
+        }
+    }
+
+    private void UpdateHexFromRgb()
+    {
+        var newHex = $"#{(byte)ColorR:X2}{(byte)ColorG:X2}{(byte)ColorB:X2}";
+        if (LedColorHex != newHex)
+        {
+            _ledColorHex = newHex; // Direct field access to avoid triggering OnLedColorHexChanged
+            OnPropertyChanged(nameof(LedColorHex));
+        }
+    }
+
+    private static bool TryParseHexColor(string hex, out byte r, out byte g, out byte b)
+    {
+        r = g = b = 255;
+        
+        if (string.IsNullOrWhiteSpace(hex))
+            return false;
+
+        // Remove # prefix if present
+        hex = hex.TrimStart('#');
+        
+        // Also handle 0x prefix
+        if (hex.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
+            hex = hex.Substring(2);
+
+        if (hex.Length != 6)
+            return false;
+
+        if (uint.TryParse(hex, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out var value))
+        {
+            r = (byte)((value >> 16) & 0xFF);
+            g = (byte)((value >> 8) & 0xFF);
+            b = (byte)(value & 0xFF);
+            return true;
+        }
+
+        return false;
+    }
+
+    [RelayCommand]
+    private void ToggleColorPicker()
+    {
+        IsColorPickerVisible = !IsColorPickerVisible;
     }
 
     partial void OnSelectedActionTypeChanged(ActionType value)
@@ -215,10 +317,10 @@ public partial class ButtonConfigDialogViewModel : ViewModelBase
 
             ButtonConfig.ImagePath = string.IsNullOrWhiteSpace(ImagePath) ? null : ImagePath;
             
-            // Update LED color
-            ButtonConfig.Led.R = (byte)((LedColor >> 16) & 0xFF);
-            ButtonConfig.Led.G = (byte)((LedColor >> 8) & 0xFF);
-            ButtonConfig.Led.B = (byte)(LedColor & 0xFF);
+            // Update LED color from RGB sliders
+            ButtonConfig.Led.R = (byte)ColorR;
+            ButtonConfig.Led.G = (byte)ColorG;
+            ButtonConfig.Led.B = (byte)ColorB;
 
             DialogResult = true;
             _logger.LogInformation("Button configuration saved: ActionType={ActionType}", SelectedActionType);
