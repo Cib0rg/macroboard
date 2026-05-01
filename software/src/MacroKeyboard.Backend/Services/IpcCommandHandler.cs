@@ -255,6 +255,9 @@ public class IpcCommandHandler
                 ActionType.ProfileSwitch => actionObj.ToObject<ProfileSwitchAction>(),
                 ActionType.CustomHid => actionObj.ToObject<CustomHidAction>(),
                 ActionType.Folder => actionObj.ToObject<FolderAction>(),
+                ActionType.Delay => actionObj.ToObject<DelayAction>(),
+                ActionType.Shell => actionObj.ToObject<ShellAction>(),
+                ActionType.Sequence => actionObj.ToObject<SequenceAction>(),
                 _ => null
             };
         }

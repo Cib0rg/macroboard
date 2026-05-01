@@ -8,18 +8,19 @@
              x:DataType="vm:ProfileEditorViewModel"
              x:Name="ProfileEditorRoot">
 
-    <Grid ColumnDefinitions="250,*" Margin="20">
+    <Grid ColumnDefinitions="280,*" Margin="20">
         <!-- Left Panel - Profile List -->
-        <Border Grid.Column="0"  Padding="16" Margin="0,0,10,0">
+        <Border Grid.Column="0" Padding="16" Margin="0,0,10,0"
+                Background="#0D1117" CornerRadius="8"
+                BorderBrush="#00FFFF" BorderThickness="1">
             <StackPanel Spacing="12">
-                <TextBlock Text="Profiles" FontSize="18" FontWeight="Bold" />
+                <TextBlock Text="📂 PROFILES" FontSize="18" FontWeight="Bold" Foreground="#00FFFF" />
                 
                 <Separator />
                 
                 <ListBox ItemsSource="{Binding Profiles}"
                          SelectedItem="{Binding SelectedProfile}"
-                         Height="350"
-                         Background="Transparent">
+                         Height="300">
                     <ListBox.ItemTemplate>
                         <DataTemplate>
                             <TextBlock Text="{Binding Name}" />
@@ -28,70 +29,75 @@
                 </ListBox>
                 
                 <StackPanel Spacing="8">
-                    <Button Content="New Profile"
+                    <Button Content="+ NEW PROFILE"
                             Command="{Binding CreateNewProfileCommand}"
                             HorizontalAlignment="Stretch" />
-                    <Button Content="💾 Save to File..."
+                    <Button Content="💾 SAVE TO FILE"
                             Command="{Binding SaveProfileCommand}"
                             HorizontalAlignment="Stretch" />
-                    <Button Content="📂 Load from File..."
+                    <Button Content="📂 LOAD FROM FILE"
                             Command="{Binding LoadProfileCommand}"
                             HorizontalAlignment="Stretch" />
-                    <Button Content="🗑 Delete"
+                    <Button Content="🗑 DELETE"
                             Command="{Binding DeleteProfileCommand}"
                             HorizontalAlignment="Stretch" />
                     
                     <Separator />
                     
-                    <Button Content="📤 Send to Device"
+                    <Button Content="📤 SEND TO DEVICE"
                             Command="{Binding SendToDeviceCommand}"
                             HorizontalAlignment="Stretch"
-                            Background="#0078D4"
-                            Foreground="White" />
-                    <Button Content="📥 Load from Device"
+                            Background="#0D4429"
+                            BorderBrush="#00FF00" />
+                    <Button Content="📥 LOAD FROM DEVICE"
                             Command="{Binding LoadFromDeviceCommand}"
                             HorizontalAlignment="Stretch"
-                            Background="#107C10"
-                            Foreground="White" />
+                            Background="#1A3A5C"
+                            BorderBrush="#00AAFF" />
                 </StackPanel>
                 
                 <!-- Status -->
-                <TextBlock Text="{Binding StatusMessage}" 
+                <TextBlock Text="{Binding StatusMessage}"
                            FontSize="11"
                            TextWrapping="Wrap"
-                           Opacity="0.8" />
+                           Opacity="0.8"
+                           Foreground="#FFA500" />
                 
                 <!-- Sync Progress -->
-                <ProgressBar IsIndeterminate="True" 
+                <ProgressBar IsIndeterminate="True"
                              IsVisible="{Binding IsSyncing}" />
             </StackPanel>
         </Border>
 
         <!-- Right Panel - Profile Editor -->
-        <Border Grid.Column="1" Classes="PanelBorder" Padding="20">
+        <Border Grid.Column="1" Padding="20"
+                Background="#0D1117" CornerRadius="8"
+                BorderBrush="#00FFFF" BorderThickness="1">
             <ScrollViewer>
                 <StackPanel Spacing="16" IsVisible="{Binding SelectedProfile, Converter={x:Static ObjectConverters.IsNotNull}}">
-                    <TextBlock Text="Profile Editor" FontSize="20" FontWeight="Bold" />
+                    <TextBlock Text="✎ PROFILE EDITOR" FontSize="20" FontWeight="Bold" Foreground="#00FFFF" />
                     
                     <Separator />
                     
                     <!-- Profile Name -->
                     <StackPanel Spacing="8">
-                        <TextBlock Text="Profile Name:" />
-                        <TextBox Text="{Binding SelectedProfile.Name}" 
-                                 Watermark="Enter profile name..." />
+                        <TextBlock Text="PROFILE NAME:" Opacity="0.7" />
+                        <TextBox Text="{Binding SelectedProfile.Name}"
+                                 PlaceholderText="Enter profile name..." />
                     </StackPanel>
                     
                     <!-- Buttons Tree (flat list with indentation for folders) -->
                     <StackPanel Spacing="8">
-                        <TextBlock Text="Buttons:" FontSize="16" FontWeight="Bold" />
+                        <TextBlock Text="⌨ BUTTONS:" FontSize="16" FontWeight="Bold" />
                         <TextBlock Text="Click a button to configure. Folder contents are shown indented below."
                                    FontSize="12" Opacity="0.7" />
                         
                         <ItemsControl ItemsSource="{Binding FlattenedButtons}">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
-                                    <Button Background="#3E3E42"
+                                    <Button Background="#161B22"
+                                            BorderBrush="#00FFFF"
+                                            BorderThickness="1"
                                             CornerRadius="6"
                                             Padding="12,8"
                                             Margin="{Binding Margin}"
@@ -119,7 +125,7 @@
                     </StackPanel>
                     
                     <!-- Loading Indicator -->
-                    <ProgressBar IsIndeterminate="True" 
+                    <ProgressBar IsIndeterminate="True"
                                  IsVisible="{Binding IsLoading}" />
                 </StackPanel>
             </ScrollViewer>

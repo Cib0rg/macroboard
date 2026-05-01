@@ -63,6 +63,9 @@ public partial class ButtonConfigDialogViewModel : ViewModelBase
     private double _colorB = 255;
 
     [ObservableProperty]
+    private double _brightness = 200;
+
+    [ObservableProperty]
     private bool _isColorPickerVisible = false;
 
     [ObservableProperty]
@@ -71,13 +74,50 @@ public partial class ButtonConfigDialogViewModel : ViewModelBase
     [ObservableProperty]
     private byte _folderId;
 
+    // ============================================
+    // Shell action properties
+    // ============================================
+    
+    [ObservableProperty]
+    private string _shellCommand = string.Empty;
+    
+    [ObservableProperty]
+    private string? _shellWorkingDirectory;
+    
+    [ObservableProperty]
+    private bool _shellWaitForExit = true;
+    
+    // ============================================
+    // Sequence action properties
+    // ============================================
+    
+    /// <summary>
+    /// Steps in the sequence action
+    /// </summary>
+    public ObservableCollection<SequenceStepViewModel> SequenceSteps { get; } = new();
+
     public ObservableCollection<ActionType> AvailableActionTypes { get; } = new()
     {
         ActionType.None,
         ActionType.Keyboard,
+        ActionType.Shell,
+        ActionType.Sequence,
         ActionType.ProfileSwitch,
         ActionType.Folder,
         ActionType.CustomHid,
+    };
+    
+    /// <summary>
+    /// Available action types for sequence steps (excludes Sequence to prevent recursion)
+    /// </summary>
+    public ObservableCollection<ActionType> AvailableStepActionTypes { get; } = new()
+    {
+        ActionType.Keyboard,
+        ActionType.Shell,
+        ActionType.CustomHid,
+        ActionType.ProfileSwitch,
+        ActionType.Folder,
+        ActionType.Delay,
     };
 
     /// <summary>
@@ -117,6 +157,21 @@ public partial class ButtonConfigDialogViewModel : ViewModelBase
     /// Show custom HID fields
     /// </summary>
     public bool IsCustomHidAction => SelectedActionType == ActionType.CustomHid;
+
+    /// <summary>
+    /// Show shell command fields
+    /// </summary>
+    public bool IsShellAction => SelectedActionType == ActionType.Shell;
+
+    /// <summary>
+    /// Show sequence editor fields
+    /// </summary>
+    public bool IsSequenceAction => SelectedActionType == ActionType.Sequence;
+
+    /// <summary>
+    /// Whether more steps can be added to the sequence
+    /// </summary>
+    public bool CanAddMoreSteps => SequenceSteps.Count < SequenceAction.MaxSteps;
 
     /// <summary>
     /// Color preview for the LED color picker
@@ -216,10 +271,11 @@ public partial class ButtonConfigDialogViewModel : ViewModelBase
         FolderId = buttonConfig.FolderId;
         ImagePath = buttonConfig.ImagePath ?? string.Empty;
         
-        // Initialize LED color from button config
+        // Initialize LED color and brightness from button config
         ColorR = buttonConfig.Led.R;
         ColorG = buttonConfig.Led.G;
         ColorB = buttonConfig.Led.B;
+        Brightness = buttonConfig.Led.Brightness;
         UpdateHexFromRgb();
     }
 
@@ -383,6 +439,87 @@ public partial class ButtonConfigDialogViewModel : ViewModelBase
         NotifyKeyCapturePropertiesChanged();
     }
 
+    // ============================================
+    // Sequence step management
+    // ============================================
+    
+    /// <summary>
+    /// Add a new step to the sequence
+    /// </summary>
+    [RelayCommand]
+    private void AddSequenceStep()
+    {
+        if (SequenceSteps.Count < SequenceAction.MaxSteps)
+        {
+            var step = new SequenceStepViewModel
+            {
+                StepNumber = SequenceSteps.Count + 1,
+                SelectedActionType = ActionType.Keyboard,
+                DelayBeforeMs = 0
+            };
+            SequenceSteps.Add(step);
+            OnPropertyChanged(nameof(CanAddMoreSteps));
+            _logger.LogDebug("Added sequence step {StepNumber}", step.StepNumber);
+        }
+    }
+    
+    /// <summary>
+    /// Remove a step from the sequence
+    /// </summary>
+    [RelayCommand]
+    private void RemoveSequenceStep(SequenceStepViewModel? step)
+    {
+        if (step != null && SequenceSteps.Contains(step))
+        {
+            SequenceSteps.Remove(step);
+            // Renumber remaining steps
+            for (int i = 0; i < SequenceSteps.Count; i++)
+            {
+                SequenceSteps[i].StepNumber = i + 1;
+            }
+            OnPropertyChanged(nameof(CanAddMoreSteps));
+            _logger.LogDebug("Removed sequence step, {Count} steps remaining", SequenceSteps.Count);
+        }
+    }
+    
+    /// <summary>
+    /// Move a step up in the sequence
+    /// </summary>
+    [RelayCommand]
+    private void MoveStepUp(SequenceStepViewModel? step)
+    {
+        if (step == null) return;
+        var index = SequenceSteps.IndexOf(step);
+        if (index > 0)
+        {
+            SequenceSteps.Move(index, index - 1);
+            // Renumber steps
+            for (int i = 0; i < SequenceSteps.Count; i++)
+            {
+                SequenceSteps[i].StepNumber = i + 1;
+            }
+        }
+    }
+    
+    /// <summary>
+    /// Move a step down in the sequence
+    /// </summary>
+    [RelayCommand]
+    private void MoveStepDown(SequenceStepViewModel? step)
+    {
+        if (step == null) return;
+        var index = SequenceSteps.IndexOf(step);
+        if (index >= 0 && index < SequenceSteps.Count - 1)
+        {
+            SequenceSteps.Move(index, index + 1);
+            // Renumber steps
+            for (int i = 0; i < SequenceSteps.Count; i++)
+            {
+                SequenceSteps[i].StepNumber = i + 1;
+            }
+        }
+    }
+
     private void NotifyKeyCapturePropertiesChanged()
     {
         OnPropertyChanged(nameof(KeySequenceDisplay));
@@ -510,6 +647,9 @@ public partial class ButtonConfigDialogViewModel : ViewModelBase
         OnPropertyChanged(nameof(IsProfileSwitchAction));
         OnPropertyChanged(nameof(IsFolderAction));
         OnPropertyChanged(nameof(IsCustomHidAction));
+        OnPropertyChanged(nameof(IsShellAction));
+        OnPropertyChanged(nameof(IsSequenceAction));
+        OnPropertyChanged(nameof(CanAddMoreSteps));
     }
 
     /// <summary>
@@ -629,10 +769,11 @@ public partial class ButtonConfigDialogViewModel : ViewModelBase
 
             ButtonConfig.ImagePath = string.IsNullOrWhiteSpace(ImagePath) ? null : ImagePath;
             
-            // Update LED color from RGB sliders
+            // Update LED color and brightness from sliders
             ButtonConfig.Led.R = (byte)ColorR;
             ButtonConfig.Led.G = (byte)ColorG;
             ButtonConfig.Led.B = (byte)ColorB;
+            ButtonConfig.Led.Brightness = (byte)Brightness;
 
             DialogResult = true;
             _logger.LogInformation("Button configuration saved: ActionType={ActionType}", SelectedActionType);

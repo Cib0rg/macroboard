@@ -9,7 +9,8 @@
         x:DataType="vm:MainWindowViewModel"
         Title="MacroKeyboard Configuration"
         Width="1200" Height="700"
-        MinWidth="800" MinHeight="600">
+        MinWidth="800" MinHeight="600"
+        Classes="Tron">
 
     <Design.DataContext>
         <vm:MainWindowViewModel/>
@@ -29,12 +30,13 @@
 
     <Grid RowDefinitions="Auto,*,Auto">
         <!-- Header -->
-        <Border Grid.Row="0" Background="#2D2D30" Padding="16,12">
+        <Border Grid.Row="0" Background="#0D1117" Padding="16,12"
+                BorderBrush="#00FFFF" BorderThickness="0,0,0,1">
             <Grid ColumnDefinitions="*,Auto">
                 <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="16">
-                    <Button Content="Dashboard" Command="{Binding NavigateToDashboardCommand}" />
-                    <Button Content="Profile Editor" Command="{Binding NavigateToProfileEditorCommand}" />
-                    <Button Content="Settings" Command="{Binding NavigateToSettingsCommand}" />
+                    <Button Content="⌂ Dashboard" Command="{Binding NavigateToDashboardCommand}" />
+                    <Button Content="✎ Profile Editor" Command="{Binding NavigateToProfileEditorCommand}" />
+                    <Button Content="⚙ Settings" Command="{Binding NavigateToSettingsCommand}" />
                 </StackPanel>
                 
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
@@ -49,10 +51,19 @@
         <ContentControl Grid.Row="1" Content="{Binding CurrentPage}" />
 
         <!-- Status Bar -->
-        <Border Grid.Row="2" Background="#007ACC" Padding="8,4">
-            <TextBlock Text="MacroKeyboard Configuration v1.0"
-                       Foreground="White"
-                       FontSize="12" />
+        <Border Grid.Row="2" Background="#0D1117" Padding="8,4"
+                BorderBrush="#00FFFF" BorderThickness="0,1,0,0">
+            <Grid ColumnDefinitions="*,Auto">
+                <TextBlock Text="MacroKeyboard Configuration v1.0"
+                           Foreground="#00FFFF"
+                           FontSize="12"
+                           Opacity="0.8" />
+                <TextBlock Grid.Column="1"
+                           Text="TRON INTERFACE ACTIVE"
+                           Foreground="#00FFFF"
+                           FontSize="10"
+                           Opacity="0.5" />
+            </Grid>
         </Border>
     </Grid>
 </Window>

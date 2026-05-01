@@ -3,14 +3,14 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:vm="using:MacroKeyboard.UI.ViewModels"
-        mc:Ignorable="d" d:DesignWidth="600" d:DesignHeight="550"
+        mc:Ignorable="d" d:DesignWidth="700" d:DesignHeight="850"
         x:Class="MacroKeyboard.UI.Views.ButtonConfigDialog"
         x:DataType="vm:ButtonConfigDialogViewModel"
         Title="Configure Button"
-        Width="600" Height="550"
+        Width="700" Height="850"
         WindowStartupLocation="CenterOwner"
         Classes="Tron"
-        CanResize="False">
+        CanResize="True">
 
     <Grid Margin="20" RowDefinitions="Auto,*,Auto">
         <!-- Header -->
@@ -122,6 +122,196 @@
                     </StackPanel>
                 </Border>
 
+                <!-- Shell Command -->
+                <Border Background="#2D2D30" CornerRadius="8" Padding="16"
+                        IsVisible="{Binding IsShellAction}">
+                    <StackPanel Spacing="12">
+                        <TextBlock Text="Shell Command" FontSize="16" FontWeight="Bold" />
+                        <TextBlock Text="Execute a shell command on the PC when button is pressed"
+                                   FontSize="12" Opacity="0.7" />
+                        
+                        <!-- Command -->
+                        <TextBlock Text="Command:" FontSize="12" Margin="0,8,0,0" />
+                        <TextBox Text="{Binding ShellCommand}"
+                                 PlaceholderText="e.g., git push, npm run build, ./script.sh"
+                                 FontFamily="Consolas, Courier New, monospace" />
+                        
+                        <!-- Working Directory -->
+                        <TextBlock Text="Working Directory (optional):" FontSize="12" Margin="0,8,0,0" />
+                        <TextBox Text="{Binding ShellWorkingDirectory}"
+                                 PlaceholderText="e.g., /home/user/project or C:\Projects\MyApp" />
+                        
+                        <!-- Wait for Exit -->
+                        <CheckBox IsChecked="{Binding ShellWaitForExit}"
+                                  Content="Wait for command to complete before continuing"
+                                  Margin="0,8,0,0" />
+                        
+                        <TextBlock Text="⚠️ Shell commands run on the PC, not on the device"
+                                   FontSize="11" Opacity="0.6" Foreground="#FFA500" Margin="0,8,0,0" />
+                    </StackPanel>
+                </Border>
+
+                <!-- Sequence Editor -->
+                <Border Background="#2D2D30" CornerRadius="8" Padding="16"
+                        IsVisible="{Binding IsSequenceAction}">
+                    <StackPanel Spacing="12">
+                        <Grid ColumnDefinitions="*,Auto">
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="Action Sequence" FontSize="16" FontWeight="Bold" />
+                                <TextBlock Text="Execute multiple actions in sequence when button is pressed"
+                                           FontSize="12" Opacity="0.7" />
+                            </StackPanel>
+                            <TextBlock Grid.Column="1"
+                                       Text="{Binding SequenceSteps.Count, StringFormat='{}{0}/16 steps'}"
+                                       VerticalAlignment="Center"
+                                       Opacity="0.7" />
+                        </Grid>
+                        
+                        <!-- Steps List -->
+                        <Border Background="#1E1E1E" CornerRadius="4" Padding="8" MinHeight="150">
+                            <ScrollViewer MaxHeight="400">
+                                <ItemsControl ItemsSource="{Binding SequenceSteps}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Border Background="#2D2D30" CornerRadius="4" Padding="8" Margin="0,0,0,8">
+                                                <StackPanel Spacing="8">
+                                                    <!-- Header Row: Step Number, Action Type, Buttons -->
+                                                    <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto">
+                                                        <!-- Step Number -->
+                                                        <TextBlock Grid.Column="0"
+                                                                   Text="{Binding StepNumber, StringFormat='#{0}'}"
+                                                                   FontWeight="Bold"
+                                                                   VerticalAlignment="Center"
+                                                                   Margin="0,0,12,0"
+                                                                   Opacity="0.6" />
+                                                        
+                                                        <!-- Action Type -->
+                                                        <ComboBox Grid.Column="1"
+                                                                  ItemsSource="{Binding AvailableActionTypes}"
+                                                                  SelectedItem="{Binding ActionType}"
+                                                                  HorizontalAlignment="Stretch"
+                                                                  Margin="0,0,8,0" />
+                                                        
+                                                        <!-- Move Up -->
+                                                        <Button Grid.Column="2"
+                                                                Content="▲"
+                                                                Width="28" Height="28"
+                                                                Margin="2,0"
+                                                                ToolTip.Tip="Move Up"
+                                                                Command="{Binding $parent[ItemsControl].((vm:ButtonConfigDialogViewModel)DataContext).MoveStepUpCommand}"
+                                                                CommandParameter="{Binding}" />
+                                                        
+                                                        <!-- Move Down -->
+                                                        <Button Grid.Column="3"
+                                                                Content="▼"
+                                                                Width="28" Height="28"
+                                                                Margin="2,0"
+                                                                ToolTip.Tip="Move Down"
+                                                                Command="{Binding $parent[ItemsControl].((vm:ButtonConfigDialogViewModel)DataContext).MoveStepDownCommand}"
+                                                                CommandParameter="{Binding}" />
+                                                        
+                                                        <!-- Remove -->
+                                                        <Button Grid.Column="4"
+                                                                Content="✕"
+                                                                Width="28" Height="28"
+                                                                Margin="2,0,0,0"
+                                                                ToolTip.Tip="Remove Step"
+                                                                Command="{Binding $parent[ItemsControl].((vm:ButtonConfigDialogViewModel)DataContext).RemoveSequenceStepCommand}"
+                                                                CommandParameter="{Binding}" />
+                                                    </Grid>
+                                                    
+                                                    <!-- Action-specific fields -->
+                                                    <Border Background="#252526" CornerRadius="4" Padding="8">
+                                                        <StackPanel Spacing="6">
+                                                            <!-- Keyboard Action -->
+                                                            <StackPanel IsVisible="{Binding IsKeyboardStep}" Spacing="4">
+                                                                <TextBlock Text="Text to type:" FontSize="11" Opacity="0.7" />
+                                                                <TextBox Text="{Binding KeyboardText}"
+                                                                         PlaceholderText="e.g., Hello World or Ctrl+C"
+                                                                         FontFamily="Consolas, Courier New, monospace" />
+                                                            </StackPanel>
+                                                            
+                                                            <!-- Shell Action -->
+                                                            <StackPanel IsVisible="{Binding IsShellStep}" Spacing="4">
+                                                                <TextBlock Text="Shell command:" FontSize="11" Opacity="0.7" />
+                                                                <TextBox Text="{Binding ShellCommand}"
+                                                                         PlaceholderText="e.g., git push, npm run build"
+                                                                         FontFamily="Consolas, Courier New, monospace" />
+                                                                <TextBlock Text="Working directory (optional):" FontSize="11" Opacity="0.7" Margin="0,4,0,0" />
+                                                                <TextBox Text="{Binding WorkingDirectory}"
+                                                                         PlaceholderText="/home/user/project" />
+                                                                <CheckBox IsChecked="{Binding WaitForExit}"
+                                                                          Content="Wait for command to complete"
+                                                                          FontSize="11" />
+                                                            </StackPanel>
+                                                            
+                                                            <!-- Delay Action -->
+                                                            <StackPanel IsVisible="{Binding IsDelayStep}" Orientation="Horizontal" Spacing="8">
+                                                                <TextBlock Text="Delay duration:" FontSize="11" Opacity="0.7" VerticalAlignment="Center" />
+                                                                <NumericUpDown Value="{Binding DelayMs}"
+                                                                               Minimum="0" Maximum="60000"
+                                                                               Increment="100"
+                                                                               Width="120"
+                                                                               FormatString="0" />
+                                                                <TextBlock Text="ms" FontSize="11" Opacity="0.7" VerticalAlignment="Center" />
+                                                            </StackPanel>
+                                                            
+                                                            <!-- CustomHID Action -->
+                                                            <StackPanel IsVisible="{Binding IsCustomHidStep}" Spacing="4">
+                                                                <TextBlock Text="HID data (hex):" FontSize="11" Opacity="0.7" />
+                                                                <TextBox Text="{Binding CustomHidData}"
+                                                                         PlaceholderText="e.g., 01 02 03 04"
+                                                                         FontFamily="Consolas, Courier New, monospace" />
+                                                            </StackPanel>
+                                                            
+                                                            <!-- ProfileSwitch Action -->
+                                                            <StackPanel IsVisible="{Binding IsProfileSwitchStep}" Orientation="Horizontal" Spacing="8">
+                                                                <TextBlock Text="Target profile:" FontSize="11" Opacity="0.7" VerticalAlignment="Center" />
+                                                                <ComboBox ItemsSource="{Binding AvailableProfileIds}"
+                                                                          SelectedItem="{Binding TargetProfileId}"
+                                                                          Width="100" />
+                                                            </StackPanel>
+                                                            
+                                                            <!-- Folder Action -->
+                                                            <StackPanel IsVisible="{Binding IsFolderStep}" Orientation="Horizontal" Spacing="8">
+                                                                <TextBlock Text="Folder:" FontSize="11" Opacity="0.7" VerticalAlignment="Center" />
+                                                                <ComboBox ItemsSource="{Binding AvailableFolderIds}"
+                                                                          SelectedItem="{Binding FolderId}"
+                                                                          Width="100" />
+                                                            </StackPanel>
+                                                        </StackPanel>
+                                                    </Border>
+                                                    
+                                                    <!-- Delay Before (common for all steps) -->
+                                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                                        <TextBlock Text="Delay before this step:" FontSize="11" Opacity="0.7" VerticalAlignment="Center" />
+                                                        <NumericUpDown Value="{Binding DelayBeforeMs}"
+                                                                       Minimum="0" Maximum="10000"
+                                                                       Increment="50"
+                                                                       Width="100"
+                                                                       FormatString="0"
+                                                                       FontSize="11" />
+                                                        <TextBlock Text="ms" FontSize="11" Opacity="0.7" VerticalAlignment="Center" />
+                                                    </StackPanel>
+                                                </StackPanel>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </ScrollViewer>
+                        </Border>
+                        
+                        <!-- Add Step Button -->
+                        <Button Content="+ Add Step"
+                                HorizontalAlignment="Left"
+                                Command="{Binding AddSequenceStepCommand}"
+                                IsEnabled="{Binding CanAddMoreSteps}" />
+                        
+                        <TextBlock Text="💡 Tip: Use Delay action type for pauses between actions. Shell commands execute on PC."
+                                   FontSize="11" Opacity="0.6" TextWrapping="Wrap" />
+                    </StackPanel>
+                </Border>
+
                 <!-- Image -->
                 <Border Background="#2D2D30" CornerRadius="8" Padding="16">
                     <StackPanel Spacing="12">
@@ -205,6 +395,18 @@
                                             VerticalAlignment="Center" />
                                     <TextBlock Grid.Column="2" Text="{Binding ColorB}" VerticalAlignment="Center" HorizontalAlignment="Right" />
                                 </Grid>
+                                
+                                <!-- Brightness -->
+                                <Separator Margin="0,8" />
+                                <Grid ColumnDefinitions="50,*,50">
+                                    <TextBlock Grid.Column="0" Text="💡" VerticalAlignment="Center" FontSize="16" />
+                                    <Slider Grid.Column="1"
+                                            Minimum="0" Maximum="255"
+                                            Value="{Binding Brightness}"
+                                            VerticalAlignment="Center" />
+                                    <TextBlock Grid.Column="2" Text="{Binding Brightness}" VerticalAlignment="Center" HorizontalAlignment="Right" />
+                                </Grid>
+                                <TextBlock Text="Brightness (0-255)" FontSize="11" Opacity="0.6" HorizontalAlignment="Center" />
                                 
                                 <Button Content="Done"
                                         HorizontalAlignment="Center"

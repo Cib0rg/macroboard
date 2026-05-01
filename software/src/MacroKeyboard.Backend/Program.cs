@@ -50,6 +50,7 @@ try
     builder.Services.AddSingleton<IIpcServer>(sp => sp.GetRequiredService<IpcServer>());
     builder.Services.AddSingleton<EventRouter>();
     builder.Services.AddSingleton<IpcCommandHandler>();
+    builder.Services.AddSingleton<IShellCommandExecutor, ShellCommandExecutor>();
 
     // Register the main service
     builder.Services.AddHostedService<BackendService>();

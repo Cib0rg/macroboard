@@ -19,7 +19,34 @@ typedef enum {
     ACTION_TYPE_CUSTOM_HID = 0x02,
     ACTION_TYPE_PROFILE_SWITCH = 0x03,
     ACTION_TYPE_FOLDER = 0x04,
+    ACTION_TYPE_DELAY = 0x05,        // Задержка (используется в последовательностях)
+    ACTION_TYPE_SHELL = 0x06,        // Shell-команда (выполняется на PC через Backend)
+    ACTION_TYPE_SEQUENCE = 0x07,     // Последовательность действий
 } action_type_t;
+
+// ============================================
+// Sequence Configuration
+// ============================================
+
+#define MAX_SEQUENCE_STEPS 16
+
+/**
+ * @brief Один шаг в последовательности действий
+ */
+typedef struct {
+    action_type_t action_type;       // Тип действия (не может быть SEQUENCE)
+    uint16_t delay_before_ms;        // Задержка ПЕРЕД выполнением (0-65535 ms)
+    uint16_t action_data_len;        // Длина данных действия
+    uint8_t action_data[ACTION_DATA_MAX_LEN]; // Данные действия
+} sequence_step_t;
+
+/**
+ * @brief Последовательность действий (макс. 16 шагов)
+ */
+typedef struct {
+    uint8_t num_steps;               // Количество шагов (1-16)
+    sequence_step_t steps[MAX_SEQUENCE_STEPS];
+} action_sequence_t;
 
 // ============================================
 // LED Effects

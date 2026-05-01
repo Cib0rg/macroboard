@@ -9,47 +9,49 @@
 
     <ScrollViewer>
         <StackPanel Margin="20" Spacing="20" MaxWidth="600">
-            <TextBlock Text="Settings" FontSize="24" FontWeight="Bold" />
+            <TextBlock Text="⚙ SETTINGS" FontSize="24" FontWeight="Bold" Foreground="#00FFFF" />
             
             <!-- General Settings -->
-            <Border Background="#2D2D30" CornerRadius="8" Padding="20">
+            <Border Background="#0D1117" CornerRadius="8" Padding="20"
+                    BorderBrush="#00FFFF" BorderThickness="1">
                 <StackPanel Spacing="16">
-                    <TextBlock Text="General" FontSize="18" FontWeight="Bold" />
+                    <TextBlock Text="GENERAL" FontSize="18" FontWeight="Bold" Foreground="#00FFFF" />
                     <Separator />
                     
-                    <CheckBox Content="Start with Windows" 
+                    <CheckBox Content="Start with Windows"
                               IsChecked="{Binding AutoStart}" />
                     
-                    <CheckBox Content="Minimize to tray on close" 
+                    <CheckBox Content="Minimize to tray on close"
                               IsChecked="{Binding MinimizeToTray}" />
                     
-                    <CheckBox Content="Show notifications" 
+                    <CheckBox Content="Show notifications"
                               IsChecked="{Binding ShowNotifications}" />
                 </StackPanel>
             </Border>
 
             <!-- Backend Settings -->
-            <Border Background="#2D2D30" CornerRadius="8" Padding="20">
+            <Border Background="#0D1117" CornerRadius="8" Padding="20"
+                    BorderBrush="#00FFFF" BorderThickness="1">
                 <StackPanel Spacing="16">
-                    <TextBlock Text="Backend" FontSize="18" FontWeight="Bold" />
+                    <TextBlock Text="BACKEND" FontSize="18" FontWeight="Bold" Foreground="#00FFFF" />
                     <Separator />
                     
                     <StackPanel Spacing="8">
-                        <TextBlock Text="IPC Port:" />
-                        <NumericUpDown Value="{Binding IpcPort}" 
-                                       Minimum="1024" 
+                        <TextBlock Text="IPC PORT:" Opacity="0.7" />
+                        <NumericUpDown Value="{Binding IpcPort}"
+                                       Minimum="1024"
                                        Maximum="65535" />
                     </StackPanel>
                     
                     <StackPanel Spacing="8">
-                        <TextBlock Text="WebSocket Port:" />
-                        <NumericUpDown Value="{Binding WebSocketPort}" 
-                                       Minimum="1024" 
+                        <TextBlock Text="WEBSOCKET PORT:" Opacity="0.7" />
+                        <NumericUpDown Value="{Binding WebSocketPort}"
+                                       Minimum="1024"
                                        Maximum="65535" />
                     </StackPanel>
                     
                     <StackPanel Spacing="8">
-                        <TextBlock Text="Plugins Directory:" />
+                        <TextBlock Text="PLUGINS DIRECTORY:" Opacity="0.7" />
                         <TextBox Text="{Binding PluginsDirectory}" />
                     </StackPanel>
                 </StackPanel>
@@ -57,10 +59,12 @@
 
             <!-- Actions -->
             <StackPanel Orientation="Horizontal" Spacing="12" HorizontalAlignment="Right">
-                <Button Content="Reset to Defaults" 
+                <Button Content="↺ RESET DEFAULTS"
                         Command="{Binding ResetSettingsCommand}" />
-                <Button Content="Save Settings" 
-                        Command="{Binding SaveSettingsCommand}" />
+                <Button Content="💾 SAVE SETTINGS"
+                        Command="{Binding SaveSettingsCommand}"
+                        Background="#0D4429"
+                        BorderBrush="#00FF00" />
             </StackPanel>
         </StackPanel>
     </ScrollViewer>

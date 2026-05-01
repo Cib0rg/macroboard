@@ -136,6 +136,125 @@ public class FolderAction : ActionConfig
 }
 
 /// <summary>
+/// Конфигурация действия задержки
+/// </summary>
+public class DelayAction : ActionConfig
+{
+    public override ActionType ActionType => ActionType.Delay;
+    
+    /// <summary>
+    /// Задержка в миллисекундах (0-65535)
+    /// </summary>
+    public ushort DelayMs { get; set; }
+    
+    public override byte[] ToBytes()
+    {
+        return BitConverter.GetBytes(DelayMs);
+    }
+}
+
+/// <summary>
+/// Конфигурация действия выполнения shell-команды на PC
+/// </summary>
+public class ShellAction : ActionConfig
+{
+    public override ActionType ActionType => ActionType.Shell;
+    
+    /// <summary>
+    /// Shell-команда для выполнения
+    /// </summary>
+    public string Command { get; set; } = string.Empty;
+    
+    /// <summary>
+    /// Рабочая директория (опционально)
+    /// </summary>
+    public string? WorkingDirectory { get; set; }
+    
+    /// <summary>
+    /// Ожидать завершения команды перед следующим шагом
+    /// </summary>
+    public bool WaitForExit { get; set; } = true;
+    
+    /// <summary>
+    /// Таймаут ожидания в миллисекундах (0 = без таймаута)
+    /// </summary>
+    public int TimeoutMs { get; set; } = 30000;
+    
+    public override byte[] ToBytes()
+    {
+        var data = new List<byte>();
+        
+        // Флаги: bit 0 = WaitForExit
+        byte flags = 0;
+        if (WaitForExit) flags |= 0x01;
+        data.Add(flags);
+        
+        // Команда (UTF-8, null-terminated)
+        var commandBytes = System.Text.Encoding.UTF8.GetBytes(Command);
+        data.AddRange(commandBytes);
+        data.Add(0); // null terminator
+        
+        return data.ToArray();
+    }
+}
+
+/// <summary>
+/// Один шаг в последовательности действий
+/// </summary>
+public class SequenceStep
+{
+    /// <summary>
+    /// Действие для выполнения
+    /// </summary>
+    public ActionConfig Action { get; set; } = new KeyboardAction();
+    
+    /// <summary>
+    /// Задержка ПЕРЕД выполнением действия (мс)
+    /// </summary>
+    public ushort DelayBeforeMs { get; set; }
+}
+
+/// <summary>
+/// Конфигурация последовательности действий (макс. 16 шагов)
+/// </summary>
+public class SequenceAction : ActionConfig
+{
+    public const int MaxSteps = 16;
+    
+    public override ActionType ActionType => ActionType.Sequence;
+    
+    /// <summary>
+    /// Шаги последовательности (максимум 16)
+    /// </summary>
+    public List<SequenceStep> Steps { get; set; } = new();
+    
+    public override byte[] ToBytes()
+    {
+        var data = new List<byte>();
+        
+        // Количество шагов
+        var stepCount = Math.Min(Steps.Count, MaxSteps);
+        data.Add((byte)stepCount);
+        
+        foreach (var step in Steps.Take(MaxSteps))
+        {
+            // Тип действия шага
+            data.Add((byte)step.Action.ActionType);
+            
+            // Задержка перед (2 байта, little-endian)
+            data.AddRange(BitConverter.GetBytes(step.DelayBeforeMs));
+            
+            // Данные действия
+            var actionData = step.Action.ToBytes();
+            data.AddRange(BitConverter.GetBytes((ushort)actionData.Length));
+            data.AddRange(actionData);
+        }
+        
+        return data.ToArray();
+    }
+}
+
+/// <summary>
 /// JSON converter for ActionConfig abstract class.
 /// Uses the ActionType property to determine the concrete type during deserialization.
 /// Writing is handled by the default serializer (CanWrite = false).
@@ -165,6 +284,9 @@ public class ActionConfigConverter : JsonConverter<ActionConfig>
             ActionType.CustomHid => new CustomHidAction(),
             ActionType.ProfileSwitch => new ProfileSwitchAction(),
             ActionType.Folder => new FolderAction(),
+            ActionType.Delay => new DelayAction(),
+            ActionType.Shell => new ShellAction(),
+            ActionType.Sequence => new SequenceAction(),
             _ => null
         };
 

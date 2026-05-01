@@ -16,42 +16,33 @@ static const char* TAG = "ACTION";
 // Track which button was used to enter current folder (for toggle exit)
 static uint8_t folder_entry_button_id = 0xFF;
 
-esp_err_t action_execute(uint8_t button_id) {
-    if (button_id >= NUM_BUTTONS) {
-        return ESP_ERR_INVALID_ARG;
-    }
-    
-    button_config_t* btn = profile_get_button_config(button_id);
-    if (btn == NULL) {
-        return ESP_FAIL;
-    }
-    
-    ESP_LOGI(TAG, "Executing action for button %d, type=%d", button_id, btn->action_type);
-    
-    switch (btn->action_type) {
+// Forward declarations for internal functions
+static esp_err_t execute_single_action(action_type_t type, const uint8_t* data, uint16_t data_len, uint8_t button_id);
+static esp_err_t execute_sequence(const action_sequence_t* seq, uint8_t button_id);
+
+/**
+ * @brief Execute a single action (used by both direct actions and sequence steps)
+ */
+static esp_err_t execute_single_action(action_type_t type, const uint8_t* data, uint16_t data_len, uint8_t button_id) {
+    switch (type) {
         case ACTION_TYPE_NONE:
-            // No action configured for this button
-            ESP_LOGD(TAG, "Button %d has no action configured", button_id);
+            ESP_LOGD(TAG, "No action configured");
             break;
             
         case ACTION_TYPE_KEYBOARD: {
-            // Keyboard action
-            if (btn->action_data_len >= 2) {
-                uint8_t modifier = btn->action_data[0];
-                uint8_t keycode = btn->action_data[1];
+            if (data_len >= 2) {
+                uint8_t modifier = data[0];
+                uint8_t keycode = data[1];
                 
                 if (keycode != 0) {
-                    // Single keypress with optional modifier
                     usb_hid_keyboard_press(modifier, keycode);
-                } else if (btn->action_data_len > 7) {
-                    // Text typing mode: keycode=0, text starts at byte 7
-                    // Format: [modifier][keycode=0][5 reserved bytes][text...]
+                } else if (data_len > 7) {
                     char text_buf[ACTION_DATA_MAX_LEN - 7 + 1];
-                    uint16_t text_len = btn->action_data_len - 7;
+                    uint16_t text_len = data_len - 7;
                     if (text_len > sizeof(text_buf) - 1) {
                         text_len = sizeof(text_buf) - 1;
                     }
-                    memcpy(text_buf, &btn->action_data[7], text_len);
+                    memcpy(text_buf, &data[7], text_len);
                     text_buf[text_len] = '\0';
                     
                     ESP_LOGI(TAG, "Typing text: '%s' (%d chars)", text_buf, text_len);
@@ -64,56 +55,183 @@ esp_err_t action_execute(uint8_t button_id) {
         }
         
         case ACTION_TYPE_CUSTOM_HID: {
-            // Custom HID action - send event to PC
             uint8_t payload[PROTOCOL_PAYLOAD_SIZE];
             payload[0] = button_id;
             payload[1] = profile_get_current_id();
-            payload[2] = btn->action_type;
+            payload[2] = type;
             
-            // Copy custom data
-            uint16_t copy_len = (btn->action_data_len < 50) ? btn->action_data_len : 50;
-            memcpy(&payload[3], btn->action_data, copy_len);
+            uint16_t copy_len = (data_len < 50) ? data_len : 50;
+            memcpy(&payload[3], data, copy_len);
             
             protocol_send_event(EVENT_BUTTON_PRESSED, payload, 3 + copy_len);
             break;
         }
         
         case ACTION_TYPE_PROFILE_SWITCH: {
-            // Profile switch action
-            if (btn->action_data_len >= 1) {
-                uint8_t target_profile = btn->action_data[0];
+            if (data_len >= 1) {
+                uint8_t target_profile = data[0];
                 profile_switch(target_profile);
             }
             break;
         }
         
         case ACTION_TYPE_FOLDER: {
-            // Folder navigation action (toggle enter/exit)
-            uint8_t folder_id = btn->folder_id;
+            // Note: folder_id should be passed in data[0] for sequence steps
+            uint8_t folder_id = (data_len >= 1) ? data[0] : 0;
             
-            // Check if this is the button that was used to enter the current folder
             if (profile_is_in_folder() && folder_entry_button_id == button_id) {
-                // Exit folder (toggle back)
                 ESP_LOGI(TAG, "Exiting folder via toggle button %d", button_id);
                 profile_folder_exit();
                 folder_entry_button_id = 0xFF;
             } else {
-                // Enter folder
                 ESP_LOGI(TAG, "Entering folder %d via button %d", folder_id, button_id);
                 esp_err_t ret = profile_folder_enter(folder_id);
                 if (ret == ESP_OK) {
                     folder_entry_button_id = button_id;
-                    // Show the embedded "back" icon on the entry button's display
                     profile_show_back_icon(button_id);
                 }
             }
             break;
         }
         
-        default:
-            ESP_LOGW(TAG, "Unknown action type: %d", btn->action_type);
+        case ACTION_TYPE_DELAY: {
+            // Delay action - extract delay_ms from data
+            if (data_len >= 2) {
+                uint16_t delay_ms = data[0] | (data[1] << 8);
+                ESP_LOGD(TAG, "Delay: %d ms", delay_ms);
+                vTaskDelay(pdMS_TO_TICKS(delay_ms));
+            }
             break;
+        }
+        
+        case ACTION_TYPE_SHELL: {
+            // Shell action - send to PC for execution
+            uint8_t payload[PROTOCOL_PAYLOAD_SIZE];
+            payload[0] = button_id;
+            payload[1] = profile_get_current_id();
+            payload[2] = ACTION_TYPE_SHELL;
+            
+            // Copy shell command data (flags + command string)
+            uint16_t copy_len = (data_len < 50) ? data_len : 50;
+            memcpy(&payload[3], data, copy_len);
+            
+            ESP_LOGI(TAG, "Sending shell command to PC");
+            protocol_send_event(EVENT_BUTTON_PRESSED, payload, 3 + copy_len);
+            break;
+        }
+        
+        default:
+            ESP_LOGW(TAG, "Unknown action type: %d", type);
+            return ESP_ERR_INVALID_ARG;
     }
     
     return ESP_OK;
+}
+
+/**
+ * @brief Execute a sequence of actions
+ */
+static esp_err_t execute_sequence(const action_sequence_t* seq, uint8_t button_id) {
+    if (seq == NULL || seq->num_steps == 0) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    
+    ESP_LOGI(TAG, "Executing sequence with %d steps", seq->num_steps);
+    
+    for (int i = 0; i < seq->num_steps && i < MAX_SEQUENCE_STEPS; i++) {
+        const sequence_step_t* step = &seq->steps[i];
+        
+        // Delay before action (if specified)
+        if (step->delay_before_ms > 0) {
+            ESP_LOGD(TAG, "Step %d: delay %d ms before action", i, step->delay_before_ms);
+            vTaskDelay(pdMS_TO_TICKS(step->delay_before_ms));
+        }
+        
+        // Execute the action
+        ESP_LOGI(TAG, "Step %d: executing action type %d", i, step->action_type);
+        esp_err_t ret = execute_single_action(
+            step->action_type,
+            step->action_data,
+            step->action_data_len,
+            button_id
+        );
+        
+        if (ret != ESP_OK) {
+            ESP_LOGE(TAG, "Step %d failed: %s", i, esp_err_to_name(ret));
+            // Continue with remaining steps even if one fails
+        }
+    }
+    
+    ESP_LOGI(TAG, "Sequence completed");
+    return ESP_OK;
+}
+
+esp_err_t action_execute(uint8_t button_id) {
+    if (button_id >= NUM_BUTTONS) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    
+    button_config_t* btn = profile_get_button_config(button_id);
+    if (btn == NULL) {
+        return ESP_FAIL;
+    }
+    
+    ESP_LOGI(TAG, "Executing action for button %d, type=%d", button_id, btn->action_type);
+    
+    // Handle sequence action specially
+    if (btn->action_type == ACTION_TYPE_SEQUENCE) {
+        // Parse sequence from action_data
+        // Format: [num_steps][step1...][step2...]...
+        if (btn->action_data_len < 1) {
+            ESP_LOGW(TAG, "Sequence action with no data");
+            return ESP_ERR_INVALID_ARG;
+        }
+        
+        // Build sequence structure from action_data
+        action_sequence_t seq;
+        memset(&seq, 0, sizeof(seq));
+        
+        const uint8_t* ptr = btn->action_data;
+        const uint8_t* end = btn->action_data + btn->action_data_len;
+        
+        seq.num_steps = *ptr++;
+        if (seq.num_steps > MAX_SEQUENCE_STEPS) {
+            seq.num_steps = MAX_SEQUENCE_STEPS;
+        }
+        
+        for (int i = 0; i < seq.num_steps && ptr < end; i++) {
+            sequence_step_t* step = &seq.steps[i];
+            
+            // Parse step: [action_type][delay_before_ms(2)][data_len(2)][data...]
+            if (ptr + 5 > end) break;
+            
+            step->action_type = (action_type_t)*ptr++;
+            step->delay_before_ms = ptr[0] | (ptr[1] << 8);
+            ptr += 2;
+            step->action_data_len = ptr[0] | (ptr[1] << 8);
+            ptr += 2;
+            
+            if (step->action_data_len > ACTION_DATA_MAX_LEN) {
+                step->action_data_len = ACTION_DATA_MAX_LEN;
+            }
+            
+            if (ptr + step->action_data_len > end) {
+                step->action_data_len = end - ptr;
+            }
+            
+            memcpy(step->action_data, ptr, step->action_data_len);
+            ptr += step->action_data_len;
+        }
+        
+        return execute_sequence(&seq, button_id);
+    }
+    
+    // Handle folder action specially (needs folder_id from button config)
+    if (btn->action_type == ACTION_TYPE_FOLDER) {
+        uint8_t folder_data[1] = { btn->folder_id };
+        return execute_single_action(ACTION_TYPE_FOLDER, folder_data, 1, button_id);
+    }
+    
+    // Execute single action
+    return execute_single_action(btn->action_type, btn->action_data, btn->action_data_len, button_id);
 }

@@ -10,17 +10,19 @@
     <ScrollViewer>
         <StackPanel Margin="20" Spacing="20">
             <!-- Device Status Card -->
-            <Border Background="#2D2D30" CornerRadius="8" Padding="20">
+            <Border Background="#0D1117" CornerRadius="8" Padding="20"
+                    BorderBrush="#00FFFF" BorderThickness="1">
                 <StackPanel Spacing="12">
                     <Grid ColumnDefinitions="*,Auto">
-                        <TextBlock Text="Device Status" 
-                                   FontSize="20" 
-                                   FontWeight="Bold" />
+                        <TextBlock Text="⚡ DEVICE STATUS"
+                                   FontSize="20"
+                                   FontWeight="Bold"
+                                   Foreground="#00FFFF" />
                         <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
-                            <Button Content="🔄 Refresh" 
+                            <Button Content="🔄 REFRESH"
                                     Command="{Binding RequestDeviceInfoCommand}"
                                     Padding="8,4" />
-                            <Button Content="📡 Ping" 
+                            <Button Content="📡 PING"
                                     Command="{Binding PingBackendCommand}"
                                     Padding="8,4" />
                         </StackPanel>
@@ -30,41 +32,41 @@
                     
                     <Grid ColumnDefinitions="150,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto"
                           RowSpacing="8">
-                        <TextBlock Grid.Row="0" Grid.Column="0" Text="Status:" />
+                        <TextBlock Grid.Row="0" Grid.Column="0" Text="STATUS:" Opacity="0.7" />
                         <StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal" Spacing="8">
                             <Ellipse Width="12" Height="12"
                                      Fill="{Binding IsDeviceConnected, Converter={StaticResource BoolToColorConverter}}" />
-                            <TextBlock Text="{Binding ConnectionStatus}" FontWeight="Bold" />
+                            <TextBlock Text="{Binding ConnectionStatus}" FontWeight="Bold" Foreground="#FFA500" />
                         </StackPanel>
                         
-                        <TextBlock Grid.Row="1" Grid.Column="0" Text="Device:" />
-                        <TextBlock Grid.Row="1" Grid.Column="1" 
-                                   Text="{Binding DeviceName}" 
+                        <TextBlock Grid.Row="1" Grid.Column="0" Text="DEVICE:" Opacity="0.7" />
+                        <TextBlock Grid.Row="1" Grid.Column="1"
+                                   Text="{Binding DeviceName}"
                                    FontWeight="Bold" />
                         
-                        <TextBlock Grid.Row="2" Grid.Column="0" Text="Firmware:" />
-                        <TextBlock Grid.Row="2" Grid.Column="1" 
+                        <TextBlock Grid.Row="2" Grid.Column="0" Text="FIRMWARE:" Opacity="0.7" />
+                        <TextBlock Grid.Row="2" Grid.Column="1"
                                    Text="{Binding FirmwareVersion}" />
                         
-                        <TextBlock Grid.Row="3" Grid.Column="0" Text="Current Profile:" />
+                        <TextBlock Grid.Row="3" Grid.Column="0" Text="PROFILE:" Opacity="0.7" />
                         <TextBlock Grid.Row="3" Grid.Column="1"
                                    Text="{Binding CurrentProfile}" />
                         
-                        <TextBlock Grid.Row="4" Grid.Column="0" Text="Folder:" />
+                        <TextBlock Grid.Row="4" Grid.Column="0" Text="FOLDER:" Opacity="0.7" />
                         <StackPanel Grid.Row="4" Grid.Column="1" Orientation="Horizontal" Spacing="8">
                             <TextBlock Text="{Binding FolderState}" />
                             <TextBlock Text="📁" IsVisible="{Binding IsInFolder}" />
                         </StackPanel>
                         
-                        <TextBlock Grid.Row="5" Grid.Column="0" Text="Buttons:" />
+                        <TextBlock Grid.Row="5" Grid.Column="0" Text="BUTTONS:" Opacity="0.7" />
                         <TextBlock Grid.Row="5" Grid.Column="1"
                                    Text="{Binding ButtonCount}" />
                         
-                        <TextBlock Grid.Row="6" Grid.Column="0" Text="Profiles:" />
+                        <TextBlock Grid.Row="6" Grid.Column="0" Text="PROFILES:" Opacity="0.7" />
                         <TextBlock Grid.Row="6" Grid.Column="1"
                                    Text="{Binding ProfileCount}" />
                         
-                        <TextBlock Grid.Row="7" Grid.Column="0" Text="Free Space:" />
+                        <TextBlock Grid.Row="7" Grid.Column="0" Text="FREE SPACE:" Opacity="0.7" />
                         <TextBlock Grid.Row="7" Grid.Column="1"
                                    Text="{Binding FreeSpace}" />
                     </Grid>
@@ -72,22 +74,21 @@
             </Border>
 
             <!-- Recent Events Card -->
-            <Border Background="#2D2D30" CornerRadius="8" Padding="20">
+            <Border Background="#0D1117" CornerRadius="8" Padding="20"
+                    BorderBrush="#00FFFF" BorderThickness="1">
                 <StackPanel Spacing="12">
-                    <TextBlock Text="Recent Events" 
-                               FontSize="20" 
-                               FontWeight="Bold" />
+                    <TextBlock Text="📋 EVENT LOG"
+                               FontSize="20"
+                               FontWeight="Bold"
+                               Foreground="#00FFFF" />
                     
                     <Separator />
                     
                     <ListBox ItemsSource="{Binding RecentEvents}"
-                             Height="350"
-                             Background="Transparent"
-                             BorderThickness="0">
+                             Height="350">
                         <ListBox.ItemTemplate>
                             <DataTemplate>
-                                <TextBlock Text="{Binding}" 
-                                           FontFamily="Consolas,Courier New,monospace" 
+                                <TextBlock Text="{Binding}"
                                            FontSize="12" />
                             </DataTemplate>
                         </ListBox.ItemTemplate>

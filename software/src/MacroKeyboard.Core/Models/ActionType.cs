@@ -28,5 +28,20 @@ public enum ActionType : byte
     /// <summary>
     /// Открытие папки
     /// </summary>
-    Folder = 0x04
+    Folder = 0x04,
+    
+    /// <summary>
+    /// Задержка (используется в последовательностях)
+    /// </summary>
+    Delay = 0x05,
+    
+    /// <summary>
+    /// Shell-команда (выполняется на PC через Backend)
+    /// </summary>
+    Shell = 0x06,
+    
+    /// <summary>
+    /// Последовательность действий (макс. 16 шагов)
+    /// </summary>
+    Sequence = 0x07
 }
