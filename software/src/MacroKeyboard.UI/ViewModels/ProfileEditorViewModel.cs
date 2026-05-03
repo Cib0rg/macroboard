@@ -49,6 +49,12 @@ public partial class ProfileEditorViewModel : ViewModelBase
     [ObservableProperty]
     private bool _isSyncing;
 
+    [ObservableProperty]
+    private ButtonConfigDialogViewModel? _buttonConfigViewModel;
+
+    [ObservableProperty]
+    private bool _isButtonConfigVisible;
+
     public ObservableCollection<Profile> Profiles { get; } = new();
     
     /// <summary>
@@ -488,80 +494,87 @@ public partial class ProfileEditorViewModel : ViewModelBase
     }
 
     [RelayCommand]
-    private async Task ConfigureButton(ButtonConfig? button)
+    private void ConfigureButton(ButtonConfig? button)
     {
         if (button == null)
             return;
 
-        await OpenButtonConfigDialogAsync(button);
+        OpenButtonConfigInline(button);
     }
 
     /// <summary>
     /// Configure a button from the flattened list (used by the nested tree view)
     /// </summary>
     [RelayCommand]
-    private async Task ConfigureFlattenedButton(FlattenedButtonItem? item)
+    private void ConfigureFlattenedButton(FlattenedButtonItem? item)
     {
         if (item == null)
             return;
 
-        await OpenButtonConfigDialogAsync(item.Button);
+        OpenButtonConfigInline(item.Button);
     }
 
     /// <summary>
-    /// Open the button configuration dialog for a given button
+    /// Open the inline button configuration panel
     /// </summary>
-    private async Task OpenButtonConfigDialogAsync(ButtonConfig button)
+    private void OpenButtonConfigInline(ButtonConfig button)
     {
-        _logger.LogInformation("🔘 Configuring button {ButtonId}", button.ButtonId);
+        _logger.LogInformation("🔘 Configuring button {ButtonId} inline", button.ButtonId);
         
+        // Create or update the inline config ViewModel
+        ButtonConfigViewModel = new ButtonConfigDialogViewModel(_dialogLogger, button);
+        IsButtonConfigVisible = true;
+    }
+
+    /// <summary>
+    /// Save the current button configuration and close the inline editor
+    /// </summary>
+    [RelayCommand]
+    private async Task SaveButtonConfig()
+    {
+        if (ButtonConfigViewModel == null)
+            return;
+
         try
         {
-            // Get main window
-            var mainWindow = (Avalonia.Application.Current?.ApplicationLifetime as IClassicDesktopStyleApplicationLifetime)?.MainWindow;
-            if (mainWindow == null)
+            // The ButtonConfigDialogViewModel already modifies the ButtonConfig directly
+            // via its Save logic, so we just need to persist
+            ButtonConfigViewModel.SaveToButtonConfig();
+            
+            var button = ButtonConfigViewModel.ButtonConfig;
+            _logger.LogInformation("Button {ButtonId} configured successfully", button.ButtonId);
+            
+            // Save profile locally
+            if (SelectedProfile != null)
             {
-                _logger.LogWarning("Main window not found");
-                return;
+                await _profileService.UpdateProfileAsync(SelectedProfile);
+                StatusMessage = $"Button {button.ButtonId} configured";
             }
 
-            // Create dialog
-            var dialogViewModel = new ButtonConfigDialogViewModel(_dialogLogger, button);
+            // Rebuild flattened list to update button labels
+            BuildFlattenedButtons();
 
-            var dialog = new ButtonConfigDialog
+            // If connected, also send button action and LED to device
+            if (_ipcClient.IsConnected && SelectedProfile != null)
             {
-                DataContext = dialogViewModel
-            };
-
-            // Show dialog
-            var result = await dialog.ShowDialog<bool>(mainWindow);
-            
-            if (result)
-            {
-                _logger.LogInformation("Button {ButtonId} configured successfully", button.ButtonId);
-                
-                // Save profile locally
-                if (SelectedProfile != null)
-                {
-                    await _profileService.UpdateProfileAsync(SelectedProfile);
-                    StatusMessage = $"Button {button.ButtonId} configured";
-                }
-
-                // Rebuild flattened list to update button labels
-                BuildFlattenedButtons();
-
-                // If connected, also send button action and LED to device
-                if (_ipcClient.IsConnected && SelectedProfile != null)
-                {
-                    await SendButtonConfigToDeviceAsync(SelectedProfile.ProfileId, button);
-                }
+                await SendButtonConfigToDeviceAsync(SelectedProfile.ProfileId, button);
             }
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error opening button configuration dialog");
+            _logger.LogError(ex, "Error saving button configuration");
             StatusMessage = $"Error: {ex.Message}";
         }
+    }
+
+    /// <summary>
+    /// Close the inline button config editor without saving
+    /// </summary>
+    [RelayCommand]
+    private void CloseButtonConfig()
+    {
+        IsButtonConfigVisible = false;
+        ButtonConfigViewModel = null;
     }
 
     /// <summary>

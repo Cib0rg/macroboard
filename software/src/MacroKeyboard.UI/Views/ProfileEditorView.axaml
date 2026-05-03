@@ -3,24 +3,24 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="using:MacroKeyboard.UI.ViewModels"
-             mc:Ignorable="d" d:DesignWidth="1000" d:DesignHeight="600"
+             mc:Ignorable="d" d:DesignWidth="1200" d:DesignHeight="700"
              x:Class="MacroKeyboard.UI.Views.ProfileEditorView"
              x:DataType="vm:ProfileEditorViewModel"
              x:Name="ProfileEditorRoot">
 
-    <Grid ColumnDefinitions="280,*" Margin="20">
+    <Grid ColumnDefinitions="240,*,400" Margin="10">
         <!-- Left Panel - Profile List -->
-        <Border Grid.Column="0" Padding="16" Margin="0,0,10,0"
+        <Border Grid.Column="0" Padding="12" Margin="0,0,5,0"
                 Background="#0D1117" CornerRadius="8"
                 BorderBrush="#00FFFF" BorderThickness="1">
-            <StackPanel Spacing="12">
-                <TextBlock Text="📂 PROFILES" FontSize="18" FontWeight="Bold" Foreground="#00FFFF" />
+            <StackPanel Spacing="10">
+                <TextBlock Text="📂 PROFILES" FontSize="16" FontWeight="Bold" Foreground="#00FFFF" />
                 
                 <Separator />
                 
                 <ListBox ItemsSource="{Binding Profiles}"
                          SelectedItem="{Binding SelectedProfile}"
-                         Height="300">
+                         Height="250">
                     <ListBox.ItemTemplate>
                         <DataTemplate>
                             <TextBlock Text="{Binding Name}" />
@@ -28,14 +28,14 @@
                     </ListBox.ItemTemplate>
                 </ListBox>
                 
-                <StackPanel Spacing="8">
-                    <Button Content="+ NEW PROFILE"
+                <StackPanel Spacing="6">
+                    <Button Content="+ NEW"
                             Command="{Binding CreateNewProfileCommand}"
                             HorizontalAlignment="Stretch" />
-                    <Button Content="💾 SAVE TO FILE"
+                    <Button Content="💾 SAVE"
                             Command="{Binding SaveProfileCommand}"
                             HorizontalAlignment="Stretch" />
-                    <Button Content="📂 LOAD FROM FILE"
+                    <Button Content="📂 LOAD"
                             Command="{Binding LoadProfileCommand}"
                             HorizontalAlignment="Stretch" />
                     <Button Content="🗑 DELETE"
@@ -49,7 +49,7 @@
                             HorizontalAlignment="Stretch"
                             Background="#0D4429"
                             BorderBrush="#00FF00" />
-                    <Button Content="📥 LOAD FROM DEVICE"
+                    <Button Content="📥 FROM DEVICE"
                             Command="{Binding LoadFromDeviceCommand}"
                             HorizontalAlignment="Stretch"
                             Background="#1A3A5C"
@@ -57,78 +57,368 @@
                 </StackPanel>
                 
                 <!-- Status -->
-                <TextBlock Text="{Binding StatusMessage}"
-                           FontSize="11"
+                <TextBlock Text="{Binding StatusMessage}" 
+                           FontSize="10"
                            TextWrapping="Wrap"
                            Opacity="0.8"
                            Foreground="#FFA500" />
                 
-                <!-- Sync Progress -->
-                <ProgressBar IsIndeterminate="True"
+                <ProgressBar IsIndeterminate="True" 
                              IsVisible="{Binding IsSyncing}" />
             </StackPanel>
         </Border>
 
-        <!-- Right Panel - Profile Editor -->
-        <Border Grid.Column="1" Padding="20"
+        <!-- Center Panel - Buttons List -->
+        <Border Grid.Column="1" Padding="12" Margin="5,0"
                 Background="#0D1117" CornerRadius="8"
                 BorderBrush="#00FFFF" BorderThickness="1">
+            <Grid RowDefinitions="Auto,Auto,Auto,*">
+                <StackPanel Grid.Row="0" Spacing="4" IsVisible="{Binding SelectedProfile, Converter={x:Static ObjectConverters.IsNotNull}}">
+                    <TextBlock Text="⌨ BUTTONS" FontSize="16" FontWeight="Bold" Foreground="#00FFFF" />
+                    
+                    <!-- Profile Name -->
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <TextBlock Text="NAME:" Opacity="0.7" VerticalAlignment="Center" FontSize="11" />
+                        <TextBox Text="{Binding SelectedProfile.Name}" 
+                                 PlaceholderText="Profile name..."
+                                 MinWidth="150" />
+                    </StackPanel>
+                </StackPanel>
+                
+                <Separator Grid.Row="1" Margin="0,8" />
+                
+                <TextBlock Grid.Row="2" Text="Click a button to configure"
+                           FontSize="11" Opacity="0.6" Margin="0,0,0,8" />
+                
+                <ScrollViewer Grid.Row="3">
+                    <ItemsControl ItemsSource="{Binding FlattenedButtons}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Button Background="#161B22"
+                                        BorderBrush="#00FFFF"
+                                        BorderThickness="1"
+                                        CornerRadius="4"
+                                        Padding="10,6"
+                                        Margin="{Binding Margin}"
+                                        MinHeight="36"
+                                        HorizontalAlignment="Stretch"
+                                        HorizontalContentAlignment="Stretch"
+                                        Command="{Binding #ProfileEditorRoot.DataContext.ConfigureFlattenedButtonCommand}"
+                                        CommandParameter="{Binding}">
+                                    <Grid ColumnDefinitions="Auto,*,Auto">
+                                        <TextBlock Grid.Column="0"
+                                                   Text="{Binding Label}"
+                                                   VerticalAlignment="Center"
+                                                   FontSize="12" />
+                                        <TextBlock Grid.Column="2"
+                                                   Text="📁"
+                                                   IsVisible="{Binding IsFolderHeader}"
+                                                   VerticalAlignment="Center"
+                                                   FontSize="14"
+                                                   Margin="8,0,0,0" />
+                                    </Grid>
+                                </Button>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+                
+                <ProgressBar Grid.Row="3" IsIndeterminate="True" 
+                             IsVisible="{Binding IsLoading}"
+                             VerticalAlignment="Top" />
+            </Grid>
+        </Border>
+
+        <!-- Right Panel - Button Configuration (inline) -->
+        <Border Grid.Column="2" Padding="12" Margin="5,0,0,0"
+                Background="#0D1117" CornerRadius="8"
+                BorderBrush="#00FFFF" BorderThickness="1"
+                IsVisible="{Binding IsButtonConfigVisible}">
             <ScrollViewer>
-                <StackPanel Spacing="16" IsVisible="{Binding SelectedProfile, Converter={x:Static ObjectConverters.IsNotNull}}">
-                    <TextBlock Text="✎ PROFILE EDITOR" FontSize="20" FontWeight="Bold" Foreground="#00FFFF" />
+                <StackPanel Spacing="12" DataContext="{Binding ButtonConfigViewModel}">
+                    <!-- Header -->
+                    <Grid ColumnDefinitions="*,Auto">
+                        <TextBlock Text="{Binding ButtonConfig.ButtonId, StringFormat='⚙ BUTTON {0}'}"
+                                   FontSize="16" FontWeight="Bold" Foreground="#00FFFF" />
+                        <Button Grid.Column="1" Content="✕" Width="28" Height="28"
+                                Command="{Binding #ProfileEditorRoot.DataContext.CloseButtonConfigCommand}" />
+                    </Grid>
                     
                     <Separator />
                     
-                    <!-- Profile Name -->
-                    <StackPanel Spacing="8">
-                        <TextBlock Text="PROFILE NAME:" Opacity="0.7" />
-                        <TextBox Text="{Binding SelectedProfile.Name}"
-                                 PlaceholderText="Enter profile name..." />
+                    <!-- Action Type -->
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="ACTION TYPE:" FontSize="11" Opacity="0.7" />
+                        <ComboBox ItemsSource="{Binding AvailableActionTypes}"
+                                  SelectedItem="{Binding SelectedActionType}"
+                                  HorizontalAlignment="Stretch" />
                     </StackPanel>
-                    
-                    <!-- Buttons Tree (flat list with indentation for folders) -->
-                    <StackPanel Spacing="8">
-                        <TextBlock Text="⌨ BUTTONS:" FontSize="16" FontWeight="Bold" />
-                        <TextBlock Text="Click a button to configure. Folder contents are shown indented below."
-                                   FontSize="12" Opacity="0.7" />
+
+                    <!-- Keyboard: Key Capture -->
+                    <Border Background="#161B22" CornerRadius="4" Padding="10"
+                            IsVisible="{Binding IsKeyboardAction}">
+                        <StackPanel Spacing="8">
+                            <TextBlock Text="KEY COMBINATION" FontSize="12" FontWeight="Bold" />
+                            <TextBlock Text="Click field and press keys to capture"
+                                       FontSize="10" Opacity="0.6" />
+                            <Grid ColumnDefinitions="*,Auto">
+                                <Border Grid.Column="0"
+                                        Background="{Binding KeyCaptureBackground}"
+                                        BorderBrush="{Binding KeyCaptureBorderBrush}"
+                                        BorderThickness="2"
+                                        CornerRadius="4"
+                                        Padding="8,6"
+                                        Margin="0,0,6,0"
+                                        Cursor="Hand"
+                                        PointerPressed="OnKeyCaptureFieldPressed"
+                                        Focusable="True"
+                                        Name="KeyCaptureField"
+                                        KeyDown="OnKeyCaptureKeyDown"
+                                        KeyUp="OnKeyCaptureKeyUp">
+                                    <TextBlock Text="{Binding KeySequenceDisplay}"
+                                               VerticalAlignment="Center"
+                                               FontSize="12" />
+                                </Border>
+                                <Button Grid.Column="1"
+                                        Content="{Binding KeyCaptureButtonText}"
+                                        Width="80"
+                                        Command="{Binding ToggleKeyCaptureCommand}"
+                                        VerticalAlignment="Stretch" />
+                            </Grid>
+                            
+                            <StackPanel Orientation="Horizontal" Spacing="6" IsVisible="{Binding HasCapturedKeys}">
+                                <TextBlock Text="Mod:" Opacity="0.6" VerticalAlignment="Center" FontSize="10" />
+                                <TextBlock Text="{Binding CapturedModifiersText}" FontWeight="Bold" FontSize="10" />
+                                <TextBlock Text="Key:" Opacity="0.6" VerticalAlignment="Center" FontSize="10" Margin="8,0,0,0" />
+                                <TextBlock Text="{Binding CapturedKeyText}" FontWeight="Bold" FontSize="10" />
+                            </StackPanel>
+                            
+                            <Separator Margin="0,4" />
+                            <TextBlock Text="Or enter text:" FontSize="10" Opacity="0.6" />
+                            <TextBox Text="{Binding TextToType}"
+                                     PlaceholderText="Hello World"
+                                     IsEnabled="{Binding !IsCapturingKeys}" />
+                        </StackPanel>
+                    </Border>
+
+                    <!-- ProfileSwitch -->
+                    <Border Background="#161B22" CornerRadius="4" Padding="10"
+                            IsVisible="{Binding IsProfileSwitchAction}">
+                        <StackPanel Spacing="6">
+                            <TextBlock Text="TARGET PROFILE" FontSize="12" FontWeight="Bold" />
+                            <ComboBox ItemsSource="{Binding AvailableProfileIds}"
+                                      SelectedItem="{Binding TargetProfileId}"
+                                      HorizontalAlignment="Stretch" />
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Folder -->
+                    <Border Background="#161B22" CornerRadius="4" Padding="10"
+                            IsVisible="{Binding IsFolderAction}">
+                        <StackPanel Spacing="6">
+                            <TextBlock Text="FOLDER ID" FontSize="12" FontWeight="Bold" />
+                            <ComboBox ItemsSource="{Binding AvailableFolderIds}"
+                                      SelectedItem="{Binding FolderId}"
+                                      HorizontalAlignment="Stretch" />
+                        </StackPanel>
+                    </Border>
+
+                    <!-- CustomHID -->
+                    <Border Background="#161B22" CornerRadius="4" Padding="10"
+                            IsVisible="{Binding IsCustomHidAction}">
+                        <StackPanel Spacing="6">
+                            <TextBlock Text="CUSTOM HID" FontSize="12" FontWeight="Bold" />
+                            <TextBlock Text="Custom HID report (coming soon)" FontSize="10" Opacity="0.6" />
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Shell Command -->
+                    <Border Background="#161B22" CornerRadius="4" Padding="10"
+                            IsVisible="{Binding IsShellAction}">
+                        <StackPanel Spacing="6">
+                            <TextBlock Text="SHELL COMMAND" FontSize="12" FontWeight="Bold" />
+                            <TextBlock Text="Command:" FontSize="10" Opacity="0.7" />
+                            <TextBox Text="{Binding ShellCommand}"
+                                     PlaceholderText="git push, npm run build..."
+                                     FontFamily="Consolas, monospace" />
+                            <TextBlock Text="Working directory:" FontSize="10" Opacity="0.7" />
+                            <TextBox Text="{Binding ShellWorkingDirectory}"
+                                     PlaceholderText="/home/user/project" />
+                            <CheckBox IsChecked="{Binding ShellWaitForExit}"
+                                      Content="Wait for exit" FontSize="11" />
+                            <TextBlock Text="⚠️ Runs on PC via Backend"
+                                       FontSize="10" Opacity="0.6" Foreground="#FFA500" />
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Sequence Editor -->
+                    <Border Background="#161B22" CornerRadius="4" Padding="10"
+                            IsVisible="{Binding IsSequenceAction}">
+                        <StackPanel Spacing="8">
+                            <Grid ColumnDefinitions="*,Auto">
+                                <TextBlock Text="ACTION SEQUENCE" FontSize="12" FontWeight="Bold" />
+                                <TextBlock Grid.Column="1" 
+                                           Text="{Binding SequenceSteps.Count, StringFormat='{}{0}/16'}"
+                                           Opacity="0.7" FontSize="11" />
+                            </Grid>
+                            
+                            <!-- Steps -->
+                            <Border Background="#0C0C18" CornerRadius="4" Padding="6" MinHeight="100">
+                                <ScrollViewer MaxHeight="250">
+                                    <ItemsControl ItemsSource="{Binding SequenceSteps}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Border Background="#1A1A2E" CornerRadius="4" Padding="6" Margin="0,0,0,6">
+                                                    <StackPanel Spacing="4">
+                                                        <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto">
+                                                            <TextBlock Grid.Column="0"
+                                                                       Text="{Binding StepNumber, StringFormat='#{0}'}"
+                                                                       FontWeight="Bold" Opacity="0.5"
+                                                                       VerticalAlignment="Center" Margin="0,0,8,0" />
+                                                            <ComboBox Grid.Column="1"
+                                                                      ItemsSource="{Binding AvailableActionTypes}"
+                                                                      SelectedItem="{Binding ActionType}"
+                                                                      HorizontalAlignment="Stretch" Margin="0,0,4,0" />
+                                                            <Button Grid.Column="2" Content="▲" Width="24" Height="24" Margin="2,0"
+                                                                    Command="{Binding $parent[ItemsControl].((vm:ButtonConfigDialogViewModel)DataContext).MoveStepUpCommand}"
+                                                                    CommandParameter="{Binding}" />
+                                                            <Button Grid.Column="3" Content="▼" Width="24" Height="24" Margin="2,0"
+                                                                    Command="{Binding $parent[ItemsControl].((vm:ButtonConfigDialogViewModel)DataContext).MoveStepDownCommand}"
+                                                                    CommandParameter="{Binding}" />
+                                                            <Button Grid.Column="4" Content="✕" Width="24" Height="24" Margin="2,0,0,0"
+                                                                    Command="{Binding $parent[ItemsControl].((vm:ButtonConfigDialogViewModel)DataContext).RemoveSequenceStepCommand}"
+                                                                    CommandParameter="{Binding}" />
+                                                        </Grid>
+                                                        
+                                                        <!-- Step-specific fields -->
+                                                        <StackPanel IsVisible="{Binding IsKeyboardStep}">
+                                                            <TextBox Text="{Binding KeyboardText}" PlaceholderText="Text..." FontSize="11" />
+                                                        </StackPanel>
+                                                        <StackPanel IsVisible="{Binding IsShellStep}">
+                                                            <TextBox Text="{Binding ShellCommand}" PlaceholderText="Command..." FontSize="11" />
+                                                        </StackPanel>
+                                                        <StackPanel IsVisible="{Binding IsDelayStep}" Orientation="Horizontal" Spacing="4">
+                                                            <NumericUpDown Value="{Binding DelayMs}" Minimum="0" Maximum="60000"
+                                                                           Increment="100" Width="100" FormatString="0" FontSize="11" />
+                                                            <TextBlock Text="ms" FontSize="10" Opacity="0.6" VerticalAlignment="Center" />
+                                                        </StackPanel>
+                                                        <StackPanel IsVisible="{Binding IsCustomHidStep}">
+                                                            <TextBox Text="{Binding CustomHidData}" PlaceholderText="HEX..." FontSize="11" />
+                                                        </StackPanel>
+                                                        <StackPanel IsVisible="{Binding IsProfileSwitchStep}" Orientation="Horizontal" Spacing="4">
+                                                            <TextBlock Text="Profile:" FontSize="10" Opacity="0.6" VerticalAlignment="Center" />
+                                                            <ComboBox ItemsSource="{Binding AvailableProfileIds}" SelectedItem="{Binding TargetProfileId}" Width="80" />
+                                                        </StackPanel>
+                                                        <StackPanel IsVisible="{Binding IsFolderStep}" Orientation="Horizontal" Spacing="4">
+                                                            <TextBlock Text="Folder:" FontSize="10" Opacity="0.6" VerticalAlignment="Center" />
+                                                            <ComboBox ItemsSource="{Binding AvailableFolderIds}" SelectedItem="{Binding FolderId}" Width="80" />
+                                                        </StackPanel>
+                                                        
+                                                        <!-- Delay before -->
+                                                        <StackPanel Orientation="Horizontal" Spacing="4">
+                                                            <TextBlock Text="Delay before:" FontSize="10" Opacity="0.5" VerticalAlignment="Center" />
+                                                            <NumericUpDown Value="{Binding DelayBeforeMs}" Minimum="0" Maximum="10000"
+                                                                           Increment="50" Width="80" FormatString="0" FontSize="10" />
+                                                            <TextBlock Text="ms" FontSize="10" Opacity="0.5" VerticalAlignment="Center" />
+                                                        </StackPanel>
+                                                    </StackPanel>
+                                                </Border>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </ScrollViewer>
+                            </Border>
+                            
+                            <Button Content="+ ADD STEP"
+                                    Command="{Binding AddSequenceStepCommand}"
+                                    IsEnabled="{Binding CanAddMoreSteps}"
+                                    HorizontalAlignment="Left" />
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Image -->
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="IMAGE:" FontSize="11" Opacity="0.7" />
+                        <Grid ColumnDefinitions="*,Auto">
+                            <TextBox Grid.Column="0" Text="{Binding ImagePath}"
+                                     PlaceholderText="Path to image (160x160 JPEG)"
+                                     Margin="0,0,6,0" />
+                            <Button Grid.Column="1" Content="..."
+                                    Command="{Binding BrowseImageCommand}" Width="36" />
+                        </Grid>
+                    </StackPanel>
+
+                    <!-- LED Color -->
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="LED COLOR:" FontSize="11" Opacity="0.7" />
+                        <Grid ColumnDefinitions="Auto,*,Auto">
+                            <Border Grid.Column="0" Width="28" Height="28"
+                                    CornerRadius="4" BorderBrush="#555" BorderThickness="1"
+                                    Margin="0,0,6,0" VerticalAlignment="Center">
+                                <Border.Background>
+                                    <SolidColorBrush Color="{Binding LedColorPreview}" />
+                                </Border.Background>
+                            </Border>
+                            <TextBox Grid.Column="1" Text="{Binding LedColorHex}"
+                                     PlaceholderText="#FFFFFF" VerticalAlignment="Center" />
+                            <Button Grid.Column="2" Content="🎨" Margin="6,0,0,0"
+                                    Command="{Binding ToggleColorPickerCommand}" Width="36" />
+                        </Grid>
                         
-                        <ItemsControl ItemsSource="{Binding FlattenedButtons}">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate>
-                                    <Button Background="#161B22"
-                                            BorderBrush="#00FFFF"
-                                            BorderThickness="1"
-                                            CornerRadius="6"
-                                            Padding="12,8"
-                                            Margin="{Binding Margin}"
-                                            MinHeight="44"
-                                            HorizontalAlignment="Stretch"
-                                            HorizontalContentAlignment="Stretch"
-                                            Command="{Binding #ProfileEditorRoot.DataContext.ConfigureFlattenedButtonCommand}"
-                                            CommandParameter="{Binding}">
-                                        <Grid ColumnDefinitions="Auto,*,Auto">
-                                            <TextBlock Grid.Column="0"
-                                                       Text="{Binding Label}"
-                                                       VerticalAlignment="Center"
-                                                       FontSize="13" />
-                                            <TextBlock Grid.Column="2"
-                                                       Text="📁"
-                                                       IsVisible="{Binding IsFolderHeader}"
-                                                       VerticalAlignment="Center"
-                                                       FontSize="16"
-                                                       Margin="8,0,0,0" />
-                                        </Grid>
-                                    </Button>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
+                        <!-- RGB Sliders -->
+                        <Border Background="#0C0C18" CornerRadius="4" Padding="10"
+                                IsVisible="{Binding IsColorPickerVisible}">
+                            <StackPanel Spacing="8">
+                                <Grid ColumnDefinitions="30,*,40">
+                                    <TextBlock Grid.Column="0" Text="R" Foreground="#FF6666" VerticalAlignment="Center" />
+                                    <Slider Grid.Column="1" Minimum="0" Maximum="255" Value="{Binding ColorR}" />
+                                    <TextBlock Grid.Column="2" Text="{Binding ColorR}" HorizontalAlignment="Right" VerticalAlignment="Center" />
+                                </Grid>
+                                <Grid ColumnDefinitions="30,*,40">
+                                    <TextBlock Grid.Column="0" Text="G" Foreground="#66FF66" VerticalAlignment="Center" />
+                                    <Slider Grid.Column="1" Minimum="0" Maximum="255" Value="{Binding ColorG}" />
+                                    <TextBlock Grid.Column="2" Text="{Binding ColorG}" HorizontalAlignment="Right" VerticalAlignment="Center" />
+                                </Grid>
+                                <Grid ColumnDefinitions="30,*,40">
+                                    <TextBlock Grid.Column="0" Text="B" Foreground="#6666FF" VerticalAlignment="Center" />
+                                    <Slider Grid.Column="1" Minimum="0" Maximum="255" Value="{Binding ColorB}" />
+                                    <TextBlock Grid.Column="2" Text="{Binding ColorB}" HorizontalAlignment="Right" VerticalAlignment="Center" />
+                                </Grid>
+                                <Grid ColumnDefinitions="30,*,40">
+                                    <TextBlock Grid.Column="0" Text="💡" VerticalAlignment="Center" />
+                                    <Slider Grid.Column="1" Minimum="0" Maximum="255" Value="{Binding Brightness}" />
+                                    <TextBlock Grid.Column="2" Text="{Binding Brightness}" HorizontalAlignment="Right" VerticalAlignment="Center" />
+                                </Grid>
+                                <Button Content="Done" HorizontalAlignment="Center" Width="80"
+                                        Command="{Binding ToggleColorPickerCommand}" />
+                            </StackPanel>
+                        </Border>
                     </StackPanel>
-                    
-                    <!-- Loading Indicator -->
-                    <ProgressBar IsIndeterminate="True"
-                                 IsVisible="{Binding IsLoading}" />
+
+                    <Separator />
+
+                    <!-- Save / Cancel Buttons -->
+                    <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+                        <Button Content="CANCEL"
+                                Command="{Binding #ProfileEditorRoot.DataContext.CloseButtonConfigCommand}" />
+                        <Button Content="💾 SAVE"
+                                Command="{Binding #ProfileEditorRoot.DataContext.SaveButtonConfigCommand}"
+                                Background="#0D4429" BorderBrush="#00FF00" />
+                    </StackPanel>
                 </StackPanel>
             </ScrollViewer>
+        </Border>
+
+        <!-- Right Panel - Placeholder when no button selected -->
+        <Border Grid.Column="2" Padding="12" Margin="5,0,0,0"
+                Background="#0D1117" CornerRadius="8"
+                BorderBrush="#00FFFF" BorderThickness="1"
+                IsVisible="{Binding !IsButtonConfigVisible}">
+            <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="12">
+                <TextBlock Text="⌨" FontSize="48" HorizontalAlignment="Center" Opacity="0.3" />
+                <TextBlock Text="SELECT A BUTTON" FontSize="14" Opacity="0.4" HorizontalAlignment="Center" />
+                <TextBlock Text="to configure its action" FontSize="11" Opacity="0.3" HorizontalAlignment="Center" />
+            </StackPanel>
         </Border>
     </Grid>
 </UserControl>

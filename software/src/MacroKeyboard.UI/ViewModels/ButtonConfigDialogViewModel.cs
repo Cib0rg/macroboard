@@ -731,6 +731,14 @@ public partial class ButtonConfigDialogViewModel : ViewModelBase
         }
     }
 
+    /// <summary>
+    /// Public method to save button config (used by inline editor in ProfileEditorView)
+    /// </summary>
+    public void SaveToButtonConfig()
+    {
+        Save();
+    }
+
     [RelayCommand]
     private void Save()
     {
