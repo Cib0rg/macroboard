@@ -174,6 +174,35 @@ public partial class ButtonConfigDialogViewModel : ViewModelBase
     public bool CanAddMoreSteps => SequenceSteps.Count < SequenceAction.MaxSteps;
 
     /// <summary>
+    /// Emoji icon for the currently selected action type
+    /// </summary>
+    public string CurrentActionIcon => SelectedActionType switch
+    {
+        ActionType.Keyboard => "⌨",
+        ActionType.Shell => "💻",
+        ActionType.Sequence => "📋",
+        ActionType.ProfileSwitch => "🔄",
+        ActionType.Folder => "📁",
+        ActionType.CustomHid => "🔌",
+        _ => "⊘"
+    };
+
+    /// <summary>
+    /// Display name for the currently selected action type
+    /// </summary>
+    public string CurrentActionDisplayName => SelectedActionType switch
+    {
+        ActionType.Keyboard => "Keyboard",
+        ActionType.Shell => "Shell",
+        ActionType.Sequence => "Sequence",
+        ActionType.ProfileSwitch => "Profile Switch",
+        ActionType.Folder => "Folder",
+        ActionType.CustomHid => "Custom HID",
+        ActionType.None => "None",
+        _ => "Not Set"
+    };
+
+    /// <summary>
     /// Color preview for the LED color picker
     /// </summary>
     public Color LedColorPreview => Color.FromRgb((byte)ColorR, (byte)ColorG, (byte)ColorB);
@@ -650,6 +679,8 @@ public partial class ButtonConfigDialogViewModel : ViewModelBase
         OnPropertyChanged(nameof(IsShellAction));
         OnPropertyChanged(nameof(IsSequenceAction));
         OnPropertyChanged(nameof(CanAddMoreSteps));
+        OnPropertyChanged(nameof(CurrentActionIcon));
+        OnPropertyChanged(nameof(CurrentActionDisplayName));
     }
 
     /// <summary>

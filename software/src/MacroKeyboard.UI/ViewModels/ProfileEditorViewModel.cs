@@ -6,7 +6,6 @@ using CommunityToolkit.Mvvm.Input;
 using MacroKeyboard.Core.Models;
 using MacroKeyboard.Core.Services;
 using MacroKeyboard.Shared.IPC;
-using MacroKeyboard.UI.Views;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using System;
@@ -61,6 +60,20 @@ public partial class ProfileEditorViewModel : ViewModelBase
     /// Flattened list of buttons including folder contents, for the nested tree view
     /// </summary>
     public ObservableCollection<FlattenedButtonItem> FlattenedButtons { get; } = new();
+
+    /// <summary>
+    /// Actions palette items for drag-n-drop assignment
+    /// </summary>
+    public ObservableCollection<ActionPaletteItem> ActionPaletteItems { get; } = new()
+    {
+        new ActionPaletteItem(ActionType.Keyboard, "Keyboard", "⌨", "Emulate keyboard key press or text input"),
+        new ActionPaletteItem(ActionType.Shell, "Shell", "💻", "Execute a shell command on the PC"),
+        new ActionPaletteItem(ActionType.Sequence, "Sequence", "📋", "Execute multiple actions in sequence"),
+        new ActionPaletteItem(ActionType.ProfileSwitch, "Profile", "🔄", "Switch to another profile"),
+        new ActionPaletteItem(ActionType.Folder, "Folder", "📁", "Open a folder of sub-buttons"),
+        new ActionPaletteItem(ActionType.CustomHid, "Custom HID", "🔌", "Send custom HID report"),
+        new ActionPaletteItem(ActionType.None, "None", "⊘", "No action assigned"),
+    };
 
     public ProfileEditorViewModel(
         IProfileService profileService,
@@ -523,6 +536,19 @@ public partial class ProfileEditorViewModel : ViewModelBase
         
         // Create or update the inline config ViewModel
         ButtonConfigViewModel = new ButtonConfigDialogViewModel(_dialogLogger, button);
+        IsButtonConfigVisible = true;
+    }
+
+    /// <summary>
+    /// Handle dropping an action type onto a button — opens inline config with the action pre-selected
+    /// </summary>
+    public void HandleActionDropOnButton(FlattenedButtonItem buttonItem, ActionType actionType)
+    {
+        _logger.LogInformation("🎯 Action {ActionType} dropped on button {ButtonId}", actionType, buttonItem.Button.ButtonId);
+        
+        // Open inline config for this button
+        ButtonConfigViewModel = new ButtonConfigDialogViewModel(_dialogLogger, buttonItem.Button);
+        ButtonConfigViewModel.SelectedActionType = actionType;
         IsButtonConfigVisible = true;
     }
 
