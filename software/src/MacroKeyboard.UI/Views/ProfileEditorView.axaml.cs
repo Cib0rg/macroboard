@@ -75,7 +75,8 @@ public partial class ProfileEditorView : UserControl
         {
             if (vm.ButtonConfigViewModel.IsCapturingKeys)
             {
-                vm.ButtonConfigViewModel.HandleKeyDown(e.Key, e.KeyModifiers);
+                // Pass KeySymbol to display the correct character for the current keyboard layout
+                vm.ButtonConfigViewModel.HandleKeyDown(e.Key, e.KeyModifiers, e.KeySymbol);
                 e.Handled = true;
             }
         }
@@ -91,6 +92,21 @@ public partial class ProfileEditorView : UserControl
             if (vm.ButtonConfigViewModel.IsCapturingKeys && e.Key == Key.Escape)
             {
                 vm.ButtonConfigViewModel.StopKeyCapture();
+                e.Handled = true;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Handle text input during capture - provides the actual character for non-Latin layouts (e.g., Russian)
+    /// </summary>
+    private void OnKeyCaptureTextInput(object? sender, TextInputEventArgs e)
+    {
+        if (DataContext is ProfileEditorViewModel vm && vm.ButtonConfigViewModel != null)
+        {
+            if (vm.ButtonConfigViewModel.IsCapturingKeys)
+            {
+                vm.ButtonConfigViewModel.HandleTextInput(e.Text);
                 e.Handled = true;
             }
         }

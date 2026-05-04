@@ -54,6 +54,12 @@ public partial class ProfileEditorViewModel : ViewModelBase
     [ObservableProperty]
     private bool _isButtonConfigVisible;
 
+    /// <summary>
+    /// Reference to the ButtonConfig currently being edited (used for inline expansion matching)
+    /// </summary>
+    [ObservableProperty]
+    private ButtonConfig? _configuredButtonConfig;
+
     public ObservableCollection<Profile> Profiles { get; } = new();
     
     /// <summary>
@@ -536,6 +542,7 @@ public partial class ProfileEditorViewModel : ViewModelBase
         
         // Create or update the inline config ViewModel
         ButtonConfigViewModel = new ButtonConfigDialogViewModel(_dialogLogger, button);
+        ConfiguredButtonConfig = button;
         IsButtonConfigVisible = true;
     }
 
@@ -549,6 +556,7 @@ public partial class ProfileEditorViewModel : ViewModelBase
         // Open inline config for this button
         ButtonConfigViewModel = new ButtonConfigDialogViewModel(_dialogLogger, buttonItem.Button);
         ButtonConfigViewModel.SelectedActionType = actionType;
+        ConfiguredButtonConfig = buttonItem.Button;
         IsButtonConfigVisible = true;
     }
 
@@ -601,6 +609,7 @@ public partial class ProfileEditorViewModel : ViewModelBase
     {
         IsButtonConfigVisible = false;
         ButtonConfigViewModel = null;
+        ConfiguredButtonConfig = null;
     }
 
     /// <summary>

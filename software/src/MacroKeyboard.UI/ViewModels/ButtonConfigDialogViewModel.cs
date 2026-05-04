@@ -412,9 +412,10 @@ public partial class ButtonConfigDialogViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// Handle key down event during capture
+    /// Handle key down event during capture.
+    /// keySymbol is the character produced by the key in the current keyboard layout (e.g., "Ф" for Russian).
     /// </summary>
-    public void HandleKeyDown(Avalonia.Input.Key key, Avalonia.Input.KeyModifiers modifiers)
+    public void HandleKeyDown(Avalonia.Input.Key key, Avalonia.Input.KeyModifiers modifiers, string? keySymbol = null)
     {
         if (!IsCapturingKeys)
             return;
@@ -439,11 +440,21 @@ public partial class ButtonConfigDialogViewModel : ViewModelBase
         if (modifiers.HasFlag(Avalonia.Input.KeyModifiers.Meta))
             keyMods |= KeyModifiers.LeftGui;
 
-        // Convert Avalonia key to HID keycode
+        // Convert Avalonia key to HID keycode (physical key, layout-independent)
         var hidKeyCode = ConvertToHidKeyCode(key);
         
-        // Build display name for this key combination
-        var displayName = FormatSingleKey(hidKeyCode, keyMods);
+        // Build display name: prefer the actual character from the current layout
+        string displayName;
+        if (!string.IsNullOrEmpty(keySymbol) && keySymbol.Length == 1 && !char.IsControl(keySymbol[0]))
+        {
+            // Use the actual character produced by the key in the current layout
+            displayName = FormatSingleKeyWithSymbol(keySymbol.ToUpper(), keyMods);
+        }
+        else
+        {
+            // Fallback to HID keycode name (for special keys like Enter, F1, etc.)
+            displayName = FormatSingleKey(hidKeyCode, keyMods);
+        }
         
         // Add to the captured keys list
         _capturedKeys.Add(new CapturedKey(hidKeyCode, keyMods, displayName));
@@ -453,8 +464,41 @@ public partial class ButtonConfigDialogViewModel : ViewModelBase
         CapturedModifiers = keyMods;
 
         NotifyKeyCapturePropertiesChanged();
-        _logger.LogDebug("Key captured: {Key}, Modifiers: {Modifiers}, HID: 0x{HidCode:X2}, Total keys: {Count}",
-            key, modifiers, hidKeyCode, _capturedKeys.Count);
+        _logger.LogDebug("Key captured: {Key} (symbol: {Symbol}), Modifiers: {Modifiers}, HID: 0x{HidCode:X2}, Total keys: {Count}",
+            key, keySymbol ?? "none", modifiers, hidKeyCode, _capturedKeys.Count);
+    }
+
+    /// <summary>
+    /// Handle text input during capture (provides the actual character for the current keyboard layout).
+    /// This is needed because on Linux, KeyDown may not provide KeySymbol for non-Latin layouts.
+    /// </summary>
+    public void HandleTextInput(string? text)
+    {
+        if (!IsCapturingKeys || string.IsNullOrEmpty(text))
+            return;
+
+        // If the last captured key has a generic display name (like "Key(0x...)"),
+        // update it with the actual character from TextInput
+        if (_capturedKeys.Count > 0)
+        {
+            var lastKey = _capturedKeys[^1];
+            var keyName = GetKeyName(lastKey.KeyCode);
+            
+            // If the display name is just a single Latin letter but the text input is different,
+            // it means the user is typing in a non-Latin layout
+            if (text.Length == 1 && !char.IsControl(text[0]))
+            {
+                var symbol = text.ToUpper();
+                // Update the display name if it differs from what was shown
+                if (keyName.Length == 1 && keyName != symbol)
+                {
+                    var newDisplayName = FormatSingleKeyWithSymbol(symbol, lastKey.Modifiers);
+                    _capturedKeys[^1] = new CapturedKey(lastKey.KeyCode, lastKey.Modifiers, newDisplayName);
+                    NotifyKeyCapturePropertiesChanged();
+                    _logger.LogDebug("Updated last key display to: {Symbol} (from TextInput)", symbol);
+                }
+            }
+        }
     }
 
     /// <summary>
@@ -591,6 +635,27 @@ public partial class ButtonConfigDialogViewModel : ViewModelBase
         return parts.Count > 0 ? string.Join("+", parts) : "";
     }
 
+    /// <summary>
+    /// Format a key using the actual character symbol from the current keyboard layout
+    /// </summary>
+    private string FormatSingleKeyWithSymbol(string symbol, KeyModifiers modifiers)
+    {
+        var parts = new List<string>();
+        
+        if (modifiers.HasFlag(KeyModifiers.LeftCtrl) || modifiers.HasFlag(KeyModifiers.RightCtrl))
+            parts.Add("Ctrl");
+        if (modifiers.HasFlag(KeyModifiers.LeftShift) || modifiers.HasFlag(KeyModifiers.RightShift))
+            parts.Add("Shift");
+        if (modifiers.HasFlag(KeyModifiers.LeftAlt) || modifiers.HasFlag(KeyModifiers.RightAlt))
+            parts.Add("Alt");
+        if (modifiers.HasFlag(KeyModifiers.LeftGui) || modifiers.HasFlag(KeyModifiers.RightGui))
+            parts.Add("Win");
+        
+        parts.Add(symbol);
+        
+        return string.Join("+", parts);
+    }
+
     private static string GetKeyName(byte hidKeyCode)
     {
         // Common HID keycodes to names
@@ -684,16 +749,18 @@ public partial class ButtonConfigDialogViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// Create a KeyboardAction from captured keys
+    /// Create a KeyboardAction from captured keys or text input.
+    /// Priority: captured keys > TextToType > KeySequence (legacy)
     /// </summary>
     private KeyboardAction CreateKeyboardAction()
     {
         if (_capturedKeys.Count == 0)
         {
-            // No keys captured - use text mode with KeySequence field (backward compatibility)
+            // No keys captured - use TextToType field (for typing text like "Привет" or "Hello")
+            var text = !string.IsNullOrEmpty(TextToType) ? TextToType : KeySequence;
             return new KeyboardAction
             {
-                Text = KeySequence,
+                Text = text,
                 KeyCode = 0,
                 Modifiers = KeyModifiers.None
             };
