@@ -148,12 +148,15 @@ public partial class ButtonConfigDialogViewModel : ViewModelBase
     };
 
     /// <summary>
-    /// Available profile IDs for ProfileSwitch action
+    /// Available profiles for ProfileSwitch action (populated from existing profiles)
     /// </summary>
-    public ObservableCollection<byte> AvailableProfileIds { get; } = new()
-    {
-        0, 1, 2, 3, 4
-    };
+    public ObservableCollection<ProfileSwitchItem> AvailableProfiles { get; } = new();
+
+    /// <summary>
+    /// Selected target profile for ProfileSwitch action
+    /// </summary>
+    [ObservableProperty]
+    private ProfileSwitchItem? _selectedTargetProfile;
 
     /// <summary>
     /// Available folder IDs for Folder action
@@ -311,10 +314,18 @@ public partial class ButtonConfigDialogViewModel : ViewModelBase
     /// </summary>
     public string CapturedKeyText => CapturedKeyCode != 0 ? $"0x{CapturedKeyCode:X2}" : "None";
 
-    public ButtonConfigDialogViewModel(ILogger<ButtonConfigDialogViewModel> logger, ButtonConfig buttonConfig)
+    public ButtonConfigDialogViewModel(ILogger<ButtonConfigDialogViewModel> logger, ButtonConfig buttonConfig,
+        IEnumerable<ProfileSwitchItem>? availableProfiles = null)
     {
         _logger = logger;
         _buttonConfig = buttonConfig;
+        
+        // Populate available profiles for ProfileSwitch
+        if (availableProfiles != null)
+        {
+            foreach (var profile in availableProfiles)
+                AvailableProfiles.Add(profile);
+        }
         
         // Load existing configuration
         if (buttonConfig.Action != null)
@@ -328,6 +339,8 @@ public partial class ButtonConfigDialogViewModel : ViewModelBase
             else if (buttonConfig.Action is ProfileSwitchAction psAction)
             {
                 TargetProfileId = psAction.TargetProfileId;
+                // Select the matching profile by ID
+                SelectedTargetProfile = AvailableProfiles.FirstOrDefault(p => p.ProfileId == psAction.TargetProfileId);
             }
             else if (buttonConfig.Action is ShellAction shellAction)
             {
@@ -1102,7 +1115,7 @@ public partial class ButtonConfigDialogViewModel : ViewModelBase
                 ActionType.Keyboard => CreateKeyboardAction(),
                 ActionType.ProfileSwitch => new ProfileSwitchAction
                 {
-                    TargetProfileId = TargetProfileId
+                    TargetProfileId = SelectedTargetProfile?.ProfileId ?? TargetProfileId
                 },
                 ActionType.Folder => new ProfileSwitchAction
                 {
@@ -1163,3 +1176,14 @@ public partial class ButtonConfigDialogViewModel : ViewModelBase
 /// Represents a captured key with modifiers
 /// </summary>
 public record CapturedKey(byte KeyCode, KeyModifiers Modifiers, string DisplayName);
+
+/// <summary>
+/// Represents a profile available for ProfileSwitch action (shows name to user, stores ID internally)
+/// </summary>
+public class ProfileSwitchItem
+{
+    public byte ProfileId { get; set; }
+    public string Name { get; set; } = string.Empty;
+    
+    public override string ToString() => Name;
+}

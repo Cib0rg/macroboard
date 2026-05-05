@@ -216,9 +216,10 @@
                                                     IsVisible="{Binding IsProfileSwitchAction}">
                                                 <StackPanel Spacing="6">
                                                     <TextBlock Text="TARGET PROFILE" FontSize="12" FontWeight="Bold" />
-                                                    <ComboBox ItemsSource="{Binding AvailableProfileIds}"
-                                                              SelectedItem="{Binding TargetProfileId}"
-                                                              HorizontalAlignment="Stretch" />
+                                                    <ComboBox ItemsSource="{Binding AvailableProfiles}"
+                                                              SelectedItem="{Binding SelectedTargetProfile}"
+                                                              HorizontalAlignment="Stretch"
+                                                              PlaceholderText="Select profile..." />
                                                 </StackPanel>
                                             </Border>
 

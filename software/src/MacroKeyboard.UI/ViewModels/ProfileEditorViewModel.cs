@@ -9,6 +9,7 @@ using MacroKeyboard.Shared.IPC;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
@@ -541,8 +542,9 @@ public partial class ProfileEditorViewModel : ViewModelBase
     {
         _logger.LogInformation("🔘 Configuring button {ButtonId} inline", button.ButtonId);
         
-        // Create or update the inline config ViewModel
-        ButtonConfigViewModel = new ButtonConfigDialogViewModel(_dialogLogger, button);
+        // Create or update the inline config ViewModel with available profiles
+        var profileItems = GetAvailableProfileItems();
+        ButtonConfigViewModel = new ButtonConfigDialogViewModel(_dialogLogger, button, profileItems);
         ConfiguredButtonConfig = button;
         IsButtonConfigVisible = true;
     }
@@ -554,11 +556,55 @@ public partial class ProfileEditorViewModel : ViewModelBase
     {
         _logger.LogInformation("🎯 Action {ActionType} dropped on button {ButtonId}", actionType, buttonItem.Button.ButtonId);
         
-        // Open inline config for this button
-        ButtonConfigViewModel = new ButtonConfigDialogViewModel(_dialogLogger, buttonItem.Button);
+        // Open inline config for this button with available profiles
+        var profileItems = GetAvailableProfileItems();
+        ButtonConfigViewModel = new ButtonConfigDialogViewModel(_dialogLogger, buttonItem.Button, profileItems);
         ButtonConfigViewModel.SelectedActionType = actionType;
         ConfiguredButtonConfig = buttonItem.Button;
         IsButtonConfigVisible = true;
+    }
+
+    /// <summary>
+    /// Get the list of available profiles as ProfileSwitchItems for the ComboBox.
+    /// Includes all profiles from the UI collection (which contains both local and device-loaded profiles).
+    /// Also queries the profile service to include any profiles stored on device that haven't been loaded into UI yet.
+    /// </summary>
+    private IEnumerable<ProfileSwitchItem> GetAvailableProfileItems()
+    {
+        // Start with profiles already in the UI (includes device-loaded ones)
+        var profileItems = new Dictionary<byte, ProfileSwitchItem>();
+        
+        foreach (var p in Profiles)
+        {
+            profileItems[p.ProfileId] = new ProfileSwitchItem
+            {
+                ProfileId = p.ProfileId,
+                Name = p.Name
+            };
+        }
+        
+        // Also try to get all profiles from the service (includes device-synced ones)
+        try
+        {
+            var allProfiles = _profileService.GetAllProfilesAsync().GetAwaiter().GetResult();
+            foreach (var p in allProfiles)
+            {
+                if (!profileItems.ContainsKey(p.ProfileId))
+                {
+                    profileItems[p.ProfileId] = new ProfileSwitchItem
+                    {
+                        ProfileId = p.ProfileId,
+                        Name = p.Name
+                    };
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Could not load additional profiles from service");
+        }
+        
+        return profileItems.Values.OrderBy(p => p.ProfileId);
     }
 
     /// <summary>
