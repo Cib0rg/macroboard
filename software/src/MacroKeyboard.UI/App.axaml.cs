@@ -79,18 +79,25 @@ public partial class App : Application
     {
         _trayIcon = new TrayIcon();
 
-        // Set icon
+        // Set icon from embedded resource
         try
         {
-            var iconPath = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Assets", "avalonia-logo.ico");
-            if (System.IO.File.Exists(iconPath))
-            {
-                _trayIcon.Icon = new WindowIcon(iconPath);
-            }
+            var uri = new Uri("avares://MacroKeyboard.UI/Assets/app-icon.ico");
+            var stream = Avalonia.Platform.AssetLoader.Open(uri);
+            _trayIcon.Icon = new WindowIcon(stream);
         }
         catch
         {
-            // Icon not found, will use default
+            // Fallback: try file path
+            try
+            {
+                var iconPath = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Assets", "app-icon.ico");
+                if (System.IO.File.Exists(iconPath))
+                {
+                    _trayIcon.Icon = new WindowIcon(iconPath);
+                }
+            }
+            catch { /* Icon not found, will use default */ }
         }
 
         _trayIcon.ToolTipText = "MacroKeyboard";

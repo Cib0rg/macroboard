@@ -43,5 +43,10 @@ public enum ActionType : byte
     /// <summary>
     /// Последовательность действий (макс. 16 шагов)
     /// </summary>
-    Sequence = 0x07
+    Sequence = 0x07,
+    
+    /// <summary>
+    /// Запуск приложения (выполняется на PC через Backend)
+    /// </summary>
+    LaunchApp = 0x08
 }

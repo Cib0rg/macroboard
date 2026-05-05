@@ -255,6 +255,51 @@ public class SequenceAction : ActionConfig
 }
 
 /// <summary>
+/// Конфигурация действия запуска приложения на PC
+/// </summary>
+public class LaunchAppAction : ActionConfig
+{
+    public override ActionType ActionType => ActionType.LaunchApp;
+    
+    /// <summary>
+    /// Путь к исполняемому файлу приложения
+    /// </summary>
+    public string ExecutablePath { get; set; } = string.Empty;
+    
+    /// <summary>
+    /// Аргументы командной строки (опционально)
+    /// </summary>
+    public string? Arguments { get; set; }
+    
+    /// <summary>
+    /// Рабочая директория (опционально, по умолчанию — директория приложения)
+    /// </summary>
+    public string? WorkingDirectory { get; set; }
+    
+    /// <summary>
+    /// Путь к иконке приложения (извлекается автоматически из exe)
+    /// </summary>
+    public string? IconPath { get; set; }
+    
+    public override byte[] ToBytes()
+    {
+        var data = new List<byte>();
+        
+        // Путь к приложению (UTF-8, null-terminated)
+        var pathBytes = System.Text.Encoding.UTF8.GetBytes(ExecutablePath);
+        data.AddRange(pathBytes);
+        data.Add(0); // null terminator
+        
+        // Аргументы (UTF-8, null-terminated)
+        var argsBytes = System.Text.Encoding.UTF8.GetBytes(Arguments ?? string.Empty);
+        data.AddRange(argsBytes);
+        data.Add(0); // null terminator
+        
+        return data.ToArray();
+    }
+}
+
+/// <summary>
 /// JSON converter for ActionConfig abstract class.
 /// Uses the ActionType property to determine the concrete type during deserialization.
 /// Writing is handled by the default serializer (CanWrite = false).
@@ -287,6 +332,7 @@ public class ActionConfigConverter : JsonConverter<ActionConfig>
             ActionType.Delay => new DelayAction(),
             ActionType.Shell => new ShellAction(),
             ActionType.Sequence => new SequenceAction(),
+            ActionType.LaunchApp => new LaunchAppAction(),
             _ => null
         };
 

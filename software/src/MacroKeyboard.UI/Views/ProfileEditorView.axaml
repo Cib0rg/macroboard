@@ -261,6 +261,30 @@
                                                 </StackPanel>
                                             </Border>
 
+                                            <!-- Launch App -->
+                                            <Border Background="#161B22" CornerRadius="4" Padding="10"
+                                                    IsVisible="{Binding IsLaunchAppAction}">
+                                                <StackPanel Spacing="6">
+                                                    <TextBlock Text="LAUNCH APPLICATION" FontSize="12" FontWeight="Bold" />
+                                                    <TextBlock Text="Application:" FontSize="10" Opacity="0.7" />
+                                                    <Grid ColumnDefinitions="*,Auto">
+                                                        <TextBox Grid.Column="0" Text="{Binding LaunchAppPath}"
+                                                                 PlaceholderText="Path to executable..."
+                                                                 Margin="0,0,6,0" />
+                                                        <Button Grid.Column="1" Content="📂"
+                                                                Command="{Binding BrowseLaunchAppCommand}" Width="36" />
+                                                    </Grid>
+                                                    <TextBlock Text="Arguments (optional):" FontSize="10" Opacity="0.7" />
+                                                    <TextBox Text="{Binding LaunchAppArguments}"
+                                                             PlaceholderText="--flag value" />
+                                                    <TextBlock Text="Working directory (optional):" FontSize="10" Opacity="0.7" />
+                                                    <TextBox Text="{Binding LaunchAppWorkingDirectory}"
+                                                             PlaceholderText="Leave empty for app directory" />
+                                                    <TextBlock Text="🚀 App icon will be used as button image"
+                                                               FontSize="10" Opacity="0.6" Foreground="#00FFAA" />
+                                                </StackPanel>
+                                            </Border>
+
                                             <!-- Sequence Editor -->
                                             <Border Background="#161B22" CornerRadius="4" Padding="10"
                                                     IsVisible="{Binding IsSequenceAction}">
@@ -372,31 +396,21 @@
                                                             Command="{Binding ToggleColorPickerCommand}" Width="36" />
                                                 </Grid>
                                                 
-                                                <!-- RGB Sliders -->
+                                                <!-- ColorPicker вместо RGB Sliders -->
                                                 <Border Background="#0C0C18" CornerRadius="4" Padding="10"
                                                         IsVisible="{Binding IsColorPickerVisible}">
                                                     <StackPanel Spacing="8">
-                                                        <Grid ColumnDefinitions="30,*,40">
-                                                            <TextBlock Grid.Column="0" Text="R" Foreground="#FF6666" VerticalAlignment="Center" />
-                                                            <Slider Grid.Column="1" Minimum="0" Maximum="255" Value="{Binding ColorR}" />
-                                                            <TextBlock Grid.Column="2" Text="{Binding ColorR}" HorizontalAlignment="Right" VerticalAlignment="Center" />
-                                                        </Grid>
-                                                        <Grid ColumnDefinitions="30,*,40">
-                                                            <TextBlock Grid.Column="0" Text="G" Foreground="#66FF66" VerticalAlignment="Center" />
-                                                            <Slider Grid.Column="1" Minimum="0" Maximum="255" Value="{Binding ColorG}" />
-                                                            <TextBlock Grid.Column="2" Text="{Binding ColorG}" HorizontalAlignment="Right" VerticalAlignment="Center" />
-                                                        </Grid>
-                                                        <Grid ColumnDefinitions="30,*,40">
-                                                            <TextBlock Grid.Column="0" Text="B" Foreground="#6666FF" VerticalAlignment="Center" />
-                                                            <Slider Grid.Column="1" Minimum="0" Maximum="255" Value="{Binding ColorB}" />
-                                                            <TextBlock Grid.Column="2" Text="{Binding ColorB}" HorizontalAlignment="Right" VerticalAlignment="Center" />
-                                                        </Grid>
-                                                        <Grid ColumnDefinitions="30,*,40">
-                                                            <TextBlock Grid.Column="0" Text="💡" VerticalAlignment="Center" />
-                                                            <Slider Grid.Column="1" Minimum="0" Maximum="255" Value="{Binding Brightness}" />
-                                                            <TextBlock Grid.Column="2" Text="{Binding Brightness}" HorizontalAlignment="Right" VerticalAlignment="Center" />
-                                                        </Grid>
-                                                        <Button Content="Done" HorizontalAlignment="Center" Width="80"
+                                                        <!-- Компактный ColorPicker -->
+                                                        <ColorPicker Name="ColorPickerControl"
+                                                                    Color="{Binding LedColor}"
+                                                                    Width="200"
+                                                                    Height="40"
+                                                                    IsAlphaEnabled="False" />
+                                                        
+                                                        <!-- Кнопка Done -->
+                                                        <Button Content="Done" 
+                                                                HorizontalAlignment="Center" 
+                                                                Width="80"
                                                                 Command="{Binding ToggleColorPickerCommand}" />
                                                     </StackPanel>
                                                 </Border>

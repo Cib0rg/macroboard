@@ -8,6 +8,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Globalization;
+using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 
@@ -68,6 +69,15 @@ public partial class ButtonConfigDialogViewModel : ViewModelBase
     [ObservableProperty]
     private bool _isColorPickerVisible = false;
 
+    /// <summary>
+    /// Color property for binding to ColorPicker control.
+    /// Syncs with ColorR/ColorG/ColorB.
+    /// </summary>
+    [ObservableProperty]
+    private Color _ledColor = Color.FromRgb(255, 255, 255);
+    
+    private bool _isUpdatingColor = false;
+
     [ObservableProperty]
     private byte _targetProfileId;
 
@@ -88,6 +98,22 @@ public partial class ButtonConfigDialogViewModel : ViewModelBase
     private bool _shellWaitForExit = true;
     
     // ============================================
+    // LaunchApp action properties
+    // ============================================
+    
+    [ObservableProperty]
+    private string _launchAppPath = string.Empty;
+    
+    [ObservableProperty]
+    private string? _launchAppArguments;
+    
+    [ObservableProperty]
+    private string? _launchAppWorkingDirectory;
+    
+    [ObservableProperty]
+    private string? _launchAppIconPath;
+    
+    // ============================================
     // Sequence action properties
     // ============================================
     
@@ -100,6 +126,7 @@ public partial class ButtonConfigDialogViewModel : ViewModelBase
     {
         ActionType.None,
         ActionType.Keyboard,
+        ActionType.LaunchApp,
         ActionType.Shell,
         ActionType.Sequence,
         ActionType.ProfileSwitch,
@@ -164,6 +191,11 @@ public partial class ButtonConfigDialogViewModel : ViewModelBase
     public bool IsShellAction => SelectedActionType == ActionType.Shell;
 
     /// <summary>
+    /// Show launch app fields
+    /// </summary>
+    public bool IsLaunchAppAction => SelectedActionType == ActionType.LaunchApp;
+
+    /// <summary>
     /// Show sequence editor fields
     /// </summary>
     public bool IsSequenceAction => SelectedActionType == ActionType.Sequence;
@@ -180,6 +212,7 @@ public partial class ButtonConfigDialogViewModel : ViewModelBase
     {
         ActionType.Keyboard => "⌨",
         ActionType.Shell => "💻",
+        ActionType.LaunchApp => "🚀",
         ActionType.Sequence => "📋",
         ActionType.ProfileSwitch => "🔄",
         ActionType.Folder => "📁",
@@ -194,6 +227,7 @@ public partial class ButtonConfigDialogViewModel : ViewModelBase
     {
         ActionType.Keyboard => "Keyboard",
         ActionType.Shell => "Shell",
+        ActionType.LaunchApp => "Launch App",
         ActionType.Sequence => "Sequence",
         ActionType.ProfileSwitch => "Profile Switch",
         ActionType.Folder => "Folder",
@@ -295,35 +329,94 @@ public partial class ButtonConfigDialogViewModel : ViewModelBase
             {
                 TargetProfileId = psAction.TargetProfileId;
             }
+            else if (buttonConfig.Action is ShellAction shellAction)
+            {
+                ShellCommand = shellAction.Command;
+                ShellWorkingDirectory = shellAction.WorkingDirectory;
+                ShellWaitForExit = shellAction.WaitForExit;
+            }
+            else if (buttonConfig.Action is LaunchAppAction launchAction)
+            {
+                LaunchAppPath = launchAction.ExecutablePath;
+                LaunchAppArguments = launchAction.Arguments;
+                LaunchAppWorkingDirectory = launchAction.WorkingDirectory;
+                LaunchAppIconPath = launchAction.IconPath;
+            }
         }
 
         FolderId = buttonConfig.FolderId;
         ImagePath = buttonConfig.ImagePath ?? string.Empty;
         
         // Initialize LED color and brightness from button config
+        _isUpdatingColor = true;
         ColorR = buttonConfig.Led.R;
         ColorG = buttonConfig.Led.G;
         ColorB = buttonConfig.Led.B;
         Brightness = buttonConfig.Led.Brightness;
+        LedColor = Color.FromRgb(buttonConfig.Led.R, buttonConfig.Led.G, buttonConfig.Led.B);
+        _isUpdatingColor = false;
         UpdateHexFromRgb();
     }
 
     partial void OnColorRChanged(double value)
     {
+        if (_isUpdatingColor) return;
         UpdateHexFromRgb();
+        SyncLedColorFromRgb();
         OnPropertyChanged(nameof(LedColorPreview));
     }
 
     partial void OnColorGChanged(double value)
     {
+        if (_isUpdatingColor) return;
         UpdateHexFromRgb();
+        SyncLedColorFromRgb();
         OnPropertyChanged(nameof(LedColorPreview));
     }
 
     partial void OnColorBChanged(double value)
     {
+        if (_isUpdatingColor) return;
         UpdateHexFromRgb();
+        SyncLedColorFromRgb();
         OnPropertyChanged(nameof(LedColorPreview));
+    }
+
+    /// <summary>
+    /// Called when the ColorPicker changes the LedColor property
+    /// </summary>
+    partial void OnLedColorChanged(Color value)
+    {
+        if (_isUpdatingColor) return;
+        _isUpdatingColor = true;
+        try
+        {
+            ColorR = value.R;
+            ColorG = value.G;
+            ColorB = value.B;
+            UpdateHexFromRgb();
+            OnPropertyChanged(nameof(LedColorPreview));
+        }
+        finally
+        {
+            _isUpdatingColor = false;
+        }
+    }
+
+    /// <summary>
+    /// Sync LedColor from individual R/G/B values (for ColorPicker binding)
+    /// </summary>
+    private void SyncLedColorFromRgb()
+    {
+        _isUpdatingColor = true;
+        try
+        {
+            LedColor = Color.FromRgb((byte)ColorR, (byte)ColorG, (byte)ColorB);
+        }
+        finally
+        {
+            _isUpdatingColor = false;
+        }
     }
 
     partial void OnLedColorHexChanged(string value)
@@ -742,6 +835,7 @@ public partial class ButtonConfigDialogViewModel : ViewModelBase
         OnPropertyChanged(nameof(IsFolderAction));
         OnPropertyChanged(nameof(IsCustomHidAction));
         OnPropertyChanged(nameof(IsShellAction));
+        OnPropertyChanged(nameof(IsLaunchAppAction));
         OnPropertyChanged(nameof(IsSequenceAction));
         OnPropertyChanged(nameof(CanAddMoreSteps));
         OnPropertyChanged(nameof(CurrentActionIcon));
@@ -783,6 +877,166 @@ public partial class ButtonConfigDialogViewModel : ViewModelBase
     public void SetStorageProvider(IStorageProvider storageProvider)
     {
         _storageProvider = storageProvider;
+    }
+
+    [RelayCommand]
+    private async Task BrowseLaunchApp()
+    {
+        try
+        {
+            _logger.LogInformation("Browse launch app clicked");
+            
+            if (_storageProvider == null)
+            {
+                _logger.LogWarning("StorageProvider not set");
+                return;
+            }
+            
+            var fileTypes = new FilePickerFileType[]
+            {
+                new("Executables")
+                {
+                    Patterns = OperatingSystem.IsWindows()
+                        ? new[] { "*.exe", "*.bat", "*.cmd", "*.lnk" }
+                        : new[] { "*" },
+                }
+            };
+            
+            var options = new FilePickerOpenOptions
+            {
+                Title = "Select Application",
+                AllowMultiple = false,
+                FileTypeFilter = fileTypes
+            };
+            
+            var result = await _storageProvider.OpenFilePickerAsync(options);
+            
+            if (result != null && result.Count > 0)
+            {
+                var file = result[0];
+                LaunchAppPath = file.Path.LocalPath;
+                _logger.LogInformation("App selected: {Path}", LaunchAppPath);
+                
+                // Auto-extract icon from the executable and set as button image
+                await ExtractAndSetAppIconAsync(LaunchAppPath);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error browsing for application");
+        }
+    }
+
+    /// <summary>
+    /// Extract icon from an executable and save it as the button image
+    /// </summary>
+    private async Task ExtractAndSetAppIconAsync(string executablePath)
+    {
+        try
+        {
+            var appDataDir = System.IO.Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                "MacroKeyboard", "icons");
+            Directory.CreateDirectory(appDataDir);
+            
+            var iconFileName = System.IO.Path.GetFileNameWithoutExtension(executablePath) + ".png";
+            var iconOutputPath = System.IO.Path.Combine(appDataDir, iconFileName);
+            
+            if (OperatingSystem.IsWindows())
+            {
+                // On Windows, extract icon from exe using System.Drawing (via shell)
+                // Use a simple approach: copy the exe path and let the backend handle icon extraction
+                // For now, store the path — the backend will extract the icon when syncing
+                LaunchAppIconPath = executablePath; // Will be resolved to actual icon by backend
+                ImagePath = iconOutputPath; // Placeholder path for the extracted icon
+                _logger.LogInformation("App icon will be extracted from: {Path}", executablePath);
+            }
+            else
+            {
+                // On Linux, try to find the app icon from .desktop files or freedesktop icon theme
+                var desktopIconPath = TryFindLinuxAppIcon(executablePath);
+                if (desktopIconPath != null)
+                {
+                    LaunchAppIconPath = desktopIconPath;
+                    ImagePath = desktopIconPath;
+                    _logger.LogInformation("Found Linux app icon: {Path}", desktopIconPath);
+                }
+                else
+                {
+                    LaunchAppIconPath = null;
+                    _logger.LogInformation("No icon found for: {Path}", executablePath);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to extract app icon from {Path}", executablePath);
+        }
+        
+        await Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Try to find an icon for a Linux application by searching .desktop files
+    /// </summary>
+    private static string? TryFindLinuxAppIcon(string executablePath)
+    {
+        try
+        {
+            var appName = System.IO.Path.GetFileNameWithoutExtension(executablePath).ToLower();
+            
+            // Search common .desktop file locations
+            var desktopDirs = new[]
+            {
+                "/usr/share/applications",
+                "/usr/local/share/applications",
+                System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".local/share/applications")
+            };
+            
+            foreach (var dir in desktopDirs)
+            {
+                if (!Directory.Exists(dir)) continue;
+                
+                foreach (var desktopFile in Directory.GetFiles(dir, "*.desktop"))
+                {
+                    var content = File.ReadAllText(desktopFile);
+                    if (content.Contains(executablePath, StringComparison.OrdinalIgnoreCase) ||
+                        content.Contains(appName, StringComparison.OrdinalIgnoreCase))
+                    {
+                        // Extract Icon= line
+                        foreach (var line in content.Split('\n'))
+                        {
+                            if (line.StartsWith("Icon=", StringComparison.OrdinalIgnoreCase))
+                            {
+                                var iconValue = line.Substring(5).Trim();
+                                // If it's an absolute path, use it directly
+                                if (System.IO.Path.IsPathRooted(iconValue) && File.Exists(iconValue))
+                                    return iconValue;
+                                
+                                // Try to find in common icon directories
+                                var iconPaths = new[]
+                                {
+                                    $"/usr/share/icons/hicolor/128x128/apps/{iconValue}.png",
+                                    $"/usr/share/icons/hicolor/64x64/apps/{iconValue}.png",
+                                    $"/usr/share/icons/hicolor/48x48/apps/{iconValue}.png",
+                                    $"/usr/share/pixmaps/{iconValue}.png",
+                                    $"/usr/share/pixmaps/{iconValue}.svg",
+                                };
+                                
+                                foreach (var iconPath in iconPaths)
+                                {
+                                    if (File.Exists(iconPath))
+                                        return iconPath;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        catch { /* ignore errors in icon search */ }
+        
+        return null;
     }
 
     [RelayCommand]
@@ -860,6 +1114,13 @@ public partial class ButtonConfigDialogViewModel : ViewModelBase
                 ActionType.CustomHid => new CustomHidAction
                 {
                     Data = Array.Empty<byte>()
+                },
+                ActionType.LaunchApp => new LaunchAppAction
+                {
+                    ExecutablePath = LaunchAppPath,
+                    Arguments = string.IsNullOrWhiteSpace(LaunchAppArguments) ? null : LaunchAppArguments,
+                    WorkingDirectory = string.IsNullOrWhiteSpace(LaunchAppWorkingDirectory) ? null : LaunchAppWorkingDirectory,
+                    IconPath = LaunchAppIconPath
                 },
                 ActionType.None => null,
                 _ => null

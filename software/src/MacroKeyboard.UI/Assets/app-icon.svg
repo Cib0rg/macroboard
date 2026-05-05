@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <!-- Background circle -->
+  <circle cx="32" cy="32" r="30" fill="#000000" stroke="#00FFFF" stroke-width="2"/>
+  <!-- Inner glow ring -->
+  <circle cx="32" cy="32" r="26" fill="none" stroke="#00FFFF" stroke-width="0.5" opacity="0.4"/>
+  <!-- Letter M in Tron style -->
+  <path d="M16 48 L16 18 L24 18 L32 32 L40 18 L48 18 L48 48 L42 48 L42 28 L34 42 L30 42 L22 28 L22 48 Z" 
+        fill="#00FFFF" opacity="0.9"/>
+  <!-- Glow effect on M -->
+  <path d="M16 48 L16 18 L24 18 L32 32 L40 18 L48 18 L48 48 L42 48 L42 28 L34 42 L30 42 L22 28 L22 48 Z" 
+        fill="none" stroke="#00FFFF" stroke-width="1" opacity="0.6"/>
+</svg>

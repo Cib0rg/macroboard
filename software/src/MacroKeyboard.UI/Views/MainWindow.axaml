@@ -8,6 +8,7 @@
         x:Class="MacroKeyboard.UI.Views.MainWindow"
         x:DataType="vm:MainWindowViewModel"
         Title="MacroKeyboard Configuration"
+        Icon="avares://MacroKeyboard.UI/Assets/app-icon.ico"
         Width="1200" Height="700"
         MinWidth="800" MinHeight="600"
         Classes="Tron">
