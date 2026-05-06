@@ -326,8 +326,31 @@
                                                                                             CommandParameter="{Binding}" />
                                                                                 </Grid>
                                                                                 
-                                                                                <StackPanel IsVisible="{Binding IsKeyboardStep}">
-                                                                                    <TextBox Text="{Binding KeyboardText}" PlaceholderText="Text..." FontSize="11" />
+                                                                                <StackPanel IsVisible="{Binding IsKeyboardStep}" Spacing="4">
+                                                                                    <Grid ColumnDefinitions="*,Auto">
+                                                                                        <Border Grid.Column="0"
+                                                                                                Background="#2A2A3E"
+                                                                                                BorderBrush="#555"
+                                                                                                BorderThickness="1"
+                                                                                                CornerRadius="3"
+                                                                                                Padding="6,4"
+                                                                                                Margin="0,0,4,0"
+                                                                                                Cursor="Hand"
+                                                                                                Focusable="True"
+                                                                                                PointerPressed="OnSequenceStepKeyCapturePressed"
+                                                                                                KeyDown="OnSequenceStepKeyDown"
+                                                                                                KeyUp="OnSequenceStepKeyUp"
+                                                                                                TextInput="OnSequenceStepTextInput"
+                                                                                                Tag="{Binding}">
+                                                                                            <TextBlock Text="{Binding KeySequenceDisplay}" FontSize="10" />
+                                                                                        </Border>
+                                                                                        <Button Grid.Column="1"
+                                                                                                Content="{Binding KeyCaptureButtonText}"
+                                                                                                FontSize="10" Width="50" Height="22"
+                                                                                                Tag="{Binding}"
+                                                                                                Click="OnSequenceStepToggleCapture" />
+                                                                                    </Grid>
+                                                                                    <TextBox Text="{Binding KeyboardText}" PlaceholderText="Or type text..." FontSize="10" />
                                                                                 </StackPanel>
                                                                                 <StackPanel IsVisible="{Binding IsShellStep}">
                                                                                     <TextBox Text="{Binding ShellCommand}" PlaceholderText="Command..." FontSize="11" />

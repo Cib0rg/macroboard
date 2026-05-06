@@ -97,6 +97,62 @@ public partial class ProfileEditorView : UserControl
         }
     }
 
+    // ============================================
+    // Sequence Step Key Capture Handlers
+    // ============================================
+
+    private void OnSequenceStepKeyCapturePressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (sender is Border border && border.Tag is SequenceStepViewModel step)
+        {
+            step.StartKeyCapture();
+            border.Focus();
+        }
+    }
+
+    private void OnSequenceStepKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (sender is Border border && border.Tag is SequenceStepViewModel step && step.IsCapturingKeys)
+        {
+            step.HandleKeyDown(e.Key, e.KeyModifiers, e.KeySymbol);
+            e.Handled = true;
+        }
+    }
+
+    private void OnSequenceStepKeyUp(object? sender, KeyEventArgs e)
+    {
+        if (sender is Border border && border.Tag is SequenceStepViewModel step && step.IsCapturingKeys)
+        {
+            if (e.Key == Key.Escape)
+            {
+                step.StopKeyCapture();
+                e.Handled = true;
+            }
+        }
+    }
+
+    private void OnSequenceStepTextInput(object? sender, TextInputEventArgs e)
+    {
+        if (sender is Border border && border.Tag is SequenceStepViewModel step && step.IsCapturingKeys)
+        {
+            step.HandleTextInput(e.Text);
+            e.Handled = true;
+        }
+    }
+
+    private void OnSequenceStepToggleCapture(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        if (sender is Button button && button.Tag is SequenceStepViewModel step)
+        {
+            step.ToggleKeyCapture();
+            // Focus the capture border (previous sibling in the grid)
+            if (button.Parent is Grid grid && grid.Children.Count > 0 && grid.Children[0] is Border border)
+            {
+                border.Focus();
+            }
+        }
+    }
+
     /// <summary>
     /// Handle text input during capture - provides the actual character for non-Latin layouts (e.g., Russian)
     /// </summary>
