@@ -26,6 +26,7 @@ public partial class ProfileEditorViewModel : ViewModelBase
     private readonly IpcClient _ipcClient;
     private readonly ILogger<ProfileEditorViewModel> _logger;
     private readonly ILogger<ButtonConfigDialogViewModel> _dialogLogger;
+    private readonly MacroKeyboard.Infrastructure.Services.ImageService _imageService;
     private IStorageProvider? _storageProvider;
 
     /// <summary>
@@ -86,11 +87,13 @@ public partial class ProfileEditorViewModel : ViewModelBase
     public ProfileEditorViewModel(
         IProfileService profileService,
         IpcClient ipcClient,
+        MacroKeyboard.Infrastructure.Services.ImageService imageService,
         ILogger<ProfileEditorViewModel> logger,
         ILogger<ButtonConfigDialogViewModel> dialogLogger)
     {
         _profileService = profileService;
         _ipcClient = ipcClient;
+        _imageService = imageService;
         _logger = logger;
         _dialogLogger = dialogLogger;
     }
@@ -689,6 +692,39 @@ public partial class ProfileEditorViewModel : ViewModelBase
                 }
             }
             
+            // Auto-generate text image if no image is set
+            if (string.IsNullOrWhiteSpace(button.ImagePath) && button.Action != null)
+            {
+                var displayText = GetActionDisplayText(button.Action);
+                if (!string.IsNullOrEmpty(displayText))
+                {
+                    try
+                    {
+                        var imageBytes = await _imageService.CreateTextImageAsync(displayText, fontSize: 18);
+                        if (imageBytes != null)
+                        {
+                            // Save auto-generated image to app data
+                            var autoImagesDir = Path.Combine(
+                                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                                "MacroKeyboard", "auto-images");
+                            Directory.CreateDirectory(autoImagesDir);
+                            
+                            var fileName = $"btn_{button.ButtonId}_{SelectedProfile?.ProfileId ?? 0}.jpg";
+                            var filePath = Path.Combine(autoImagesDir, fileName);
+                            await File.WriteAllBytesAsync(filePath, imageBytes);
+                            
+                            button.ImagePath = filePath;
+                            _logger.LogInformation("Auto-generated text image for button {ButtonId}: '{Text}'",
+                                button.ButtonId, displayText);
+                        }
+                    }
+                    catch (Exception imgEx)
+                    {
+                        _logger.LogWarning(imgEx, "Failed to auto-generate image for button {ButtonId}", button.ButtonId);
+                    }
+                }
+            }
+            
             _logger.LogInformation("Button {ButtonId} configured successfully", button.ButtonId);
             
             // Save profile locally
@@ -712,6 +748,28 @@ public partial class ProfileEditorViewModel : ViewModelBase
             _logger.LogError(ex, "Error saving button configuration");
             StatusMessage = $"Error: {ex.Message}";
         }
+    }
+
+    /// <summary>
+    /// Get a short display text for an action (used for auto-generated button images)
+    /// </summary>
+    private static string? GetActionDisplayText(ActionConfig action)
+    {
+        return action switch
+        {
+            KeyboardAction ka => !string.IsNullOrEmpty(ka.Text) ? ka.Text : "Key",
+            ShellAction sh => !string.IsNullOrEmpty(sh.Command)
+                ? (sh.Command.Length > 15 ? sh.Command[..15] : sh.Command)
+                : "Shell",
+            LaunchAppAction la => !string.IsNullOrEmpty(la.ExecutablePath)
+                ? Path.GetFileNameWithoutExtension(la.ExecutablePath)
+                : "App",
+            ProfileSwitchAction ps => $"Profile\n{ps.TargetProfileId}",
+            FolderAction => "Folder",
+            SequenceAction => "Sequence",
+            CustomHidAction => "HID",
+            _ => action.ActionType.ToString()
+        };
     }
 
     /// <summary>

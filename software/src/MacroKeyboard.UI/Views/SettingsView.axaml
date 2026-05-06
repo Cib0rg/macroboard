@@ -57,6 +57,53 @@
                 </StackPanel>
             </Border>
 
+            <!-- LED Settings -->
+            <Border Background="#0D1117" CornerRadius="8" Padding="20"
+                    BorderBrush="#00FFFF" BorderThickness="1">
+                <StackPanel Spacing="16">
+                    <TextBlock Text="LED DEFAULTS" FontSize="18" FontWeight="Bold" Foreground="#00FFFF" />
+                    <Separator />
+                    
+                    <TextBlock Text="Default LED color for new buttons:" Opacity="0.7" />
+                    <StackPanel Orientation="Horizontal" Spacing="12">
+                        <Border Width="36" Height="36" CornerRadius="4"
+                                BorderBrush="#555" BorderThickness="1">
+                            <Border.Background>
+                                <SolidColorBrush Color="{Binding DefaultLedColor}" />
+                            </Border.Background>
+                        </Border>
+                        <TextBox Text="{Binding DefaultLedColorHex}"
+                                 PlaceholderText="#00FFFF" Width="100"
+                                 VerticalAlignment="Center" />
+                        <Button Content="🎨" Width="36"
+                                Command="{Binding ToggleDefaultColorPickerCommand}"
+                                VerticalAlignment="Center" />
+                    </StackPanel>
+                    
+                    <Border Background="#0C0C18" CornerRadius="4" Padding="10"
+                            IsVisible="{Binding IsDefaultColorPickerVisible}">
+                        <StackPanel Spacing="8">
+                            <ColorPicker Color="{Binding DefaultLedColor}"
+                                         Width="200" Height="40"
+                                         IsAlphaEnabled="False" />
+                            <Button Content="Done" HorizontalAlignment="Center" Width="80"
+                                    Command="{Binding ToggleDefaultColorPickerCommand}" />
+                        </StackPanel>
+                    </Border>
+                    
+                    <StackPanel Spacing="8">
+                        <TextBlock Text="Default brightness:" Opacity="0.7" />
+                        <StackPanel Orientation="Horizontal" Spacing="12">
+                            <Slider Minimum="0" Maximum="255"
+                                    Value="{Binding DefaultLedBrightness}"
+                                    Width="200" />
+                            <TextBlock Text="{Binding DefaultLedBrightness}"
+                                       VerticalAlignment="Center" Width="30" />
+                        </StackPanel>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
             <!-- Actions -->
             <StackPanel Orientation="Horizontal" Spacing="12" HorizontalAlignment="Right">
                 <Button Content="↺ RESET DEFAULTS"

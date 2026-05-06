@@ -44,4 +44,15 @@ public class AppSettings
     /// Тема оформления (Light/Dark/System)
     /// </summary>
     public string Theme { get; set; } = "System";
+    
+    /// <summary>
+    /// Цвет LED по умолчанию (hex, например "#00FFFF")
+    /// Используется для новых кнопок, если пользователь не указал другой цвет
+    /// </summary>
+    public string DefaultLedColor { get; set; } = "#00FFFF";
+    
+    /// <summary>
+    /// Яркость LED по умолчанию (0-255)
+    /// </summary>
+    public byte DefaultLedBrightness { get; set; } = 200;
 }
