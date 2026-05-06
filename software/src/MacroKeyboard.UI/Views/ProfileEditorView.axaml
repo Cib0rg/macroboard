@@ -227,10 +227,12 @@
                                             <Border Background="#161B22" CornerRadius="4" Padding="10"
                                                     IsVisible="{Binding IsFolderAction}">
                                                 <StackPanel Spacing="6">
-                                                    <TextBlock Text="FOLDER ID" FontSize="12" FontWeight="Bold" />
-                                                    <ComboBox ItemsSource="{Binding AvailableFolderIds}"
-                                                              SelectedItem="{Binding FolderId}"
-                                                              HorizontalAlignment="Stretch" />
+                                                    <TextBlock Text="FOLDER" FontSize="12" FontWeight="Bold" />
+                                                    <TextBlock Text="Folder name:" FontSize="10" Opacity="0.7" />
+                                                    <TextBox Text="{Binding FolderName}"
+                                                             PlaceholderText="My Folder" />
+                                                    <TextBlock Text="📁 Folder will be created automatically"
+                                                               FontSize="10" Opacity="0.5" Foreground="#00FFAA" />
                                                 </StackPanel>
                                             </Border>
 

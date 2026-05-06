@@ -40,18 +40,39 @@ public class FlattenedButtonItem
             
             if (Button.Action is KeyboardAction ka)
             {
-                actionText = !string.IsNullOrEmpty(ka.Text) 
-                    ? $"Keyboard: \"{ka.Text}\"" 
+                actionText = !string.IsNullOrEmpty(ka.Text)
+                    ? $"Keyboard: \"{ka.Text}\""
                     : $"Keyboard: key 0x{ka.KeyCode:X2}";
             }
             else if (Button.Action is ProfileSwitchAction ps)
             {
                 actionText = $"Switch → Profile {ps.TargetProfileId}";
             }
+            else if (Button.Action is FolderAction)
+            {
+                actionText = $"📁 {FolderDisplayName}";
+            }
+            else if (Button.Action is LaunchAppAction la)
+            {
+                var appName = !string.IsNullOrEmpty(la.ExecutablePath)
+                    ? System.IO.Path.GetFileNameWithoutExtension(la.ExecutablePath)
+                    : "App";
+                actionText = $"🚀 {appName}";
+            }
+            else if (Button.Action is ShellAction sh)
+            {
+                var cmd = sh.Command.Length > 20 ? sh.Command[..20] + "..." : sh.Command;
+                actionText = $"💻 {cmd}";
+            }
             
             return $"{prefix}Button {Button.ButtonId}: {actionText}";
         }
     }
+
+    /// <summary>
+    /// Display name for the folder (if this button opens a folder)
+    /// </summary>
+    public string FolderDisplayName { get; set; } = "Folder";
     
     /// <summary>
     /// Whether this is a folder header (the button that opens a folder)

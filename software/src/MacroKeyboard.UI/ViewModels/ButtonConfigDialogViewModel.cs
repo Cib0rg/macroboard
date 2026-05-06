@@ -84,6 +84,9 @@ public partial class ButtonConfigDialogViewModel : ViewModelBase
     [ObservableProperty]
     private byte _folderId;
 
+    [ObservableProperty]
+    private string _folderName = string.Empty;
+
     // ============================================
     // Shell action properties
     // ============================================
@@ -159,12 +162,15 @@ public partial class ButtonConfigDialogViewModel : ViewModelBase
     private ProfileSwitchItem? _selectedTargetProfile;
 
     /// <summary>
-    /// Available folder IDs for Folder action
+    /// Available folders for Folder action (populated from existing profile folders)
     /// </summary>
-    public ObservableCollection<byte> AvailableFolderIds { get; } = new()
-    {
-        0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15
-    };
+    public ObservableCollection<FolderSwitchItem> AvailableFolders { get; } = new();
+
+    /// <summary>
+    /// Selected target folder for Folder action
+    /// </summary>
+    [ObservableProperty]
+    private FolderSwitchItem? _selectedTargetFolder;
 
     public bool DialogResult { get; private set; }
 
@@ -315,7 +321,8 @@ public partial class ButtonConfigDialogViewModel : ViewModelBase
     public string CapturedKeyText => CapturedKeyCode != 0 ? $"0x{CapturedKeyCode:X2}" : "None";
 
     public ButtonConfigDialogViewModel(ILogger<ButtonConfigDialogViewModel> logger, ButtonConfig buttonConfig,
-        IEnumerable<ProfileSwitchItem>? availableProfiles = null)
+        IEnumerable<ProfileSwitchItem>? availableProfiles = null,
+        IEnumerable<FolderSwitchItem>? availableFolders = null)
     {
         _logger = logger;
         _buttonConfig = buttonConfig;
@@ -325,6 +332,13 @@ public partial class ButtonConfigDialogViewModel : ViewModelBase
         {
             foreach (var profile in availableProfiles)
                 AvailableProfiles.Add(profile);
+        }
+        
+        // Populate available folders for Folder action
+        if (availableFolders != null)
+        {
+            foreach (var folder in availableFolders)
+                AvailableFolders.Add(folder);
         }
         
         // Load existing configuration
@@ -358,6 +372,10 @@ public partial class ButtonConfigDialogViewModel : ViewModelBase
         }
 
         FolderId = buttonConfig.FolderId;
+        // Load folder name from available folders list
+        var existingFolder = AvailableFolders.FirstOrDefault(f => f.FolderId == buttonConfig.FolderId);
+        SelectedTargetFolder = existingFolder;
+        FolderName = existingFolder?.Name ?? $"Folder {buttonConfig.FolderId}";
         ImagePath = buttonConfig.ImagePath ?? string.Empty;
         
         // Initialize LED color and brightness from button config
@@ -1139,8 +1157,8 @@ public partial class ButtonConfigDialogViewModel : ViewModelBase
                 _ => null
             };
 
-            // For Folder action, we need a special FolderAction class
-            // Since we don't have one, use a workaround: set the action type via a wrapper
+            // For Folder action: FolderId will be resolved by ProfileEditorViewModel
+            // based on FolderName (creates folder if needed, assigns next free ID)
             if (SelectedActionType == ActionType.Folder)
             {
                 ButtonConfig.Action = new FolderAction { FolderId = FolderId };
@@ -1183,6 +1201,17 @@ public record CapturedKey(byte KeyCode, KeyModifiers Modifiers, string DisplayNa
 public class ProfileSwitchItem
 {
     public byte ProfileId { get; set; }
+    public string Name { get; set; } = string.Empty;
+    
+    public override string ToString() => Name;
+}
+
+/// <summary>
+/// Represents a folder available for Folder action (shows name to user, stores ID internally)
+/// </summary>
+public class FolderSwitchItem
+{
+    public byte FolderId { get; set; }
     public string Name { get; set; } = string.Empty;
     
     public override string ToString() => Name;

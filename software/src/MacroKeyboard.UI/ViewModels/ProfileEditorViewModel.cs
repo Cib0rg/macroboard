@@ -116,8 +116,18 @@ public partial class ProfileEditorViewModel : ViewModelBase
 
         foreach (var button in SelectedProfile.Buttons)
         {
-            // Add root button
-            FlattenedButtons.Add(new FlattenedButtonItem(button, 0));
+            // Add root button with folder name if applicable
+            var item = new FlattenedButtonItem(button, 0);
+            
+            // If this button opens a folder, set the folder display name
+            if (button.Action?.ActionType == ActionType.Folder)
+            {
+                var folderId = button.FolderId;
+                var folder = SelectedProfile.Folders.FirstOrDefault(f => f.FolderId == folderId);
+                item.FolderDisplayName = folder?.Name ?? $"Folder {folderId}";
+            }
+            
+            FlattenedButtons.Add(item);
             
             // If this button opens a folder, add the folder's buttons indented
             if (button.Action?.ActionType == ActionType.Folder)
@@ -542,9 +552,10 @@ public partial class ProfileEditorViewModel : ViewModelBase
     {
         _logger.LogInformation("🔘 Configuring button {ButtonId} inline", button.ButtonId);
         
-        // Create or update the inline config ViewModel with available profiles
+        // Create or update the inline config ViewModel with available profiles and folders
         var profileItems = GetAvailableProfileItems();
-        ButtonConfigViewModel = new ButtonConfigDialogViewModel(_dialogLogger, button, profileItems);
+        var folderItems = GetAvailableFolderItems();
+        ButtonConfigViewModel = new ButtonConfigDialogViewModel(_dialogLogger, button, profileItems, folderItems);
         ConfiguredButtonConfig = button;
         IsButtonConfigVisible = true;
     }
@@ -556,9 +567,10 @@ public partial class ProfileEditorViewModel : ViewModelBase
     {
         _logger.LogInformation("🎯 Action {ActionType} dropped on button {ButtonId}", actionType, buttonItem.Button.ButtonId);
         
-        // Open inline config for this button with available profiles
+        // Open inline config for this button with available profiles and folders
         var profileItems = GetAvailableProfileItems();
-        ButtonConfigViewModel = new ButtonConfigDialogViewModel(_dialogLogger, buttonItem.Button, profileItems);
+        var folderItems = GetAvailableFolderItems();
+        ButtonConfigViewModel = new ButtonConfigDialogViewModel(_dialogLogger, buttonItem.Button, profileItems, folderItems);
         ButtonConfigViewModel.SelectedActionType = actionType;
         ConfiguredButtonConfig = buttonItem.Button;
         IsButtonConfigVisible = true;
@@ -566,45 +578,47 @@ public partial class ProfileEditorViewModel : ViewModelBase
 
     /// <summary>
     /// Get the list of available profiles as ProfileSwitchItems for the ComboBox.
-    /// Includes all profiles from the UI collection (which contains both local and device-loaded profiles).
-    /// Also queries the profile service to include any profiles stored on device that haven't been loaded into UI yet.
+    /// Uses the Profiles collection which already contains all loaded profiles (local + device).
     /// </summary>
     private IEnumerable<ProfileSwitchItem> GetAvailableProfileItems()
     {
-        // Start with profiles already in the UI (includes device-loaded ones)
-        var profileItems = new Dictionary<byte, ProfileSwitchItem>();
-        
-        foreach (var p in Profiles)
+        return Profiles.Select(p => new ProfileSwitchItem
         {
-            profileItems[p.ProfileId] = new ProfileSwitchItem
-            {
-                ProfileId = p.ProfileId,
-                Name = p.Name
-            };
-        }
-        
-        // Also try to get all profiles from the service (includes device-synced ones)
-        try
+            ProfileId = p.ProfileId,
+            Name = p.Name
+        }).OrderBy(p => p.ProfileId);
+    }
+
+    /// <summary>
+    /// Get the list of available folders as FolderSwitchItems for the ComboBox.
+    /// Folders exist only within the current profile.
+    /// </summary>
+    private IEnumerable<FolderSwitchItem> GetAvailableFolderItems()
+    {
+        if (SelectedProfile == null)
+            return Enumerable.Empty<FolderSwitchItem>();
+
+        // Get folders from the currently selected profile
+        var items = SelectedProfile.Folders.Select(f => new FolderSwitchItem
         {
-            var allProfiles = _profileService.GetAllProfilesAsync().GetAwaiter().GetResult();
-            foreach (var p in allProfiles)
+            FolderId = f.FolderId,
+            Name = f.Name
+        }).ToList();
+        
+        // If no folders exist yet, provide default options so user can create one
+        if (items.Count == 0)
+        {
+            for (byte i = 0; i < 4; i++)
             {
-                if (!profileItems.ContainsKey(p.ProfileId))
+                items.Add(new FolderSwitchItem
                 {
-                    profileItems[p.ProfileId] = new ProfileSwitchItem
-                    {
-                        ProfileId = p.ProfileId,
-                        Name = p.Name
-                    };
-                }
+                    FolderId = i,
+                    Name = $"Folder {i}"
+                });
             }
         }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Could not load additional profiles from service");
-        }
         
-        return profileItems.Values.OrderBy(p => p.ProfileId);
+        return items.OrderBy(f => f.FolderId);
     }
 
     /// <summary>
@@ -623,6 +637,58 @@ public partial class ProfileEditorViewModel : ViewModelBase
             ButtonConfigViewModel.SaveToButtonConfig();
             
             var button = ButtonConfigViewModel.ButtonConfig;
+            
+            // Handle Folder action: find or create folder by name, assign ID
+            if (button.Action is FolderAction && SelectedProfile != null)
+            {
+                var folderName = ButtonConfigViewModel.FolderName;
+                if (string.IsNullOrWhiteSpace(folderName))
+                    folderName = "New Folder";
+                
+                // Find existing folder by name or create a new one
+                var existingFolder = SelectedProfile.Folders.FirstOrDefault(
+                    f => f.Name.Equals(folderName, StringComparison.OrdinalIgnoreCase));
+                
+                if (existingFolder != null)
+                {
+                    // Use existing folder
+                    button.FolderId = existingFolder.FolderId;
+                    if (button.Action is FolderAction fa)
+                        fa.FolderId = existingFolder.FolderId;
+                }
+                else
+                {
+                    // Create new folder with next available ID
+                    byte newFolderId = 0;
+                    if (SelectedProfile.Folders.Count > 0)
+                        newFolderId = (byte)(SelectedProfile.Folders.Max(f => f.FolderId) + 1);
+                    
+                    var newFolder = new Folder
+                    {
+                        FolderId = newFolderId,
+                        Name = folderName
+                    };
+                    
+                    // Initialize with 10 empty buttons
+                    for (byte i = 0; i < 10; i++)
+                    {
+                        newFolder.Buttons.Add(new ButtonConfig
+                        {
+                            ButtonId = i,
+                            Action = null,
+                            Led = LedConfig.FromRgb(80, 80, 80)
+                        });
+                    }
+                    
+                    SelectedProfile.Folders.Add(newFolder);
+                    button.FolderId = newFolderId;
+                    if (button.Action is FolderAction fa)
+                        fa.FolderId = newFolderId;
+                    
+                    _logger.LogInformation("Created new folder '{Name}' with ID {Id}", folderName, newFolderId);
+                }
+            }
+            
             _logger.LogInformation("Button {ButtonId} configured successfully", button.ButtonId);
             
             // Save profile locally
