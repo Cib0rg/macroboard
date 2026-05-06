@@ -1087,7 +1087,7 @@ public partial class ButtonConfigDialogViewModel : ViewModelBase
             {
                 new("Images")
                 {
-                    Patterns = new[] { "*.jpg", "*.jpeg", "*.png", "*.bmp", "*.gif" },
+                    Patterns = new[] { "*.jpg", "*.jpeg", "*.png", "*.svg", "*.ico", "*.gif" },
                     MimeTypes = new[] { "image/*" }
                 }
             };

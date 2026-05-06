@@ -2,18 +2,33 @@ using Microsoft.Extensions.Logging;
 using SixLabors.Fonts;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.Drawing.Processing;
-using SixLabors.ImageSharp.Processing;
+using SixLabors.ImageSharp.Formats.Gif;
 using SixLabors.ImageSharp.Formats.Jpeg;
+using SixLabors.ImageSharp.PixelFormats;
+using SixLabors.ImageSharp.Processing;
+using Svg.Skia;
+using SkiaSharp;
 
 namespace MacroKeyboard.Infrastructure.Services;
 
 /// <summary>
-/// Сервис для обработки изображений
+/// Сервис для обработки изображений для дисплеев кнопок.
+/// Поддерживает форматы: JPEG, PNG, SVG, ICO, GIF.
+/// Все изображения сжимаются до размера дисплея (160x160).
 /// </summary>
 public class ImageService
 {
     private readonly ILogger<ImageService> _logger;
-    private const int TargetSize = 160;
+    
+    /// <summary>
+    /// Target display resolution (GC9A01 round LCD)
+    /// </summary>
+    public const int DisplaySize = 160;
+    
+    /// <summary>
+    /// Maximum GIF frame count (to keep file size reasonable for device transfer)
+    /// </summary>
+    public const int MaxGifFrames = 16;
     
     public ImageService(ILogger<ImageService> logger)
     {
@@ -21,28 +36,37 @@ public class ImageService
     }
     
     /// <summary>
-    /// Загрузить и обработать изображение для кнопки
+    /// Supported image file extensions
+    /// </summary>
+    public static readonly string[] SupportedExtensions = { ".jpg", ".jpeg", ".png", ".svg", ".ico", ".gif" };
+    
+    /// <summary>
+    /// Check if a file extension is supported
+    /// </summary>
+    public static bool IsSupportedFormat(string filePath)
+    {
+        var ext = Path.GetExtension(filePath).ToLowerInvariant();
+        return SupportedExtensions.Contains(ext);
+    }
+    
+    /// <summary>
+    /// Загрузить и обработать изображение для кнопки.
+    /// Поддерживает: JPEG, PNG, SVG, ICO, GIF.
+    /// Результат: 160x160 JPEG (или GIF для анимаций).
     /// </summary>
     public async Task<byte[]?> ProcessImageForButtonAsync(string imagePath)
     {
         try
         {
-            using var image = await Image.LoadAsync(imagePath);
+            var ext = Path.GetExtension(imagePath).ToLowerInvariant();
             
-            // Изменить размер до 160x160
-            image.Mutate(x => x.Resize(TargetSize, TargetSize));
-            
-            // Применить круглую маску
-            ApplyCircularMask(image);
-            
-            // Конвертировать в JPEG
-            using var ms = new MemoryStream();
-            await image.SaveAsJpegAsync(ms, new JpegEncoder { Quality = 90 });
-            
-            var result = ms.ToArray();
-            _logger.LogInformation("Image processed: {Size} bytes", result.Length);
-            
-            return result;
+            return ext switch
+            {
+                ".svg" => await ProcessSvgAsync(imagePath),
+                ".gif" => await ProcessGifAsync(imagePath),
+                ".ico" => await ProcessIcoAsync(imagePath),
+                _ => await ProcessRasterImageAsync(imagePath) // jpg, jpeg, png, bmp
+            };
         }
         catch (Exception ex)
         {
@@ -52,9 +76,166 @@ public class ImageService
     }
     
     /// <summary>
-    /// Применить круглую маску к изображению
+    /// Process raster images (JPEG, PNG, BMP) — resize to display size and convert to JPEG
     /// </summary>
-    private void ApplyCircularMask(Image image)
+    private async Task<byte[]> ProcessRasterImageAsync(string imagePath)
+    {
+        using var image = await Image.LoadAsync<Rgba32>(imagePath);
+        
+        // Resize to display size (maintain aspect ratio, then crop to square)
+        ResizeToDisplaySize(image);
+        
+        // Apply circular mask for round display
+        ApplyCircularMask(image);
+        
+        // Convert to JPEG
+        using var ms = new MemoryStream();
+        await image.SaveAsJpegAsync(ms, new JpegEncoder { Quality = 85 });
+        
+        var result = ms.ToArray();
+        _logger.LogInformation("Raster image processed: {Path} → {Size} bytes ({W}x{H})", 
+            imagePath, result.Length, DisplaySize, DisplaySize);
+        return result;
+    }
+    
+    /// <summary>
+    /// Process SVG images — render to bitmap at display size, then convert to JPEG
+    /// </summary>
+    private async Task<byte[]> ProcessSvgAsync(string imagePath)
+    {
+        var svgContent = await File.ReadAllTextAsync(imagePath);
+        
+        using var svg = new SKSvg();
+        svg.FromSvg(svgContent);
+        
+        if (svg.Picture == null)
+            throw new InvalidOperationException($"Failed to parse SVG: {imagePath}");
+        
+        // Render SVG to bitmap at display size
+        using var bitmap = new SKBitmap(DisplaySize, DisplaySize);
+        using var canvas = new SKCanvas(bitmap);
+        canvas.Clear(SKColors.Black);
+        
+        // Scale SVG to fit display
+        var bounds = svg.Picture.CullRect;
+        var scaleX = DisplaySize / bounds.Width;
+        var scaleY = DisplaySize / bounds.Height;
+        var scale = Math.Min(scaleX, scaleY);
+        
+        var offsetX = (DisplaySize - bounds.Width * scale) / 2;
+        var offsetY = (DisplaySize - bounds.Height * scale) / 2;
+        
+        canvas.Translate(offsetX, offsetY);
+        canvas.Scale(scale);
+        canvas.DrawPicture(svg.Picture);
+        
+        // Convert SKBitmap to ImageSharp Image
+        using var image = ConvertSkBitmapToImageSharp(bitmap);
+        
+        // Apply circular mask
+        ApplyCircularMask(image);
+        
+        // Convert to JPEG
+        using var ms = new MemoryStream();
+        await image.SaveAsJpegAsync(ms, new JpegEncoder { Quality = 85 });
+        
+        var result = ms.ToArray();
+        _logger.LogInformation("SVG image processed: {Path} → {Size} bytes", imagePath, result.Length);
+        return result;
+    }
+    
+    /// <summary>
+    /// Process ICO files — extract the largest icon and resize
+    /// </summary>
+    private async Task<byte[]> ProcessIcoAsync(string imagePath)
+    {
+        // ImageSharp can load ICO files directly (they contain embedded BMP/PNG)
+        using var image = await Image.LoadAsync<Rgba32>(imagePath);
+        
+        // Resize to display size
+        ResizeToDisplaySize(image);
+        
+        // Apply circular mask
+        ApplyCircularMask(image);
+        
+        // Convert to JPEG
+        using var ms = new MemoryStream();
+        await image.SaveAsJpegAsync(ms, new JpegEncoder { Quality = 85 });
+        
+        var result = ms.ToArray();
+        _logger.LogInformation("ICO image processed: {Path} → {Size} bytes", imagePath, result.Length);
+        return result;
+    }
+    
+    /// <summary>
+    /// Process GIF files — resize all frames to display size, limit frame count.
+    /// Short GIFs are kept as animated GIF; long ones use only the first frame.
+    /// </summary>
+    private async Task<byte[]> ProcessGifAsync(string imagePath)
+    {
+        using var image = await Image.LoadAsync<Rgba32>(imagePath);
+        
+        var frameCount = image.Frames.Count;
+        _logger.LogInformation("GIF loaded: {Path}, {Frames} frames", imagePath, frameCount);
+        
+        if (frameCount <= 1)
+        {
+            // Static GIF — treat as regular raster image
+            ResizeToDisplaySize(image);
+            ApplyCircularMask(image);
+            
+            using var ms = new MemoryStream();
+            await image.SaveAsJpegAsync(ms, new JpegEncoder { Quality = 85 });
+            return ms.ToArray();
+        }
+        
+        // Animated GIF — resize all frames, limit count
+        image.Mutate(x => x.Resize(DisplaySize, DisplaySize));
+        
+        // Remove excess frames if too many
+        while (image.Frames.Count > MaxGifFrames)
+        {
+            image.Frames.RemoveFrame(image.Frames.Count - 1);
+        }
+        
+        // Apply circular mask to each frame
+        for (int i = 0; i < image.Frames.Count; i++)
+        {
+            ApplyCircularMaskToFrame(image, i);
+        }
+        
+        // Save as GIF (animated)
+        using var ms2 = new MemoryStream();
+        await image.SaveAsGifAsync(ms2, new GifEncoder
+        {
+            ColorTableMode = GifColorTableMode.Local
+        });
+        
+        var result = ms2.ToArray();
+        _logger.LogInformation("Animated GIF processed: {Path} → {Size} bytes, {Frames} frames", 
+            imagePath, result.Length, image.Frames.Count);
+        return result;
+    }
+    
+    /// <summary>
+    /// Resize image to display size (square, cover mode)
+    /// </summary>
+    private static void ResizeToDisplaySize(Image<Rgba32> image)
+    {
+        // Resize maintaining aspect ratio to cover the display area, then crop center
+        var resizeOptions = new ResizeOptions
+        {
+            Size = new Size(DisplaySize, DisplaySize),
+            Mode = ResizeMode.Crop,
+            Position = AnchorPositionMode.Center
+        };
+        image.Mutate(x => x.Resize(resizeOptions));
+    }
+    
+    /// <summary>
+    /// Apply circular mask to the entire image (for round display)
+    /// </summary>
+    private static void ApplyCircularMask(Image<Rgba32> image)
     {
         var centerX = image.Width / 2;
         var centerY = image.Height / 2;
@@ -72,12 +253,60 @@ public class ImageService
                     
                     if (distance > radius)
                     {
-                        // Сделать пиксель прозрачным
-                        row[x].W = 0;
+                        row[x].W = 0; // Make pixel transparent
                     }
                 }
             });
         });
+    }
+    
+    /// <summary>
+    /// Apply circular mask to a specific frame of an animated image
+    /// </summary>
+    private static void ApplyCircularMaskToFrame(Image<Rgba32> image, int frameIndex)
+    {
+        var frame = image.Frames[frameIndex];
+        var centerX = frame.Width / 2;
+        var centerY = frame.Height / 2;
+        var radius = Math.Min(centerX, centerY);
+        
+        frame.ProcessPixelRows(accessor =>
+        {
+            for (int y = 0; y < accessor.Height; y++)
+            {
+                var row = accessor.GetRowSpan(y);
+                for (int x = 0; x < row.Length; x++)
+                {
+                    var dx = x - centerX;
+                    var dy = y - centerY;
+                    var distance = Math.Sqrt(dx * dx + dy * dy);
+                    
+                    if (distance > radius)
+                    {
+                        row[x] = new Rgba32(0, 0, 0, 0);
+                    }
+                }
+            }
+        });
+    }
+    
+    /// <summary>
+    /// Convert SkiaSharp SKBitmap to ImageSharp Image
+    /// </summary>
+    private static Image<Rgba32> ConvertSkBitmapToImageSharp(SKBitmap bitmap)
+    {
+        var image = new Image<Rgba32>(bitmap.Width, bitmap.Height);
+        
+        for (int y = 0; y < bitmap.Height; y++)
+        {
+            for (int x = 0; x < bitmap.Width; x++)
+            {
+                var pixel = bitmap.GetPixel(x, y);
+                image[x, y] = new Rgba32(pixel.Red, pixel.Green, pixel.Blue, pixel.Alpha);
+            }
+        }
+        
+        return image;
     }
     
     /// <summary>
@@ -87,7 +316,7 @@ public class ImageService
     {
         try
         {
-            using var image = new Image<SixLabors.ImageSharp.PixelFormats.Rgba32>(TargetSize, TargetSize);
+            using var image = new Image<Rgba32>(DisplaySize, DisplaySize);
             
             // Заполнить фоном
             var bgColor = backgroundColor ?? Color.Black;
@@ -100,19 +329,16 @@ public class ImageService
             
             try
             {
-                // Попытаться загрузить системные шрифты
                 fontFamily = SystemFonts.Get("Arial");
             }
             catch
             {
                 try
                 {
-                    // Fallback на другие распространенные шрифты
                     fontFamily = SystemFonts.Get("DejaVu Sans");
                 }
                 catch
                 {
-                    // Использовать первый доступный шрифт
                     if (!SystemFonts.Families.Any())
                     {
                         throw new InvalidOperationException("No system fonts available");
@@ -123,25 +349,23 @@ public class ImageService
             
             var font = fontFamily.CreateFont(fontSize, FontStyle.Bold);
             
-            // Настройки рендеринга текста
             var textOptions = new RichTextOptions(font)
             {
-                Origin = new PointF(TargetSize / 2, TargetSize / 2),
+                Origin = new PointF(DisplaySize / 2, DisplaySize / 2),
                 HorizontalAlignment = HorizontalAlignment.Center,
                 VerticalAlignment = VerticalAlignment.Center,
-                WrappingLength = TargetSize - 20, // Отступы по краям
+                WrappingLength = DisplaySize - 20,
                 TextAlignment = TextAlignment.Center
             };
             
-            // Нарисовать текст
             image.Mutate(x => x.DrawText(textOptions, text, fgColor));
             
-            // Применить круглую маску
+            // Apply circular mask
             ApplyCircularMask(image);
             
-            // Конвертировать в JPEG
+            // Convert to JPEG
             using var ms = new MemoryStream();
-            await image.SaveAsJpegAsync(ms, new JpegEncoder { Quality = 90 });
+            await image.SaveAsJpegAsync(ms, new JpegEncoder { Quality = 85 });
             
             var result = ms.ToArray();
             _logger.LogInformation("Text image created: {Text}, {Size} bytes", text, result.Length);
