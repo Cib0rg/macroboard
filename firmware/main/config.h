@@ -126,7 +126,7 @@
 // Task Stack Sizes
 // ============================================
 #define STACK_SIZE_USB_RX       4096
-#define STACK_SIZE_BUTTON       3072
+#define STACK_SIZE_BUTTON       4096
 #define STACK_SIZE_ENCODER      4096
 #define STACK_SIZE_PROTOCOL     8192
 #define STACK_SIZE_DISPLAY      4096

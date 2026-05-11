@@ -34,6 +34,7 @@ idf_component_register(
         spiffs
         esp_timer
         esp_tinyusb
+        led_strip
     EMBED_FILES
         "assets/back_icon.jpg"
 )

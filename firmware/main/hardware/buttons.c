@@ -8,6 +8,7 @@
 #include "esp_log.h"
 #include "driver/gpio.h"
 #include "esp_timer.h"
+#include "freertos/task.h"
 #include "profile/action_executor.h"
 #include "profile/profile_manager.h"
 #include "protocol/protocol_handler.h"
@@ -96,6 +97,10 @@ void button_task(void* arg) {
     
     ESP_LOGI(TAG, "Button task started");
     
+    // Log initial stack high water mark
+    ESP_LOGI(TAG, "Button task stack high water mark: %u bytes free",
+             (unsigned int)(uxTaskGetStackHighWaterMark(NULL) * sizeof(StackType_t)));
+    
     while (1) {
         if (xQueueReceive(button_event_queue, &event, portMAX_DELAY)) {
             uint8_t btn_id = event.button_id;
@@ -126,7 +131,12 @@ void button_task(void* arg) {
                     
                     ESP_LOGI(TAG, "Button %d pressed", btn_id);
                     
+                    // Diagnostic: log stack before action execution
+                    ESP_LOGI(TAG, "Stack before action: %u bytes free",
+                             (unsigned int)(uxTaskGetStackHighWaterMark(NULL) * sizeof(StackType_t)));
+                    
                     // Send button press event to PC
+                    ESP_LOGD(TAG, "Sending button press event to PC...");
                     {
                         uint8_t evt_payload[3];
                         evt_payload[0] = btn_id;
@@ -135,9 +145,14 @@ void button_task(void* arg) {
                         evt_payload[2] = btn_cfg ? btn_cfg->action_type : 0;
                         protocol_send_event(EVENT_BUTTON_PRESSED, evt_payload, 3);
                     }
+                    ESP_LOGD(TAG, "Event sent, executing action...");
                     
                     // Execute button action
                     action_execute(btn_id);
+                    
+                    // Diagnostic: log stack after action execution
+                    ESP_LOGI(TAG, "Stack after action: %u bytes free",
+                             (unsigned int)(uxTaskGetStackHighWaterMark(NULL) * sizeof(StackType_t)));
                 }
             } else {
                 // Button released
