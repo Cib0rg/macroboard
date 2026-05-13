@@ -422,6 +422,17 @@
                                                             Command="{Binding ToggleColorPickerCommand}" Width="36" />
                                                 </Grid>
                                                 
+                                                <!-- Brightness Slider -->
+                                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                                    <TextBlock Text="Brightness:" Opacity="0.7"
+                                                               VerticalAlignment="Center" Width="70" />
+                                                    <Slider Minimum="0" Maximum="255"
+                                                            Value="{Binding Brightness}"
+                                                            Width="140" VerticalAlignment="Center" />
+                                                    <TextBlock Text="{Binding Brightness, StringFormat={}{0:F0}}"
+                                                               VerticalAlignment="Center" Width="30" />
+                                                </StackPanel>
+                                                
                                                 <!-- ColorPicker вместо RGB Sliders -->
                                                 <Border Background="#0C0C18" CornerRadius="4" Padding="10"
                                                         IsVisible="{Binding IsColorPickerVisible}">
@@ -434,8 +445,8 @@
                                                                     IsAlphaEnabled="False" />
                                                         
                                                         <!-- Кнопка Done -->
-                                                        <Button Content="Done" 
-                                                                HorizontalAlignment="Center" 
+                                                        <Button Content="Done"
+                                                                HorizontalAlignment="Center"
                                                                 Width="80"
                                                                 Command="{Binding ToggleColorPickerCommand}" />
                                                     </StackPanel>

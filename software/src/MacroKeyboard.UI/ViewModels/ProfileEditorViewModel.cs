@@ -555,6 +555,14 @@ public partial class ProfileEditorViewModel : ViewModelBase
     {
         _logger.LogInformation("🔘 Configuring button {ButtonId} inline", button.ButtonId);
         
+        // Close any previously open config panel (without saving)
+        if (ConfiguredButtonConfig != null && !ReferenceEquals(ConfiguredButtonConfig, button))
+        {
+            ConfiguredButtonConfig = null;
+            ButtonConfigViewModel = null;
+            IsButtonConfigVisible = false;
+        }
+        
         // Create or update the inline config ViewModel with available profiles and folders
         var profileItems = GetAvailableProfileItems();
         var folderItems = GetAvailableFolderItems();
