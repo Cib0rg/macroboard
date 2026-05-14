@@ -6,7 +6,10 @@
 #include "common.h"
 #include "image_transfer.h"
 #include "storage/image_storage.h"
+#include "hardware/gc9a01.h"
 #include "utils/crc.h"
+#include "utils/jpeg_decode_util.h"
+#include "profile/profile_manager.h"
 #include "config.h"
 
 static const char* TAG = "IMG_XFER";
@@ -27,8 +30,13 @@ static image_transfer_ctx_t transfer_ctx = {0};
 esp_err_t image_transfer_start(uint8_t profile_id, uint8_t button_id,
                                 uint32_t image_size, uint8_t format) {
     if (transfer_ctx.active) {
-        ESP_LOGW(TAG, "Transfer already in progress");
-        return ESP_ERR_INVALID_STATE;
+        ESP_LOGW(TAG, "Transfer already in progress, cancelling previous");
+        // Cancel previous transfer and free buffer
+        if (transfer_ctx.buffer != NULL) {
+            free(transfer_ctx.buffer);
+            transfer_ctx.buffer = NULL;
+        }
+        transfer_ctx.active = false;
     }
     
     if (profile_id >= NUM_PROFILES || button_id >= NUM_BUTTONS) {
@@ -106,6 +114,25 @@ esp_err_t image_transfer_end(uint32_t* calculated_crc) {
     // Save image to storage
     esp_err_t ret = image_storage_save(transfer_ctx.profile_id, transfer_ctx.button_id,
                                         transfer_ctx.buffer, transfer_ctx.total_size);
+    
+    // If save succeeded and this is the current profile, decode and display immediately
+    if (ret == ESP_OK && transfer_ctx.profile_id == profile_get_current_id()) {
+        ESP_LOGW(TAG, "DEBUG: About to display transferred image on button %d (profile %d)",
+                 transfer_ctx.button_id, transfer_ctx.profile_id);
+        uint8_t* rgb565_buf = heap_caps_malloc(DISPLAY_BUFFER_SIZE, MALLOC_CAP_DMA | MALLOC_CAP_SPIRAM);
+        if (rgb565_buf != NULL) {
+            uint16_t w, h;
+            if (jpeg_decode_to_rgb565(transfer_ctx.buffer, transfer_ctx.total_size,
+                                       rgb565_buf, DISPLAY_BUFFER_SIZE, &w, &h) == ESP_OK) {
+                gc9a01_draw_image(transfer_ctx.button_id, rgb565_buf, w, h);
+                ESP_LOGW(TAG, "DEBUG: Image displayed on button %d (%dx%d), first_pixel=0x%02X%02X",
+                         transfer_ctx.button_id, w, h, rgb565_buf[0], rgb565_buf[1]);
+            } else {
+                ESP_LOGW(TAG, "JPEG decode failed for button %d after transfer", transfer_ctx.button_id);
+            }
+            free(rgb565_buf);
+        }
+    }
     
     // Cleanup
     free(transfer_ctx.buffer);

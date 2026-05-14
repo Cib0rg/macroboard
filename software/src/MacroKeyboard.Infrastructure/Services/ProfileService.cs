@@ -110,7 +110,15 @@ public class ProfileService : IProfileService
     {
         try
         {
-            _logger.LogInformation("Sending profile {ProfileId} to device", profile.ProfileId);
+            _logger.LogInformation("Sending profile {ProfileId} ({Name}) to device, {ButtonCount} buttons",
+                profile.ProfileId, profile.Name, profile.Buttons.Count);
+            
+            for (int b = 0; b < profile.Buttons.Count; b++)
+            {
+                var btn = profile.Buttons[b];
+                _logger.LogDebug("  Button {Id}: Action={Action}, ImagePath={ImagePath}, LED=({R},{G},{B})",
+                    btn.ButtonId, btn.Action?.ActionType, btn.ImagePath, btn.Led.R, btn.Led.G, btn.Led.B);
+            }
             
             // 1. Установить профиль
             var profileSet = await _deviceService.SetProfileAsync(profile.ProfileId, cancellationToken);
@@ -130,24 +138,43 @@ public class ProfileService : IProfileService
                 
                 var button = profile.Buttons[i];
                 
-                // Отправить изображение
+                // Отправить изображение (обработать через ImageService → 160x160 JPEG)
                 if (!string.IsNullOrEmpty(button.ImagePath) && File.Exists(button.ImagePath))
                 {
-                    var imageData = await File.ReadAllBytesAsync(button.ImagePath, cancellationToken);
-                    var imageProgress = new Progress<int>(p => 
-                        progress?.Report(10 + (i * 70 / profile.Buttons.Count) + (p * 70 / profile.Buttons.Count / 100)));
+                    _logger.LogInformation("Processing image for button {ButtonId}: {Path}",
+                        button.ButtonId, button.ImagePath);
                     
-                    var imageSent = await _deviceService.SendButtonImageAsync(
-                        profile.ProfileId,
-                        button.ButtonId,
-                        imageData,
-                        imageProgress,
-                        cancellationToken);
-                    
-                    if (!imageSent)
+                    var processedImage = await _imageService.ProcessImageForButtonAsync(button.ImagePath);
+                    if (processedImage != null && processedImage.Length > 0)
                     {
-                        _logger.LogWarning("Failed to send image for button {ButtonId}", button.ButtonId);
+                        var imageProgress = new Progress<int>(p =>
+                            progress?.Report(10 + (i * 70 / profile.Buttons.Count) + (p * 70 / profile.Buttons.Count / 100)));
+                        
+                        _logger.LogInformation("Sending processed image for button {ButtonId}: {Size} bytes (JPEG)",
+                            button.ButtonId, processedImage.Length);
+                        
+                        var imageSent = await _deviceService.SendButtonImageAsync(
+                            profile.ProfileId,
+                            button.ButtonId,
+                            processedImage,
+                            imageProgress,
+                            cancellationToken);
+                        
+                        if (!imageSent)
+                        {
+                            _logger.LogWarning("Failed to send image for button {ButtonId}", button.ButtonId);
+                        }
                     }
+                    else
+                    {
+                        _logger.LogWarning("Failed to process image for button {ButtonId}: {Path}",
+                            button.ButtonId, button.ImagePath);
+                    }
+                }
+                else if (!string.IsNullOrEmpty(button.ImagePath))
+                {
+                    _logger.LogWarning("Image file not found for button {ButtonId}: {Path}",
+                        button.ButtonId, button.ImagePath);
                 }
                 
                 // Отправить действие
@@ -168,6 +195,9 @@ public class ProfileService : IProfileService
                     cancellationToken);
                 
                 progress?.Report(10 + ((i + 1) * 70 / profile.Buttons.Count));
+                
+                // Small delay between buttons to let firmware process commands
+                await Task.Delay(50, cancellationToken);
             }
             
             // 3. Сохранить профиль на устройстве

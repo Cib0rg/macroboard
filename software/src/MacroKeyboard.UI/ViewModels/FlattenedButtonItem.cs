@@ -65,7 +65,7 @@ public class FlattenedButtonItem
                 actionText = $"💻 {cmd}";
             }
             
-            return $"{prefix}Button {Button.ButtonId}: {actionText}";
+            return $"{prefix}Button {Button.ButtonId + 1}: {actionText}";
         }
     }
 

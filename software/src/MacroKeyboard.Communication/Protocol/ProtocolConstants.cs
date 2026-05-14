@@ -61,7 +61,7 @@ public static class ProtocolConstants
     public const byte STATUS_RETRY = 0x01;
     
     // Тайм-ауты
-    public const int DefaultTimeout = 1000; // мс
+    public const int DefaultTimeout = 3000; // мс (increased from 1000 to handle FreeRTOS queue latency)
     public const int ImageTransferTimeout = 30000; // мс
     
     // Размер фрагмента изображения

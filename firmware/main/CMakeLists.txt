@@ -20,6 +20,7 @@ idf_component_register(
         "profile/action_executor.c"
         "utils/logger.c"
         "utils/crc.c"
+        "utils/jpeg_decoder.c"
     INCLUDE_DIRS
         "."
         "hardware"
@@ -35,6 +36,7 @@ idf_component_register(
         esp_timer
         esp_tinyusb
         led_strip
+        esp_jpeg
     EMBED_FILES
         "assets/back_icon.jpg"
 )

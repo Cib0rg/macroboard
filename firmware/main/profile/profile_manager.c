@@ -13,6 +13,7 @@
 #include "protocol/protocol_handler.h"
 #include "protocol/protocol_types.h"
 #include "utils/crc.h"
+#include "utils/jpeg_decode_util.h"
 #include "config.h"
 
 // Embedded firmware assets (compiled into binary via EMBED_FILES in CMakeLists.txt)
@@ -267,15 +268,23 @@ static void profile_update_button_display(uint8_t button_id, button_config_t* bt
         
         esp_err_t ret = image_storage_load(current_profile_id, button_id, &image_data, &image_size);
         if (ret == ESP_OK && image_data != NULL) {
-            // TODO: JPEG decode → RGB565 → gc9a01_draw_image()
-            // For now, just log and free
-            ESP_LOGD(TAG, "Image loaded for button %d (%d bytes), decode not yet implemented",
-                     button_id, image_size);
+            // Decode JPEG → RGB565 → display
+            uint8_t* rgb565_buf = heap_caps_malloc(DISPLAY_BUFFER_SIZE, MALLOC_CAP_DMA | MALLOC_CAP_SPIRAM);
+            if (rgb565_buf != NULL) {
+                uint16_t w, h;
+                if (jpeg_decode_to_rgb565(image_data, image_size, rgb565_buf, DISPLAY_BUFFER_SIZE, &w, &h) == ESP_OK) {
+                    gc9a01_draw_image(button_id, rgb565_buf, w, h);
+                    ESP_LOGD(TAG, "Image displayed for button %d (%dx%d)", button_id, w, h);
+                } else {
+                    ESP_LOGW(TAG, "JPEG decode failed for button %d, clearing display", button_id);
+                    gc9a01_clear(button_id, COLOR_BLACK);
+                }
+                free(rgb565_buf);
+            } else {
+                ESP_LOGE(TAG, "Failed to allocate RGB565 buffer for button %d", button_id);
+                gc9a01_clear(button_id, COLOR_BLACK);
+            }
             free(image_data);
-            
-            // Clear display with a color based on LED config (visual feedback)
-            uint16_t color = ((btn->led_r >> 3) << 11) | ((btn->led_g >> 2) << 5) | (btn->led_b >> 3);
-            gc9a01_clear(button_id, color);
         } else {
             gc9a01_clear(button_id, COLOR_BLACK);
         }
@@ -412,8 +421,19 @@ void profile_show_back_icon(uint8_t button_id) {
     
     ESP_LOGI(TAG, "Showing back icon on button %d (%d bytes)", button_id, back_icon_size);
     
-    // TODO: When JPEG decode is implemented, decode back_icon_jpg_start and render to display.
-    // For now, show a distinctive color (white) to indicate "back" button.
-    // The JPEG data is available at back_icon_jpg_start with size back_icon_size.
-    gc9a01_clear(button_id, COLOR_WHITE);
+    // Decode embedded back icon JPEG → RGB565 → display
+    uint8_t* rgb565_buf = heap_caps_malloc(DISPLAY_BUFFER_SIZE, MALLOC_CAP_DMA | MALLOC_CAP_SPIRAM);
+    if (rgb565_buf != NULL) {
+        uint16_t w, h;
+        if (jpeg_decode_to_rgb565(back_icon_jpg_start, back_icon_size, rgb565_buf, DISPLAY_BUFFER_SIZE, &w, &h) == ESP_OK) {
+            gc9a01_draw_image(button_id, rgb565_buf, w, h);
+        } else {
+            ESP_LOGW(TAG, "Failed to decode back icon JPEG, showing white");
+            gc9a01_clear(button_id, COLOR_WHITE);
+        }
+        free(rgb565_buf);
+    } else {
+        ESP_LOGE(TAG, "Failed to allocate RGB565 buffer for back icon");
+        gc9a01_clear(button_id, COLOR_WHITE);
+    }
 }

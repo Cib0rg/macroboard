@@ -1,16 +1,21 @@
 /**
  * @file gc9a01.h
- * @brief GC9A01 display driver for 160x160 round LCD
+ * @brief GC9D01 display driver for 160x160 round LCD
+ * 
+ * NOTE: Despite the filename "gc9a01", the actual display IC is GC9D01 (160x160).
+ * The API names are kept as gc9a01_* for backward compatibility with the rest
+ * of the firmware codebase.
  */
 
 #ifndef GC9A01_H
 #define GC9A01_H
 
 #include <stdint.h>
+#include <stdbool.h>
 #include "esp_err.h"
 #include "driver/spi_master.h"
 
-// GC9A01 Commands
+// GC9D01 Commands (compatible with GC9A01 standard commands)
 #define GC9A01_SLPIN    0x10
 #define GC9A01_SLPOUT   0x11
 #define GC9A01_INVOFF   0x20
@@ -31,13 +36,13 @@
 #define COLOR_BLUE      0x001F
 
 /**
- * @brief Initialize GC9A01 display driver
+ * @brief Initialize GC9D01 display driver (SPI bus and GPIO)
  * @return ESP_OK on success
  */
 esp_err_t gc9a01_init(void);
 
 /**
- * @brief Initialize a specific display
+ * @brief Initialize a specific display with GC9D01 init sequence
  * @param display_id Display ID (0-9)
  * @return ESP_OK on success
  */
@@ -54,7 +59,7 @@ esp_err_t gc9a01_clear(uint8_t display_id, uint16_t color);
 /**
  * @brief Draw image on display
  * @param display_id Display ID
- * @param image_data RGB565 image data
+ * @param image_data RGB565 image data (big-endian byte order for SPI)
  * @param width Image width
  * @param height Image height
  * @return ESP_OK on success
@@ -63,7 +68,7 @@ esp_err_t gc9a01_draw_image(uint8_t display_id, const uint8_t* image_data,
                              uint16_t width, uint16_t height);
 
 /**
- * @brief Set display window
+ * @brief Set display address window for pixel writes
  * @param x0 Start X coordinate
  * @param y0 Start Y coordinate
  * @param x1 End X coordinate
@@ -73,15 +78,15 @@ esp_err_t gc9a01_draw_image(uint8_t display_id, const uint8_t* image_data,
 esp_err_t gc9a01_set_window(uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1);
 
 /**
- * @brief Write data to display
+ * @brief Write data to display (data mode)
  * @param data Data buffer
- * @param len Data length
+ * @param len Data length in bytes
  * @return ESP_OK on success
  */
 esp_err_t gc9a01_write_data(const uint8_t* data, size_t len);
 
 /**
- * @brief Send command to display
+ * @brief Send command to display (command mode)
  * @param cmd Command byte
  * @return ESP_OK on success
  */

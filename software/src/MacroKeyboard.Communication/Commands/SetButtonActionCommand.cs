@@ -31,18 +31,27 @@ public class SetButtonActionCommand
         {
             var actionData = action.ToBytes();
             
-            var payload = new byte[5 + actionData.Length];
+            // Clamp action data to fit within protocol payload (56 bytes total, 5 bytes header)
+            var maxActionDataLen = ProtocolConstants.PayloadSize - 5;
+            var actualActionLen = Math.Min(actionData.Length, maxActionDataLen);
+            
+            if (actionData.Length > maxActionDataLen)
+            {
+                _logger.LogWarning("Action data truncated: {Original} → {Actual} bytes (max payload: {Max})",
+                    actionData.Length, actualActionLen, ProtocolConstants.PayloadSize);
+            }
+            
+            var payload = new byte[5 + actualActionLen];
             payload[0] = profileId;
             payload[1] = buttonId;
             payload[2] = (byte)action.ActionType;
             
-            // Action data length (little-endian)
-            var dataLength = (ushort)actionData.Length;
-            payload[3] = (byte)(dataLength & 0xFF);
-            payload[4] = (byte)((dataLength >> 8) & 0xFF);
+            // Action data length (little-endian) — use actual (possibly truncated) length
+            payload[3] = (byte)(actualActionLen & 0xFF);
+            payload[4] = (byte)((actualActionLen >> 8) & 0xFF);
             
             // Action data
-            Array.Copy(actionData, 0, payload, 5, Math.Min(actionData.Length, ProtocolConstants.PayloadSize - 5));
+            Array.Copy(actionData, 0, payload, 5, actualActionLen);
             
             var response = await _protocol.SendCommandAsync(
                 ProtocolConstants.CMD_SET_BUTTON_ACTION,

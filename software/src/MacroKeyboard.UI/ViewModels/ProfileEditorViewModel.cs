@@ -412,11 +412,11 @@ public partial class ProfileEditorViewModel : ViewModelBase
             // First save locally
             await _profileService.UpdateProfileAsync(SelectedProfile);
 
-            // Then send to device via IPC
+            // Then send to device via IPC (send full profile object so backend has all button data)
             var message = new IpcMessage
             {
                 MessageType = IpcMessageTypes.ProfileSendToDevice,
-                Data = new { profileId = SelectedProfile.ProfileId }
+                Data = SelectedProfile
             };
 
             var response = await _ipcClient.SendAndWaitAsync(message, TimeSpan.FromSeconds(30));
@@ -567,6 +567,8 @@ public partial class ProfileEditorViewModel : ViewModelBase
         var profileItems = GetAvailableProfileItems();
         var folderItems = GetAvailableFolderItems();
         ButtonConfigViewModel = new ButtonConfigDialogViewModel(_dialogLogger, button, profileItems, folderItems);
+        if (_storageProvider != null)
+            ButtonConfigViewModel.SetStorageProvider(_storageProvider);
         ConfiguredButtonConfig = button;
         IsButtonConfigVisible = true;
     }
@@ -582,6 +584,8 @@ public partial class ProfileEditorViewModel : ViewModelBase
         var profileItems = GetAvailableProfileItems();
         var folderItems = GetAvailableFolderItems();
         ButtonConfigViewModel = new ButtonConfigDialogViewModel(_dialogLogger, buttonItem.Button, profileItems, folderItems);
+        if (_storageProvider != null)
+            ButtonConfigViewModel.SetStorageProvider(_storageProvider);
         ButtonConfigViewModel.SelectedActionType = actionType;
         ConfiguredButtonConfig = buttonItem.Button;
         IsButtonConfigVisible = true;
@@ -739,7 +743,7 @@ public partial class ProfileEditorViewModel : ViewModelBase
             if (SelectedProfile != null)
             {
                 await _profileService.UpdateProfileAsync(SelectedProfile);
-                StatusMessage = $"Button {button.ButtonId} configured";
+                StatusMessage = $"Button {button.ButtonId + 1} configured";
             }
 
             // Rebuild flattened list to update button labels
@@ -837,7 +841,7 @@ public partial class ProfileEditorViewModel : ViewModelBase
                 _logger.LogWarning("Failed to set LED color on device: {Error}", ledResponse.Error);
             }
 
-            StatusMessage = $"Button {button.ButtonId} synced to device";
+            StatusMessage = $"Button {button.ButtonId + 1} synced to device";
         }
         catch (Exception ex)
         {
