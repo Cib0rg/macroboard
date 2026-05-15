@@ -225,8 +225,16 @@ static void gc9d01_send_init_sequence(void) {
     // Display ON
     gc9a01_send_command(0x29);
 
-    // Memory Write (prepare for pixel data)
-    gc9a01_send_command(0x2C);
+    // NOTE: Do NOT send 0x2C (Memory Write) here!
+    // Sending RAMWR puts the display into pixel-data-receive mode.
+    // Since all displays share the same SPI bus, a display left in RAMWR mode
+    // will interpret SPI traffic destined for OTHER displays as pixel data,
+    // causing display corruption (e.g., display 0 showing display 4's image).
+    // The RAMWR command is sent in gc9a01_set_window() right before actual
+    // pixel data transfer, when the correct display is already selected via mux.
+    
+    // Send NOP to ensure the display is in a clean command-idle state
+    gc9a01_send_command(0x00);
 }
 
 // ==================== Public API ====================
@@ -346,8 +354,6 @@ esp_err_t gc9a01_clear(uint8_t display_id, uint16_t color) {
         return ESP_ERR_INVALID_ARG;
     }
     
-    ESP_LOGW(TAG, "DEBUG clear: display_id=%d, color=0x%04X", display_id, color);
-    
     xSemaphoreTake(spi_mutex, portMAX_DELAY);
     
     display_mux_select(display_id);
@@ -371,6 +377,10 @@ esp_err_t gc9a01_clear(uint8_t display_id, uint16_t color) {
         gc9a01_write_data((uint8_t*)buffer, DISPLAY_WIDTH * 2);
     }
     
+    // Send NOP to exit RAMWR mode — prevents this display from interpreting
+    // SPI traffic for other displays as pixel data (shared SPI bus)
+    gc9a01_send_command(0x00);
+    
     free(buffer);
     xSemaphoreGive(spi_mutex);
     
@@ -386,9 +396,6 @@ esp_err_t gc9a01_draw_image(uint8_t display_id, const uint8_t* image_data,
     if (width > DISPLAY_WIDTH || height > DISPLAY_HEIGHT) {
         return ESP_ERR_INVALID_SIZE;
     }
-    
-    ESP_LOGW(TAG, "DEBUG draw_image: display_id=%d, %dx%d, first_pixel=0x%02X%02X",
-             display_id, width, height, image_data[0], image_data[1]);
     
     xSemaphoreTake(spi_mutex, portMAX_DELAY);
     
@@ -406,6 +413,10 @@ esp_err_t gc9a01_draw_image(uint8_t display_id, const uint8_t* image_data,
     for (uint16_t row = 0; row < height; row++) {
         gc9a01_write_data(image_data + (row * row_bytes), row_bytes);
     }
+    
+    // Send NOP to exit RAMWR mode — prevents this display from interpreting
+    // SPI traffic for other displays as pixel data (shared SPI bus)
+    gc9a01_send_command(0x00);
     
     xSemaphoreGive(spi_mutex);
     

@@ -117,16 +117,13 @@ esp_err_t image_transfer_end(uint32_t* calculated_crc) {
     
     // If save succeeded and this is the current profile, decode and display immediately
     if (ret == ESP_OK && transfer_ctx.profile_id == profile_get_current_id()) {
-        ESP_LOGW(TAG, "DEBUG: About to display transferred image on button %d (profile %d)",
-                 transfer_ctx.button_id, transfer_ctx.profile_id);
         uint8_t* rgb565_buf = heap_caps_malloc(DISPLAY_BUFFER_SIZE, MALLOC_CAP_DMA | MALLOC_CAP_SPIRAM);
         if (rgb565_buf != NULL) {
             uint16_t w, h;
             if (jpeg_decode_to_rgb565(transfer_ctx.buffer, transfer_ctx.total_size,
                                        rgb565_buf, DISPLAY_BUFFER_SIZE, &w, &h) == ESP_OK) {
                 gc9a01_draw_image(transfer_ctx.button_id, rgb565_buf, w, h);
-                ESP_LOGW(TAG, "DEBUG: Image displayed on button %d (%dx%d), first_pixel=0x%02X%02X",
-                         transfer_ctx.button_id, w, h, rgb565_buf[0], rgb565_buf[1]);
+                ESP_LOGI(TAG, "Image displayed on button %d (%dx%d)", transfer_ctx.button_id, w, h);
             } else {
                 ESP_LOGW(TAG, "JPEG decode failed for button %d after transfer", transfer_ctx.button_id);
             }

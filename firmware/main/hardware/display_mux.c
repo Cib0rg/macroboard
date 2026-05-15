@@ -80,15 +80,5 @@ esp_err_t display_mux_select(uint8_t display_id) {
     // Small delay for signal stabilization
     esp_rom_delay_us(1);
     
-    // DEBUG: Read back actual GPIO levels to verify mux addressing
-    int actual_a0 = gpio_get_level(PIN_MUX_A0);
-    int actual_a1 = gpio_get_level(PIN_MUX_A1);
-    int actual_a2 = gpio_get_level(PIN_MUX_A2);
-    int actual_sel = gpio_get_level(PIN_MUX_SEL);
-    ESP_LOGW(TAG, "MUX SELECT display_id=%d -> local_id=%d, SEL=%d, A2=%d A1=%d A0=%d (readback: SEL=%d A2=%d A1=%d A0=%d)",
-             display_id, local_id,
-             (display_id < 5) ? 1 : 0, (local_id >> 2) & 1, (local_id >> 1) & 1, (local_id >> 0) & 1,
-             actual_sel, actual_a2, actual_a1, actual_a0);
-    
     return ESP_OK;
 }

@@ -230,29 +230,6 @@ void app_main(void) {
         }
     }
     
-    // DEBUG: Re-draw display 0 after all other displays are drawn
-    // This tests if display 0 was "eavesdropping" on SPI data for display 4
-    ESP_LOGW(TAG, "=== DEBUG: Re-drawing display 0 to test eavesdropping hypothesis ===");
-    {
-        uint8_t* image_data = NULL;
-        size_t image_size = 0;
-        ret = image_storage_load(current_profile, 0, &image_data, &image_size);
-        if (ret == ESP_OK && image_data != NULL) {
-            uint8_t* rgb565_buf = heap_caps_malloc(DISPLAY_BUFFER_SIZE, MALLOC_CAP_DMA | MALLOC_CAP_SPIRAM);
-            if (rgb565_buf != NULL) {
-                uint16_t w, h;
-                if (jpeg_decode_to_rgb565(image_data, image_size, rgb565_buf, DISPLAY_BUFFER_SIZE, &w, &h) == ESP_OK) {
-                    gc9a01_draw_image(0, rgb565_buf, w, h);
-                    ESP_LOGW(TAG, "=== DEBUG: Display 0 re-drawn (%dx%d). If display 0 now shows CORRECT image, eavesdropping confirmed! ===", w, h);
-                }
-                free(rgb565_buf);
-            }
-            free(image_data);
-        } else {
-            ESP_LOGW(TAG, "=== DEBUG: No image for display 0, skipping re-draw test ===");
-        }
-    }
-    
     // ============================================
     // PHASE 6: Task Creation
     // ============================================
