@@ -9,7 +9,8 @@ using System.Threading.Tasks;
 namespace MacroKeyboard.Shared.IPC;
 
 /// <summary>
-/// IPC Client для подключения к Backend Service
+/// IPC Client для подключения к Backend Service.
+/// Supports automatic reconnection with exponential backoff.
 /// </summary>
 public class IpcClient : IIpcClient, IDisposable
 {
@@ -19,11 +20,18 @@ public class IpcClient : IIpcClient, IDisposable
     private TcpClient? _client;
     private NetworkStream? _stream;
     private CancellationTokenSource? _cts;
+    private CancellationTokenSource? _reconnectCts;
     private bool _isConnected;
+    private bool _autoReconnect;
+    private bool _disposed;
+
+    private static readonly TimeSpan InitialReconnectDelay = TimeSpan.FromSeconds(1);
+    private static readonly TimeSpan MaxReconnectDelay = TimeSpan.FromSeconds(30);
 
     public event EventHandler<IpcMessage>? MessageReceived;
     public event EventHandler? Connected;
     public event EventHandler? Disconnected;
+    public event EventHandler<int>? Reconnecting;
 
     public bool IsConnected => _isConnected && _client?.Connected == true;
 
@@ -42,6 +50,27 @@ public class IpcClient : IIpcClient, IDisposable
             return;
         }
 
+        _autoReconnect = true;
+        _reconnectCts?.Cancel();
+        _reconnectCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+
+        try
+        {
+            await ConnectInternalAsync(cancellationToken);
+        }
+        catch
+        {
+            // Initial connection failed — start background reconnect loop
+            if (_autoReconnect && !_disposed)
+            {
+                _ = Task.Run(() => ReconnectLoopAsync());
+            }
+            throw;
+        }
+    }
+
+    private async Task ConnectInternalAsync(CancellationToken cancellationToken)
+    {
         try
         {
             _logger.LogInformation("Connecting to IPC server at {Host}:{Port}...", _host, _port);
@@ -51,7 +80,7 @@ public class IpcClient : IIpcClient, IDisposable
             _stream = _client.GetStream();
 
             _isConnected = true;
-            _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            _cts = new CancellationTokenSource();
 
             _logger.LogInformation("Connected to IPC server");
             Connected?.Invoke(this, EventArgs.Empty);
@@ -62,11 +91,21 @@ public class IpcClient : IIpcClient, IDisposable
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to connect to IPC server");
+            CleanupConnection();
             throw;
         }
     }
 
     public async Task DisconnectAsync(CancellationToken cancellationToken = default)
+    {
+        // Stop auto-reconnect when explicitly disconnecting
+        _autoReconnect = false;
+        _reconnectCts?.Cancel();
+
+        await DisconnectInternalAsync(cancellationToken);
+    }
+
+    private async Task DisconnectInternalAsync(CancellationToken cancellationToken = default)
     {
         if (!_isConnected)
         {
@@ -80,21 +119,40 @@ public class IpcClient : IIpcClient, IDisposable
 
         if (_stream != null)
         {
-            await _stream.FlushAsync(cancellationToken);
-            _stream.Close();
-            _stream.Dispose();
+            try
+            {
+                await _stream.FlushAsync(cancellationToken);
+            }
+            catch { /* ignore flush errors during disconnect */ }
+            
+            try { _stream.Close(); } catch { }
+            try { _stream.Dispose(); } catch { }
             _stream = null;
         }
 
         if (_client != null)
         {
-            _client.Close();
-            _client.Dispose();
+            try { _client.Close(); } catch { }
+            try { _client.Dispose(); } catch { }
             _client = null;
         }
 
         _logger.LogInformation("Disconnected from IPC server");
         Disconnected?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void CleanupConnection()
+    {
+        _isConnected = false;
+        _cts?.Cancel();
+
+        try { _stream?.Close(); } catch { }
+        try { _stream?.Dispose(); } catch { }
+        _stream = null;
+
+        try { _client?.Close(); } catch { }
+        try { _client?.Dispose(); } catch { }
+        _client = null;
     }
 
     public async Task SendAsync(IpcMessage message, CancellationToken cancellationToken = default)
@@ -224,14 +282,70 @@ public class IpcClient : IIpcClient, IDisposable
         {
             if (_isConnected)
             {
-                await DisconnectAsync();
+                _isConnected = false;
+                CleanupConnection();
+                Disconnected?.Invoke(this, EventArgs.Empty);
+
+                // Trigger auto-reconnect if enabled
+                if (_autoReconnect && !_disposed)
+                {
+                    _ = Task.Run(() => ReconnectLoopAsync());
+                }
+            }
+        }
+    }
+
+    private async Task ReconnectLoopAsync()
+    {
+        var delay = InitialReconnectDelay;
+        var attempt = 0;
+
+        while (_autoReconnect && !_disposed)
+        {
+            var token = _reconnectCts?.Token ?? CancellationToken.None;
+            if (token.IsCancellationRequested)
+                break;
+
+            attempt++;
+            _logger.LogInformation(
+                "Reconnection attempt {Attempt} in {Delay}s...", attempt, delay.TotalSeconds);
+            Reconnecting?.Invoke(this, attempt);
+
+            try
+            {
+                await Task.Delay(delay, token);
+                await ConnectInternalAsync(token);
+
+                // If we get here, connection succeeded
+                _logger.LogInformation("Reconnected to IPC server after {Attempt} attempt(s)", attempt);
+                return;
+            }
+            catch (OperationCanceledException)
+            {
+                _logger.LogDebug("Reconnection cancelled");
+                return;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Reconnection attempt {Attempt} failed", attempt);
+
+                // Exponential backoff with cap
+                delay = TimeSpan.FromSeconds(
+                    Math.Min(delay.TotalSeconds * 2, MaxReconnectDelay.TotalSeconds));
             }
         }
     }
 
     public void Dispose()
     {
-        DisconnectAsync().GetAwaiter().GetResult();
+        if (_disposed) return;
+        _disposed = true;
+
+        _autoReconnect = false;
+        _reconnectCts?.Cancel();
+        _reconnectCts?.Dispose();
+
+        DisconnectInternalAsync().GetAwaiter().GetResult();
         _cts?.Dispose();
     }
 }

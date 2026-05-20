@@ -46,6 +46,7 @@ public partial class MainWindowViewModel : ViewModelBase
         // Subscribe to IPC events
         _ipcClient.Connected += OnIpcConnected;
         _ipcClient.Disconnected += OnIpcDisconnected;
+        _ipcClient.Reconnecting += OnIpcReconnecting;
     }
 
     public async Task InitializeAsync()
@@ -53,12 +54,15 @@ public partial class MainWindowViewModel : ViewModelBase
         try
         {
             _logger.LogInformation("Connecting to backend...");
+            StatusText = "Connecting...";
             await _ipcClient.ConnectAsync();
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to connect to backend");
-            StatusText = "Backend not running";
+            StatusText = "Reconnecting...";
+            // ConnectAsync already enables auto-reconnect, so the IpcClient
+            // will keep retrying in the background after the initial failure.
         }
     }
 
@@ -91,6 +95,12 @@ public partial class MainWindowViewModel : ViewModelBase
     {
         _logger.LogWarning("Disconnected from backend");
         IsConnected = false;
-        StatusText = "Disconnected";
+        StatusText = "Disconnected — reconnecting...";
+    }
+
+    private void OnIpcReconnecting(object? sender, int attempt)
+    {
+        _logger.LogInformation("Reconnection attempt {Attempt}...", attempt);
+        StatusText = $"Reconnecting (attempt {attempt})...";
     }
 }
