@@ -62,6 +62,13 @@ void app_main(void) {
     }
     ESP_LOGI(TAG, "✓ SPIFFS initialized");
     
+    // 1.4 Initialize image storage (deduplication layer, migrates legacy files)
+    ret = image_storage_init();
+    if (ret != ESP_OK) {
+        ESP_LOGW(TAG, "Image storage init failed: %s (non-fatal)", esp_err_to_name(ret));
+    }
+    ESP_LOGI(TAG, "✓ Image storage initialized");
+    
     // ============================================
     // PHASE 2: Hardware Initialization
     // ============================================
@@ -272,6 +279,16 @@ void app_main(void) {
     ESP_LOGI(TAG, "Current Profile: %d", current_profile);
     ESP_LOGI(TAG, "Free heap: %u bytes", (unsigned int)esp_get_free_heap_size());
     ESP_LOGI(TAG, "Free PSRAM: %u bytes", (unsigned int)heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
+    
+    // Image deduplication stats
+    {
+        uint16_t unique_images = 0, total_mappings = 0;
+        uint32_t saved_bytes = 0;
+        image_storage_get_stats(&unique_images, &total_mappings, &saved_bytes);
+        ESP_LOGI(TAG, "Images: %d unique, %d mappings, %lu bytes saved by dedup",
+                 unique_images, total_mappings, (unsigned long)saved_bytes);
+    }
+    
     ESP_LOGI(TAG, "===========================================");
     
     // Send device ready event to PC (defined in protocol_types.h)

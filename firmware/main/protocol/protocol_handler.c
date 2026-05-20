@@ -11,6 +11,7 @@
 #include "config.h"
 #include "profile/profile_manager.h"
 #include "storage/profile_storage.h"
+#include "storage/image_storage.h"
 #include "usb/usb_vendor.h"
 #include "esp_spiffs.h"
 
@@ -191,7 +192,15 @@ static esp_err_t handle_get_device_info(const uint8_t* payload, uint16_t length,
     uint32_t free_space = (uint32_t)(total - used);
     memcpy(&response[23], &free_space, 4);
     
-    *response_len = 27;
+    // Image deduplication stats
+    uint16_t unique_images = 0, total_mappings = 0;
+    uint32_t saved_bytes = 0;
+    image_storage_get_stats(&unique_images, &total_mappings, &saved_bytes);
+    memcpy(&response[27], &unique_images, 2);
+    memcpy(&response[29], &total_mappings, 2);
+    memcpy(&response[31], &saved_bytes, 4);
+    
+    *response_len = 35;
     return ESP_OK;
 }
 

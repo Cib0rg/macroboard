@@ -7,7 +7,7 @@ namespace MacroKeyboard.Communication.HidDevice;
 
 /// <summary>
 /// Менеджер для работы с USB Vendor-class устройством (кроссплатформенный).
-/// Использует libusb-1.0 через P/Invoke для связи с Vendor-интерфейсом (Interface 1)
+/// Использует LibUsbDotNet (NuGet) для связи с Vendor-интерфейсом (Interface 1)
 /// составного USB-устройства (HID Keyboard + Vendor).
 ///
 /// Architecture:
@@ -19,22 +19,21 @@ namespace MacroKeyboard.Communication.HidDevice;
 ///
 /// Требования:
 ///   - Linux: libusb-1.0-0 (apt install libusb-1.0-0) + udev rules для доступа без root
-///   - Windows: WinUSB драйвер (устанавливается через Zadig или INF-файл)
-///   - macOS: libusb (brew install libusb)
+///   - Windows: WinUSB драйвер (устанавливается через Zadig или INF-файл).
+///              libusb-1.0.dll поставляется вместе с LibUsbDotNet NuGet пакетом.
+///   - macOS: libusb поставляется вместе с LibUsbDotNet NuGet пакетом
 /// </summary>
 public class HidDeviceManager : IDisposable
 {
     private readonly ILogger<HidDeviceManager> _logger;
-    private nint _ctx;
-    private nint _devHandle;
-    private bool _interfaceClaimed;
+    private UsbDeviceWrapper? _usb;
     private volatile bool _isMonitoring;
     private CancellationTokenSource? _monitoringCts;
     private bool _disposed;
     private readonly object _writeLock = new();
     private readonly object _connectLock = new();
 
-    // Flag set by ReadFromUsb when LIBUSB_ERROR_NO_DEVICE is detected
+    // Flag set by ReadFromUsb when device loss is detected
     private volatile bool _deviceLost;
 
     // Pending response queue: the monitor thread routes responses here
@@ -53,7 +52,7 @@ public class HidDeviceManager : IDisposable
     public event EventHandler? DeviceDisconnected;
     public event EventHandler<byte[]>? DataReceived;
 
-    public bool IsConnected => _devHandle != 0 && !_deviceLost;
+    public bool IsConnected => _usb != null && _usb.IsOpen && !_deviceLost;
 
     public HidDeviceManager(ILogger<HidDeviceManager> logger)
     {
@@ -74,7 +73,7 @@ public class HidDeviceManager : IDisposable
             }
 
             // If there's a stale connection, clean it up first
-            if (_devHandle != 0 || _ctx != 0)
+            if (_usb != null)
             {
                 _logger.LogInformation("Cleaning up stale USB connection before reconnect...");
                 StopMonitoring();
@@ -91,45 +90,31 @@ public class HidDeviceManager : IDisposable
             // Reset device-lost flag
             _deviceLost = false;
 
-            // Initialize libusb
-            int rc = LibUsb.libusb_init(out _ctx);
-            if (rc != LibUsb.LIBUSB_SUCCESS)
-            {
-                _logger.LogError("Failed to initialize libusb: {Error}", LibUsb.GetErrorString(rc));
-                return false;
-            }
+            // Create USB wrapper and open device
+            var usb = new UsbDeviceWrapper();
 
-            // Open device by VID/PID
-            _devHandle = LibUsb.libusb_open_device_with_vid_pid(
-                _ctx,
-                (ushort)ProtocolConstants.VendorId,
-                (ushort)ProtocolConstants.ProductId);
-
-            if (_devHandle == 0)
+            if (!usb.Open(ProtocolConstants.VendorId, ProtocolConstants.ProductId))
             {
                 _logger.LogDebug("Device not found (VID: 0x{VID:X4}, PID: 0x{PID:X4})",
                     ProtocolConstants.VendorId, ProtocolConstants.ProductId);
-                LibUsb.libusb_exit(_ctx);
-                _ctx = 0;
+                usb.Dispose();
                 return false;
             }
 
             _logger.LogInformation("USB device opened");
 
-            // Auto-detach kernel driver (works on Linux, no-op on Windows/macOS)
-            LibUsb.libusb_set_auto_detach_kernel_driver(_devHandle, 1);
-
-            // Claim the vendor interface
-            rc = LibUsb.libusb_claim_interface(_devHandle, VENDOR_INTERFACE_NUMBER);
-            if (rc != LibUsb.LIBUSB_SUCCESS)
+            // Claim the vendor interface and open endpoints
+            int rc = usb.ClaimInterface(VENDOR_INTERFACE_NUMBER, EP_VENDOR_OUT, EP_VENDOR_IN);
+            if (rc != UsbDeviceWrapper.SUCCESS)
             {
                 _logger.LogError("Failed to claim interface {Interface}: {Error}",
-                    VENDOR_INTERFACE_NUMBER, LibUsb.GetErrorString(rc));
-                CleanupDevice();
+                    VENDOR_INTERFACE_NUMBER, UsbDeviceWrapper.GetErrorString(rc));
+                usb.Dispose();
                 return false;
             }
 
-            _interfaceClaimed = true;
+            _usb = usb;
+
             _logger.LogInformation("Claimed vendor interface {Interface}", VENDOR_INTERFACE_NUMBER);
             _logger.LogInformation("Vendor endpoints: OUT=0x{Out:X2}, IN=0x{In:X2}",
                 EP_VENDOR_OUT, EP_VENDOR_IN);
@@ -144,10 +129,11 @@ public class HidDeviceManager : IDisposable
         }
         catch (DllNotFoundException ex)
         {
-            _logger.LogError(ex, "libusb-1.0 not found. Install it:\n" +
+            _logger.LogError(ex, "libusb-1.0 native library not found. This should not happen " +
+                "as LibUsbDotNet bundles it. Check your deployment.\n" +
                 "  Linux:  sudo apt install libusb-1.0-0\n" +
-                "  macOS:  brew install libusb\n" +
-                "  Windows: Install WinUSB driver via Zadig");
+                "  macOS:  Bundled with LibUsbDotNet\n" +
+                "  Windows: Bundled with LibUsbDotNet (WinUSB driver required via Zadig)");
             return false;
         }
         catch (Exception ex)
@@ -175,7 +161,7 @@ public class HidDeviceManager : IDisposable
     {
         lock (_connectLock)
         {
-            if (_devHandle == 0 && _ctx == 0)
+            if (_usb == null)
             {
                 // Already disconnected
                 return;
@@ -218,28 +204,26 @@ public class HidDeviceManager : IDisposable
             int rc;
             lock (_writeLock)
             {
-                if (_devHandle == 0 || _deviceLost)
+                if (_usb == null || !_usb.IsOpen || _deviceLost)
                     return false;
 
-                rc = LibUsb.libusb_bulk_transfer(
-                    _devHandle,
-                    EP_VENDOR_OUT,
+                rc = _usb.BulkWrite(
                     packet,
                     packet.Length,
                     out int bytesWritten,
                     1000); // 1 second timeout
             }
 
-            if (rc == LibUsb.LIBUSB_ERROR_NO_DEVICE)
+            if (rc == UsbDeviceWrapper.ERROR_NO_DEVICE)
             {
                 _logger.LogWarning("Device lost during write");
                 _deviceLost = true;
                 return false;
             }
 
-            if (rc != LibUsb.LIBUSB_SUCCESS)
+            if (rc != UsbDeviceWrapper.SUCCESS)
             {
-                _logger.LogError("USB write error: {Error}", LibUsb.GetErrorString(rc));
+                _logger.LogError("USB write error: {Error}", UsbDeviceWrapper.GetErrorString(rc));
                 return false;
             }
 
@@ -309,43 +293,41 @@ public class HidDeviceManager : IDisposable
     /// <summary>
     /// Read raw data from USB (used only by the monitor thread).
     /// Returns the data, or null on timeout/error.
-    /// Sets _deviceLost = true on LIBUSB_ERROR_NO_DEVICE.
+    /// Sets _deviceLost = true on ERROR_NO_DEVICE.
     /// </summary>
     private byte[]? ReadFromUsb(int timeout = 100)
     {
-        if (_devHandle == 0 || _deviceLost) return null;
+        if (_usb == null || !_usb.IsOpen || _deviceLost) return null;
 
         try
         {
             var buffer = new byte[ProtocolConstants.PacketSize];
 
-            int rc = LibUsb.libusb_bulk_transfer(
-                _devHandle,
-                EP_VENDOR_IN,
+            int rc = _usb.BulkRead(
                 buffer,
                 buffer.Length,
                 out int bytesRead,
-                (uint)timeout);
+                timeout);
 
-            if (rc == LibUsb.LIBUSB_SUCCESS && bytesRead > 0)
+            if (rc == UsbDeviceWrapper.SUCCESS && bytesRead > 0)
             {
                 var data = new byte[bytesRead];
                 Array.Copy(buffer, 0, data, 0, bytesRead);
                 return data;
             }
 
-            if (rc == LibUsb.LIBUSB_ERROR_NO_DEVICE)
+            if (rc == UsbDeviceWrapper.ERROR_NO_DEVICE)
             {
-                _logger.LogWarning("USB device lost (LIBUSB_ERROR_NO_DEVICE)");
+                _logger.LogWarning("USB device lost (ERROR_NO_DEVICE)");
                 _deviceLost = true;
                 return null;
             }
 
-            // LIBUSB_ERROR_TIMEOUT is normal — no data available
+            // ERROR_TIMEOUT is normal — no data available
             // Other errors are logged but not treated as disconnect (yet)
-            if (rc != LibUsb.LIBUSB_SUCCESS && rc != LibUsb.LIBUSB_ERROR_TIMEOUT)
+            if (rc != UsbDeviceWrapper.SUCCESS && rc != UsbDeviceWrapper.ERROR_TIMEOUT)
             {
-                _logger.LogDebug("USB read returned: {Error}", LibUsb.GetErrorString(rc));
+                _logger.LogDebug("USB read returned: {Error}", UsbDeviceWrapper.GetErrorString(rc));
             }
 
             return null;
@@ -518,59 +500,51 @@ public class HidDeviceManager : IDisposable
 
     /// <summary>
     /// Clean up USB device resources.
-    /// After this, _devHandle and _ctx are 0, IsConnected returns false.
+    /// After this, _usb is null, IsConnected returns false.
     /// </summary>
     private void CleanupDevice()
     {
         try
         {
-            if (_devHandle != 0)
+            if (_usb != null)
             {
-                if (_interfaceClaimed)
+                try
                 {
-                    try
-                    {
-                        LibUsb.libusb_release_interface(_devHandle, VENDOR_INTERFACE_NUMBER);
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogDebug("Error releasing interface: {Message}", ex.Message);
-                    }
-                    _interfaceClaimed = false;
+                    _usb.ReleaseInterface(VENDOR_INTERFACE_NUMBER);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogDebug("Error releasing interface: {Message}", ex.Message);
                 }
 
                 try
                 {
-                    LibUsb.libusb_close(_devHandle);
+                    _usb.Close();
                 }
                 catch (Exception ex)
                 {
                     _logger.LogDebug("Error closing device: {Message}", ex.Message);
                 }
-                _devHandle = 0;
-            }
 
-            if (_ctx != 0)
-            {
                 try
                 {
-                    LibUsb.libusb_exit(_ctx);
+                    _usb.Dispose();
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogDebug("Error exiting libusb: {Message}", ex.Message);
+                    _logger.LogDebug("Error disposing USB wrapper: {Message}", ex.Message);
                 }
-                _ctx = 0;
+
+                _usb = null;
             }
 
-            _logger.LogDebug("USB resources cleaned up (devHandle=0, ctx=0)");
+            _logger.LogDebug("USB resources cleaned up");
         }
         catch (Exception ex)
         {
             _logger.LogDebug("Error during device cleanup: {Message}", ex.Message);
-            // Force zero even on error
-            _devHandle = 0;
-            _ctx = 0;
+            // Force null even on error
+            _usb = null;
         }
     }
 

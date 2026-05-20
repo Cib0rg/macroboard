@@ -10,6 +10,7 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="8.0.0" />
+    <PackageReference Include="LibUsbDotNet" Version="3.0.102-alpha" />
   </ItemGroup>
 
   <ItemGroup>

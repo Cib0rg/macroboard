@@ -7,3 +7,9 @@ software/src/*/obj/
 firmware/build/
 firmware/build_*_*/
 firmware/sdkconfig
+
+# Installer build artifacts
+software/publish/
+software/installer/windows/output/
+software/installer/linux/output/
+software/installer/linux/build/

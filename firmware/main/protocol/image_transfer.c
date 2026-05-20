@@ -111,9 +111,10 @@ esp_err_t image_transfer_end(uint32_t* calculated_crc) {
     ESP_LOGI(TAG, "Transfer complete: %lu bytes, CRC32=0x%08lX",
              transfer_ctx.total_size, *calculated_crc);
     
-    // Save image to storage
+    // Save image to storage (content-addressed with deduplication)
     esp_err_t ret = image_storage_save(transfer_ctx.profile_id, transfer_ctx.button_id,
-                                        transfer_ctx.buffer, transfer_ctx.total_size);
+                                        transfer_ctx.buffer, transfer_ctx.total_size,
+                                        *calculated_crc);
     
     // If save succeeded and this is the current profile, decode and display immediately
     if (ret == ESP_OK && transfer_ctx.profile_id == profile_get_current_id()) {
