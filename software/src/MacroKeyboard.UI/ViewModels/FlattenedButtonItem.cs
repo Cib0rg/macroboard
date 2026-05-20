@@ -1,4 +1,7 @@
+using Avalonia.Media.Imaging;
 using MacroKeyboard.Core.Models;
+using System;
+using System.IO;
 
 namespace MacroKeyboard.UI.ViewModels;
 
@@ -88,6 +91,51 @@ public class FlattenedButtonItem
     /// Parent folder ID (null for root buttons)
     /// </summary>
     public byte? ParentFolderId { get; set; }
+
+    /// <summary>
+    /// Whether this button has an image assigned
+    /// </summary>
+    public bool HasImage => !string.IsNullOrWhiteSpace(Button.ImagePath) && File.Exists(Button.ImagePath);
+
+    /// <summary>
+    /// Thumbnail bitmap for the button image (lazy-loaded)
+    /// </summary>
+    public Bitmap? Thumbnail
+    {
+        get
+        {
+            if (_thumbnailLoaded)
+                return _thumbnail;
+
+            _thumbnailLoaded = true;
+            _thumbnail = LoadThumbnail();
+            return _thumbnail;
+        }
+    }
+
+    private Bitmap? _thumbnail;
+    private bool _thumbnailLoaded;
+
+    private Bitmap? LoadThumbnail()
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(Button.ImagePath) || !File.Exists(Button.ImagePath))
+                return null;
+
+            var ext = Path.GetExtension(Button.ImagePath).ToLowerInvariant();
+            if (ext == ".svg")
+                return null;
+
+            using var stream = File.OpenRead(Button.ImagePath);
+            // Decode at reduced size for thumbnail (32x32)
+            return Bitmap.DecodeToWidth(stream, 32);
+        }
+        catch
+        {
+            return null;
+        }
+    }
 
     public FlattenedButtonItem(ButtonConfig button, int nestingLevel, byte? parentFolderId = null)
     {

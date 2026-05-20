@@ -1,4 +1,5 @@
 using Avalonia.Media;
+using Avalonia.Media.Imaging;
 using Avalonia.Platform.Storage;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -50,6 +51,28 @@ public partial class ButtonConfigDialogViewModel : ViewModelBase
 
     [ObservableProperty]
     private string _imagePath = string.Empty;
+
+    private Bitmap? _imagePreviewBitmap;
+
+    /// <summary>
+    /// Preview bitmap for the selected button image
+    /// </summary>
+    public Bitmap? ImagePreview
+    {
+        get => _imagePreviewBitmap;
+        private set
+        {
+            if (SetProperty(ref _imagePreviewBitmap, value))
+            {
+                OnPropertyChanged(nameof(HasImagePreview));
+            }
+        }
+    }
+
+    /// <summary>
+    /// Whether an image preview is available
+    /// </summary>
+    public bool HasImagePreview => _imagePreviewBitmap != null;
 
     [ObservableProperty]
     private string _ledColorHex = "#FFFFFF";
@@ -377,6 +400,7 @@ public partial class ButtonConfigDialogViewModel : ViewModelBase
         SelectedTargetFolder = existingFolder;
         FolderName = existingFolder?.Name ?? $"Folder {buttonConfig.FolderId}";
         ImagePath = buttonConfig.ImagePath ?? string.Empty;
+        LoadImagePreview(ImagePath);
         
         // Initialize LED color and brightness from button config
         _isUpdatingColor = true;
@@ -1068,6 +1092,47 @@ public partial class ButtonConfigDialogViewModel : ViewModelBase
         catch { /* ignore errors in icon search */ }
         
         return null;
+    }
+
+    partial void OnImagePathChanged(string value)
+    {
+        LoadImagePreview(value);
+    }
+
+    /// <summary>
+    /// Load image preview bitmap from the given path
+    /// </summary>
+    private void LoadImagePreview(string path)
+    {
+        try
+        {
+            ImagePreview?.Dispose();
+            ImagePreview = null;
+
+            if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+            {
+                OnPropertyChanged(nameof(HasImagePreview));
+                return;
+            }
+
+            // Skip SVG files — Avalonia Bitmap doesn't support them directly
+            var ext = Path.GetExtension(path).ToLowerInvariant();
+            if (ext == ".svg")
+            {
+                OnPropertyChanged(nameof(HasImagePreview));
+                return;
+            }
+
+            using var stream = File.OpenRead(path);
+            ImagePreview = new Bitmap(stream);
+            OnPropertyChanged(nameof(HasImagePreview));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to load image preview from {Path}", path);
+            ImagePreview = null;
+            OnPropertyChanged(nameof(HasImagePreview));
+        }
     }
 
     [RelayCommand]
