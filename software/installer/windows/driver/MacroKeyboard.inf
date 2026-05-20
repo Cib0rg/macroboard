@@ -1,0 +1,80 @@
+; MacroKeyboard WinUSB Driver INF
+; Installs WinUSB driver for the MacroKeyboard Vendor interface
+;
+; VID: 0x1209 (pid.codes Open Source)
+; PID: 0x0001 (MacroKeyboard)
+;
+; Usage:
+;   Right-click → "Install" or use: pnputil /add-driver MacroKeyboard.inf /install
+;   Or install via Device Manager → Update Driver → Browse → Select this folder
+;
+; NOTE: This INF targets the Vendor-specific interface (MI_01) of the composite device.
+;       The HID Keyboard interface (MI_00) uses the built-in Windows HID driver.
+
+[Version]
+Signature   = "$Windows NT$"
+Class       = USBDevice
+ClassGUID   = {88BAE032-5A81-49f0-BC3D-A4FF138216D6}
+Provider    = %ManufacturerName%
+CatalogFile = MacroKeyboard.cat
+DriverVer   = 05/20/2026,1.0.0.0
+PnpLockdown = 1
+
+[Manufacturer]
+%ManufacturerName% = Standard,NTamd64,NTarm64
+
+[Standard.NTamd64]
+%DeviceName% = USB_Install, USB\VID_1209&PID_0001&MI_01
+
+[Standard.NTarm64]
+%DeviceName% = USB_Install, USB\VID_1209&PID_0001&MI_01
+
+; ==================== Installation ====================
+
+[USB_Install]
+Include = winusb.inf
+Needs   = WINUSB.NT
+
+[USB_Install.Services]
+Include    = winusb.inf
+AddService = WinUSB,0x00000002,WinUSB_ServiceInstall
+
+[WinUSB_ServiceInstall]
+DisplayName   = %WinUSB_SvcDesc%
+ServiceType   = 1
+StartType     = 3
+ErrorControl  = 1
+ServiceBinary = %12%\WinUSB.sys
+
+[USB_Install.Wdf]
+KmdfService = WINUSB, WinUSB_Install
+
+[WinUSB_Install]
+KmdfLibraryVersion = 1.11
+
+[USB_Install.HW]
+AddReg = Dev_AddReg
+
+[Dev_AddReg]
+; WinUSB Device Interface GUID — used by libusb/LibUsbDotNet to find the device
+HKR,,DeviceInterfaceGUIDs,0x10000,"{A5DCBF10-6530-11D2-901F-00C04FB951ED}"
+
+[USB_Install.CoInstallers]
+AddReg    = CoInstallers_AddReg
+CopyFiles = CoInstallers_CopyFiles
+
+[CoInstallers_AddReg]
+HKR,,CoInstallers32,0x00010000,"WdfCoInstaller01011.dll,WdfCoInstaller"
+
+[CoInstallers_CopyFiles]
+WdfCoInstaller01011.dll
+
+[DestinationDirs]
+CoInstallers_CopyFiles = 11
+
+; ==================== Strings ====================
+
+[Strings]
+ManufacturerName = "Elgato"
+DeviceName       = "MacroKeyboard (Stream Deck) Vendor Interface"
+WinUSB_SvcDesc   = "WinUSB Driver for MacroKeyboard"
