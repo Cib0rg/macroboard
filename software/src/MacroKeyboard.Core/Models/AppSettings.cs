@@ -55,4 +55,9 @@ public class AppSettings
     /// Яркость LED по умолчанию (0-255)
     /// </summary>
     public byte DefaultLedBrightness { get; set; } = 200;
+    
+    /// <summary>
+    /// Яркость подсветки дисплеев по умолчанию (0-255)
+    /// </summary>
+    public byte DefaultDisplayBrightness { get; set; } = 255;
 }

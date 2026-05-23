@@ -97,6 +97,10 @@ public static class IpcMessageTypes
     public const string SetLedColor = "led.setcolor";
     public const string GetLedColor = "led.getcolor";
     
+    // Display messages
+    public const string SetDisplayBrightness = "display.setbrightness";
+    public const string GetDisplayBrightness = "display.getbrightness";
+    
     // Encoder messages
     public const string EncoderRotated = "encoder.rotated";
     public const string EncoderPressed = "encoder.pressed";

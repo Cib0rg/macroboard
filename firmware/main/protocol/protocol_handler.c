@@ -356,13 +356,28 @@ static esp_err_t handle_set_backlight(const uint8_t* payload, uint16_t length,
         return ESP_ERR_INVALID_ARG;
     }
     
-    uint8_t enabled = payload[0];
-    
+    extern esp_err_t gc9a01_set_brightness(uint8_t brightness);
     extern esp_err_t gc9a01_set_backlight(bool enabled);
-    esp_err_t ret = gc9a01_set_backlight(enabled != 0);
+    extern uint8_t gc9a01_get_brightness(void);
+    
+    esp_err_t ret;
+    
+    if (length >= 2) {
+        // New format: payload[0] = enabled, payload[1] = brightness (0-255)
+        uint8_t brightness = payload[1];
+        if (payload[0] == 0) {
+            brightness = 0;  // Force off
+        }
+        ret = gc9a01_set_brightness(brightness);
+    } else {
+        // Legacy format: payload[0] = enabled (on/off only)
+        uint8_t enabled = payload[0];
+        ret = gc9a01_set_backlight(enabled != 0);
+    }
     
     response[0] = (ret == ESP_OK) ? STATUS_OK : STATUS_ERROR;
-    *response_len = 1;
+    response[1] = gc9a01_get_brightness();
+    *response_len = 2;
     
     return ESP_OK;
 }

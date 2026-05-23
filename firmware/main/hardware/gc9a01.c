@@ -249,9 +249,9 @@ esp_err_t gc9a01_init(void) {
         return ESP_FAIL;
     }
     
-    // Configure DC, RST, and Backlight pins
+    // Configure DC and RST pins (Backlight is managed by LEDC PWM in gc9a01_backlight.c)
     gpio_config_t io_conf = {
-        .pin_bit_mask = (1ULL << PIN_SPI_DC) | (1ULL << PIN_SPI_RST) | (1ULL << PIN_DISPLAY_BACKLIGHT),
+        .pin_bit_mask = (1ULL << PIN_SPI_DC) | (1ULL << PIN_SPI_RST),
         .mode = GPIO_MODE_OUTPUT,
         .pull_up_en = GPIO_PULLUP_DISABLE,
         .pull_down_en = GPIO_PULLDOWN_DISABLE,

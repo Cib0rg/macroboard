@@ -48,6 +48,9 @@ public partial class SettingsViewModel : ViewModelBase
     private byte _defaultLedBrightness = 200;
 
     [ObservableProperty]
+    private byte _defaultDisplayBrightness = 255;
+
+    [ObservableProperty]
     private bool _isDefaultColorPickerVisible = false;
 
     private bool _isUpdatingDefaultColor = false;
@@ -85,6 +88,7 @@ public partial class SettingsViewModel : ViewModelBase
                 PluginsDirectory = settings.PluginsDirectory;
                 DefaultLedColorHex = settings.DefaultLedColor;
                 DefaultLedBrightness = settings.DefaultLedBrightness;
+                DefaultDisplayBrightness = settings.DefaultDisplayBrightness;
                 UpdateDefaultColorFromHex();
                 
                 _logger.LogInformation("Settings loaded successfully");
@@ -112,7 +116,8 @@ public partial class SettingsViewModel : ViewModelBase
                 WebSocketPort = WebSocketPort,
                 PluginsDirectory = PluginsDirectory,
                 DefaultLedColor = DefaultLedColorHex,
-                DefaultLedBrightness = DefaultLedBrightness
+                DefaultLedBrightness = DefaultLedBrightness,
+                DefaultDisplayBrightness = DefaultDisplayBrightness
             };
             
             var settingsPath = GetSettingsPath();
@@ -152,6 +157,7 @@ public partial class SettingsViewModel : ViewModelBase
             PluginsDirectory = "Plugins";
             DefaultLedColorHex = "#00FFFF";
             DefaultLedBrightness = 200;
+            DefaultDisplayBrightness = 255;
             UpdateDefaultColorFromHex();
             
             await SaveSettings();

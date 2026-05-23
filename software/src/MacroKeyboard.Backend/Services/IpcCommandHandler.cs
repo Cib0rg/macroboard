@@ -54,6 +54,7 @@ public class IpcCommandHandler
                 IpcMessageTypes.GetButtonAction => await HandleGetButtonAction(message),
                 IpcMessageTypes.SetLedColor => await HandleSetLedColor(message),
                 IpcMessageTypes.GetLedColor => await HandleGetLedColor(message),
+                IpcMessageTypes.SetDisplayBrightness => await HandleSetDisplayBrightness(message),
                 _ => HandleUnknownCommand(message)
             };
 
@@ -348,6 +349,28 @@ public class IpcCommandHandler
         var led = await _deviceService.GetLedColorAsync(profileId, buttonId);
         
         return IpcResponse.Ok(message, led);
+    }
+
+    private async Task<IpcResponse> HandleSetDisplayBrightness(IpcMessage message)
+    {
+        if (!_deviceService.IsConnected)
+        {
+            return IpcResponse.Fail(message, "Device not connected");
+        }
+
+        var data = message.GetDataAsDictionary();
+        if (data == null || !data.ContainsKey("brightness"))
+        {
+            return IpcResponse.Fail(message, "Missing brightness value");
+        }
+
+        var brightness = Convert.ToByte(data["brightness"]);
+        
+        var actualBrightness = await _deviceService.SetDisplayBrightnessAsync(brightness);
+        
+        return actualBrightness.HasValue
+            ? IpcResponse.Ok(message, new { Brightness = actualBrightness.Value })
+            : IpcResponse.Fail(message, "Failed to set display brightness");
     }
 
     private IpcResponse HandleUnknownCommand(IpcMessage message)

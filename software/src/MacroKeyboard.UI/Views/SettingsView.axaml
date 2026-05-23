@@ -104,6 +104,28 @@
                 </StackPanel>
             </Border>
 
+            <!-- Display Settings -->
+            <Border Background="#0D1117" CornerRadius="8" Padding="20"
+                    BorderBrush="#00FFFF" BorderThickness="1">
+                <StackPanel Spacing="16">
+                    <TextBlock Text="DISPLAY" FontSize="18" FontWeight="Bold" Foreground="#00FFFF" />
+                    <Separator />
+                    
+                    <StackPanel Spacing="8">
+                        <TextBlock Text="Display backlight brightness:" Opacity="0.7" />
+                        <StackPanel Orientation="Horizontal" Spacing="12">
+                            <Slider Minimum="0" Maximum="255"
+                                    Value="{Binding DefaultDisplayBrightness}"
+                                    Width="200" />
+                            <TextBlock Text="{Binding DefaultDisplayBrightness}"
+                                       VerticalAlignment="Center" Width="30" />
+                        </StackPanel>
+                        <TextBlock Text="Controls the PWM backlight level for all button displays (0 = off, 255 = max)"
+                                   FontSize="10" Opacity="0.5" TextWrapping="Wrap" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
             <!-- Actions -->
             <StackPanel Orientation="Horizontal" Spacing="12" HorizontalAlignment="Right">
                 <Button Content="↺ RESET DEFAULTS"

@@ -106,4 +106,10 @@ esp_err_t gc9a01_set_backlight(bool enabled);
  */
 esp_err_t gc9a01_set_brightness(uint8_t brightness);
 
+/**
+ * @brief Get current backlight brightness
+ * @return Current brightness level (0-255)
+ */
+uint8_t gc9a01_get_brightness(void);
+
 #endif // GC9A01_H

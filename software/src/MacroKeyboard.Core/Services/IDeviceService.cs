@@ -101,6 +101,11 @@ public interface IDeviceService
         CancellationToken cancellationToken = default);
     
     /// <summary>
+    /// Установить яркость подсветки дисплеев (0-255)
+    /// </summary>
+    Task<byte?> SetDisplayBrightnessAsync(byte brightness, CancellationToken cancellationToken = default);
+    
+    /// <summary>
     /// Сохранить профиль в энергонезависимую память
     /// </summary>
     Task<bool> SaveProfileAsync(byte profileId, CancellationToken cancellationToken = default);

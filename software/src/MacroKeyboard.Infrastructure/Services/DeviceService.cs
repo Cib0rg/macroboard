@@ -25,6 +25,7 @@ public class DeviceService : IDeviceService
     private readonly SetLedColorCommand _setLedColorCommand;
     private readonly GetButtonActionCommand _getButtonActionCommand;
     private readonly GetLedColorCommand _getLedColorCommand;
+    private readonly SetDisplayBrightnessCommand _setDisplayBrightnessCommand;
     
     public event EventHandler<DeviceEventArgs>? DeviceConnected;
     public event EventHandler<DeviceEventArgs>? DeviceDisconnected;
@@ -56,6 +57,7 @@ public class DeviceService : IDeviceService
         _setLedColorCommand = new SetLedColorCommand(_protocol, loggerFactory.CreateLogger<SetLedColorCommand>());
         _getButtonActionCommand = new GetButtonActionCommand(_protocol, loggerFactory.CreateLogger<GetButtonActionCommand>());
         _getLedColorCommand = new GetLedColorCommand(_protocol, loggerFactory.CreateLogger<GetLedColorCommand>());
+        _setDisplayBrightnessCommand = new SetDisplayBrightnessCommand(_protocol, loggerFactory.CreateLogger<SetDisplayBrightnessCommand>());
         
         // Подписаться на события устройства
         _deviceManager.DeviceConnected += OnDeviceConnected;
@@ -149,6 +151,11 @@ public class DeviceService : IDeviceService
         CancellationToken cancellationToken = default)
     {
         return await _setLedColorCommand.ExecuteAsync(profileId, buttonId, led, cancellationToken);
+    }
+    
+    public async Task<byte?> SetDisplayBrightnessAsync(byte brightness, CancellationToken cancellationToken = default)
+    {
+        return await _setDisplayBrightnessCommand.ExecuteAsync(brightness, cancellationToken);
     }
     
     public async Task<bool> SaveProfileAsync(byte profileId, CancellationToken cancellationToken = default)

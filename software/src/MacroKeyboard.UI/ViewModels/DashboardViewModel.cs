@@ -49,6 +49,9 @@ public partial class DashboardViewModel : ViewModelBase
     [ObservableProperty]
     private bool _isInFolder;
 
+    [ObservableProperty]
+    private double _displayBrightness = 255;
+
     public ObservableCollection<string> RecentEvents { get; } = new();
 
     public DashboardViewModel(IpcClient ipcClient, ILogger<DashboardViewModel> logger)
@@ -69,6 +72,48 @@ public partial class DashboardViewModel : ViewModelBase
         
         // Request device info when we connect to backend
         await RequestDeviceInfoAsync();
+    }
+
+    /// <summary>
+    /// Send display brightness to device via IPC
+    /// </summary>
+    [RelayCommand]
+    private async Task SetDisplayBrightnessAsync()
+    {
+        try
+        {
+            if (!_ipcClient.IsConnected)
+            {
+                AddEvent("Cannot set brightness: not connected to backend");
+                return;
+            }
+
+            var message = new IpcMessage
+            {
+                MessageType = IpcMessageTypes.SetDisplayBrightness,
+                Data = new { brightness = (byte)DisplayBrightness }
+            };
+
+            var response = await _ipcClient.SendAndWaitAsync(message, TimeSpan.FromSeconds(5));
+            
+            if (response.Success)
+            {
+                AddEvent($"🔆 Display brightness set to {(byte)DisplayBrightness}");
+            }
+            else
+            {
+                AddEvent($"❌ Failed to set brightness: {response.Error}");
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            AddEvent("⏱ Brightness request timed out");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error setting display brightness");
+            AddEvent($"Error: {ex.Message}");
+        }
     }
 
     private void OnIpcDisconnected(object? sender, EventArgs e)

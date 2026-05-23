@@ -73,6 +73,36 @@
                 </StackPanel>
             </Border>
 
+            <!-- Display Brightness Control -->
+            <Border Background="#0D1117" CornerRadius="8" Padding="20"
+                    BorderBrush="#00FFFF" BorderThickness="1">
+                <StackPanel Spacing="12">
+                    <TextBlock Text="🔆 DISPLAY BRIGHTNESS"
+                               FontSize="20"
+                               FontWeight="Bold"
+                               Foreground="#00FFFF" />
+                    
+                    <Separator />
+                    
+                    <StackPanel Orientation="Horizontal" Spacing="12">
+                        <TextBlock Text="☀" FontSize="14" Opacity="0.5" VerticalAlignment="Center" />
+                        <Slider Minimum="0" Maximum="255"
+                                Value="{Binding DisplayBrightness}"
+                                Width="300"
+                                VerticalAlignment="Center" />
+                        <TextBlock Text="{Binding DisplayBrightness, StringFormat={}{0:F0}}"
+                                   VerticalAlignment="Center" Width="30" />
+                        <Button Content="APPLY"
+                                Command="{Binding SetDisplayBrightnessCommand}"
+                                Padding="12,4"
+                                Background="#0D4429"
+                                BorderBrush="#00FF00" />
+                    </StackPanel>
+                    <TextBlock Text="Adjusts the PWM backlight level for all button displays"
+                               FontSize="10" Opacity="0.5" />
+                </StackPanel>
+            </Border>
+
             <!-- Recent Events Card -->
             <Border Background="#0D1117" CornerRadius="8" Padding="20"
                     BorderBrush="#00FFFF" BorderThickness="1">
