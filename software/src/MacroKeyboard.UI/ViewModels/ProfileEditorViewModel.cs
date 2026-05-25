@@ -75,6 +75,7 @@ public partial class ProfileEditorViewModel : ViewModelBase
     public ObservableCollection<ActionPaletteItem> ActionPaletteItems { get; } = new()
     {
         new ActionPaletteItem(ActionType.Keyboard, "Keyboard", "⌨", "Emulate keyboard key press or text input"),
+        new ActionPaletteItem(ActionType.Media, "Media", "🔊", "Volume up/down, mute, play/pause"),
         new ActionPaletteItem(ActionType.LaunchApp, "Launch App", "🚀", "Launch an application with optional arguments"),
         new ActionPaletteItem(ActionType.Shell, "Shell", "💻", "Execute a shell command on the PC"),
         new ActionPaletteItem(ActionType.Sequence, "Sequence", "📋", "Execute multiple actions in sequence"),

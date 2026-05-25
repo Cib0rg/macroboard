@@ -300,6 +300,39 @@ public class LaunchAppAction : ActionConfig
 }
 
 /// <summary>
+/// Типы медиа-клавиш (Consumer Control usage codes)
+/// </summary>
+public enum MediaKey : ushort
+{
+    VolumeUp = 0x00E9,
+    VolumeDown = 0x00EA,
+    Mute = 0x00E2,
+    PlayPause = 0x00CD,
+    NextTrack = 0x00B5,
+    PreviousTrack = 0x00B6,
+    Stop = 0x00B7
+}
+
+/// <summary>
+/// Конфигурация действия медиа-клавиши (Consumer Control)
+/// </summary>
+public class MediaAction : ActionConfig
+{
+    public override ActionType ActionType => ActionType.Media;
+    
+    /// <summary>
+    /// Тип медиа-клавиши
+    /// </summary>
+    public MediaKey Key { get; set; } = MediaKey.Mute;
+    
+    public override byte[] ToBytes()
+    {
+        // 2 bytes: usage code (little-endian)
+        return BitConverter.GetBytes((ushort)Key);
+    }
+}
+
+/// <summary>
 /// JSON converter for ActionConfig abstract class.
 /// Uses the ActionType property to determine the concrete type during deserialization.
 /// Writing is handled by the default serializer (CanWrite = false).
@@ -333,6 +366,7 @@ public class ActionConfigConverter : JsonConverter<ActionConfig>
             ActionType.Shell => new ShellAction(),
             ActionType.Sequence => new SequenceAction(),
             ActionType.LaunchApp => new LaunchAppAction(),
+            ActionType.Media => new MediaAction(),
             _ => null
         };
 

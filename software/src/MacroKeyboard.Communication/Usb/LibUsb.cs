@@ -51,8 +51,20 @@ internal sealed class UsbDeviceWrapper : IDisposable
 
         _device.Open();
 
-        // Set configuration
-        _device.SetConfiguration(1);
+        // On Linux, the kernel configures the device during enumeration and
+        // attaches drivers (e.g. usbhid to the HID keyboard interface).
+        // Calling SetConfiguration while a kernel driver is active causes
+        // "Resource busy" (EBUSY). We only need to claim our Vendor interface
+        // (Interface 1), so we can safely skip SetConfiguration if it fails.
+        try
+        {
+            _device.SetConfiguration(1);
+        }
+        catch (UsbException)
+        {
+            // Already configured by the kernel — this is expected on Linux
+            // when usbhid driver is attached to the HID interface.
+        }
 
         return true;
     }

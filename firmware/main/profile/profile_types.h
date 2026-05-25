@@ -22,6 +22,8 @@ typedef enum {
     ACTION_TYPE_DELAY = 0x05,        // Задержка (используется в последовательностях)
     ACTION_TYPE_SHELL = 0x06,        // Shell-команда (выполняется на PC через Backend)
     ACTION_TYPE_SEQUENCE = 0x07,     // Последовательность действий
+    ACTION_TYPE_LAUNCH_APP = 0x08,   // Запуск приложения (выполняется на PC через Backend)
+    ACTION_TYPE_MEDIA = 0x09,        // Медиа-клавиши (Consumer Control: громкость, mute и т.д.)
 } action_type_t;
 
 // ============================================

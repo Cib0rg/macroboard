@@ -259,6 +259,7 @@ public class IpcCommandHandler
                 ActionType.Delay => actionObj.ToObject<DelayAction>(),
                 ActionType.Shell => actionObj.ToObject<ShellAction>(),
                 ActionType.Sequence => actionObj.ToObject<SequenceAction>(),
+                ActionType.Media => actionObj.ToObject<MediaAction>(),
                 _ => null
             };
         }

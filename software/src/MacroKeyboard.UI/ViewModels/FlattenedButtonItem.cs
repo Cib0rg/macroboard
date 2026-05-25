@@ -62,6 +62,10 @@ public class FlattenedButtonItem
                     : "App";
                 actionText = $"🚀 {appName}";
             }
+            else if (Button.Action is MediaAction ma)
+            {
+                actionText = $"🔊 {ma.Key}";
+            }
             else if (Button.Action is ShellAction sh)
             {
                 var cmd = sh.Command.Length > 20 ? sh.Command[..20] + "..." : sh.Command;

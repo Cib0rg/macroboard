@@ -124,6 +124,24 @@ public partial class ButtonConfigDialogViewModel : ViewModelBase
     private bool _shellWaitForExit = true;
     
     // ============================================
+    // Media action properties
+    // ============================================
+    
+    [ObservableProperty]
+    private MediaKey _selectedMediaKey = MediaKey.Mute;
+    
+    public ObservableCollection<MediaKey> AvailableMediaKeys { get; } = new()
+    {
+        MediaKey.VolumeUp,
+        MediaKey.VolumeDown,
+        MediaKey.Mute,
+        MediaKey.PlayPause,
+        MediaKey.NextTrack,
+        MediaKey.PreviousTrack,
+        MediaKey.Stop,
+    };
+    
+    // ============================================
     // LaunchApp action properties
     // ============================================
     
@@ -152,6 +170,7 @@ public partial class ButtonConfigDialogViewModel : ViewModelBase
     {
         ActionType.None,
         ActionType.Keyboard,
+        ActionType.Media,
         ActionType.LaunchApp,
         ActionType.Shell,
         ActionType.Sequence,
@@ -223,6 +242,11 @@ public partial class ButtonConfigDialogViewModel : ViewModelBase
     public bool IsShellAction => SelectedActionType == ActionType.Shell;
 
     /// <summary>
+    /// Show media key fields
+    /// </summary>
+    public bool IsMediaAction => SelectedActionType == ActionType.Media;
+
+    /// <summary>
     /// Show launch app fields
     /// </summary>
     public bool IsLaunchAppAction => SelectedActionType == ActionType.LaunchApp;
@@ -243,6 +267,7 @@ public partial class ButtonConfigDialogViewModel : ViewModelBase
     public string CurrentActionIcon => SelectedActionType switch
     {
         ActionType.Keyboard => "⌨",
+        ActionType.Media => "🔊",
         ActionType.Shell => "💻",
         ActionType.LaunchApp => "🚀",
         ActionType.Sequence => "📋",
@@ -258,6 +283,7 @@ public partial class ButtonConfigDialogViewModel : ViewModelBase
     public string CurrentActionDisplayName => SelectedActionType switch
     {
         ActionType.Keyboard => "Keyboard",
+        ActionType.Media => "Media",
         ActionType.Shell => "Shell",
         ActionType.LaunchApp => "Launch App",
         ActionType.Sequence => "Sequence",
@@ -391,6 +417,10 @@ public partial class ButtonConfigDialogViewModel : ViewModelBase
                 LaunchAppArguments = launchAction.Arguments;
                 LaunchAppWorkingDirectory = launchAction.WorkingDirectory;
                 LaunchAppIconPath = launchAction.IconPath;
+            }
+            else if (buttonConfig.Action is MediaAction mediaAction)
+            {
+                SelectedMediaKey = mediaAction.Key;
             }
         }
 
@@ -1217,6 +1247,10 @@ public partial class ButtonConfigDialogViewModel : ViewModelBase
                     Arguments = string.IsNullOrWhiteSpace(LaunchAppArguments) ? null : LaunchAppArguments,
                     WorkingDirectory = string.IsNullOrWhiteSpace(LaunchAppWorkingDirectory) ? null : LaunchAppWorkingDirectory,
                     IconPath = LaunchAppIconPath
+                },
+                ActionType.Media => new MediaAction
+                {
+                    Key = SelectedMediaKey
                 },
                 ActionType.None => null,
                 _ => null

@@ -48,5 +48,10 @@ public enum ActionType : byte
     /// <summary>
     /// Запуск приложения (выполняется на PC через Backend)
     /// </summary>
-    LaunchApp = 0x08
+    LaunchApp = 0x08,
+    
+    /// <summary>
+    /// Медиа-клавиши (Consumer Control: громкость, mute и т.д.)
+    /// </summary>
+    Media = 0x09
 }

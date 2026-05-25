@@ -223,6 +223,21 @@
                                                 </StackPanel>
                                             </Border>
 
+                                            <!-- Media Key -->
+                                            <Border Background="#161B22" CornerRadius="4" Padding="10"
+                                                    IsVisible="{Binding IsMediaAction}">
+                                                <StackPanel Spacing="6">
+                                                    <TextBlock Text="MEDIA KEY" FontSize="12" FontWeight="Bold" />
+                                                    <TextBlock Text="Select a media control action:" FontSize="10" Opacity="0.6" />
+                                                    <ComboBox ItemsSource="{Binding AvailableMediaKeys}"
+                                                              SelectedItem="{Binding SelectedMediaKey}"
+                                                              HorizontalAlignment="Stretch"
+                                                              PlaceholderText="Select media key..." />
+                                                    <TextBlock Text="🔊 Sent as USB Consumer Control HID report"
+                                                               FontSize="10" Opacity="0.5" Foreground="#00FFAA" />
+                                                </StackPanel>
+                                            </Border>
+
                                             <!-- ProfileSwitch -->
                                             <Border Background="#161B22" CornerRadius="4" Padding="10"
                                                     IsVisible="{Binding IsProfileSwitchAction}">

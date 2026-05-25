@@ -41,10 +41,11 @@ const tusb_desc_device_t desc_device = {
 };
 
 //--------------------------------------------------------------------+
-// HID Report Descriptor (Keyboard only)
+// HID Report Descriptor (Keyboard + Consumer Control)
 //--------------------------------------------------------------------+
 static const uint8_t desc_hid_report[] = {
-    TUD_HID_REPORT_DESC_KEYBOARD(HID_REPORT_ID(1))
+    TUD_HID_REPORT_DESC_KEYBOARD(HID_REPORT_ID(1)),
+    TUD_HID_REPORT_DESC_CONSUMER(HID_REPORT_ID(2))
 };
 
 // Invoked when received GET HID REPORT DESCRIPTOR

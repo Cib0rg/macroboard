@@ -104,6 +104,18 @@ static esp_err_t execute_single_action(action_type_t type, const uint8_t* data, 
             break;
         }
         
+        case ACTION_TYPE_MEDIA: {
+            // Media key action - send Consumer Control HID report
+            if (data_len >= 2) {
+                uint16_t usage_code = data[0] | (data[1] << 8);
+                ESP_LOGI(TAG, "Media key: usage code 0x%04X", usage_code);
+                usb_hid_consumer_press(usage_code);
+            } else {
+                ESP_LOGW(TAG, "Media action with insufficient data (need 2 bytes for usage code)");
+            }
+            break;
+        }
+        
         case ACTION_TYPE_SHELL: {
             // Shell action - send to PC for execution
             uint8_t payload[PROTOCOL_PAYLOAD_SIZE];

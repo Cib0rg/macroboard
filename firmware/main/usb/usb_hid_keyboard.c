@@ -50,6 +50,34 @@ esp_err_t usb_hid_keyboard_release_all(void) {
     return usb_hid_keyboard_send(0, NULL, 0);
 }
 
+esp_err_t usb_hid_consumer_press(uint16_t usage_code) {
+    if (!tud_mounted()) {
+        ESP_LOGW(TAG, "USB not mounted");
+        return ESP_ERR_INVALID_STATE;
+    }
+    
+    // Send consumer control report (Report ID 2)
+    bool ok = tud_hid_report(2, &usage_code, sizeof(usage_code));
+    if (!ok) {
+        ESP_LOGE(TAG, "Failed to send consumer report");
+        return ESP_FAIL;
+    }
+    
+    vTaskDelay(pdMS_TO_TICKS(10));
+    
+    // Release
+    return usb_hid_consumer_release();
+}
+
+esp_err_t usb_hid_consumer_release(void) {
+    if (!tud_mounted()) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    
+    uint16_t zero = 0;
+    return tud_hid_report(2, &zero, sizeof(zero)) ? ESP_OK : ESP_FAIL;
+}
+
 esp_err_t usb_hid_keyboard_type_text(const char* text) {
     if (text == NULL) {
         return ESP_ERR_INVALID_ARG;
