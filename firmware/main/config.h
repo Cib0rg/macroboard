@@ -84,7 +84,7 @@
 
 // Folder Configuration
 #define NUM_FOLDERS             16  // Maximum number of folders per profile
-#define FOLDER_STACK_DEPTH      4   // Maximum nesting depth for folders
+#define FOLDER_STACK_DEPTH      8   // Maximum nesting depth for folders
 
 // ============================================
 // Storage Paths
