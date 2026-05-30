@@ -23,9 +23,14 @@ public class Profile
     public List<ButtonConfig> Buttons { get; set; } = new();
     
     /// <summary>
-    /// Папки (для будущего расширения)
+    /// Папки
     /// </summary>
     public List<Folder> Folders { get; set; } = new();
+    
+    /// <summary>
+    /// Конфигурация энкодера (поворот CW/CCW + нажатие)
+    /// </summary>
+    public EncoderConfig Encoder { get; set; } = new();
     
     /// <summary>
     /// Дата создания
@@ -78,11 +83,34 @@ public class Profile
 }
 
 /// <summary>
-/// Папка с кнопками (для будущего расширения)
+/// Папка с кнопками
 /// </summary>
 public class Folder
 {
     public byte FolderId { get; set; }
     public string Name { get; set; } = "Folder";
     public List<ButtonConfig> Buttons { get; set; } = new();
+}
+
+/// <summary>
+/// Конфигурация поворотного энкодера.
+/// Каждое из трёх событий (CW, CCW, нажатие) может иметь своё действие.
+/// По умолчанию: CW = следующий профиль, CCW = предыдущий профиль, нажатие = профиль 0.
+/// </summary>
+public class EncoderConfig
+{
+    /// <summary>
+    /// Действие при повороте по часовой стрелке
+    /// </summary>
+    public ActionConfig? RotateCwAction { get; set; }
+    
+    /// <summary>
+    /// Действие при повороте против часовой стрелки
+    /// </summary>
+    public ActionConfig? RotateCcwAction { get; set; }
+    
+    /// <summary>
+    /// Действие при нажатии кнопки энкодера
+    /// </summary>
+    public ActionConfig? PressAction { get; set; }
 }

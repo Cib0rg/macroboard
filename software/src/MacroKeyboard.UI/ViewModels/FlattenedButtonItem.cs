@@ -43,9 +43,22 @@ public class FlattenedButtonItem
             
             if (Button.Action is KeyboardAction ka)
             {
-                actionText = !string.IsNullOrEmpty(ka.Text)
-                    ? $"Keyboard: \"{ka.Text}\""
-                    : $"Keyboard: key 0x{ka.KeyCode:X2}";
+                if (!string.IsNullOrEmpty(ka.Text))
+                {
+                    actionText = $"Keyboard: \"{ka.Text}\"";
+                }
+                else if (ka.KeyCode != 0)
+                {
+                    var keyName = HidKeyName(ka.KeyCode);
+                    var modText = FormatModifiers(ka.Modifiers);
+                    actionText = modText.Length > 0
+                        ? $"Keyboard: {modText}+{keyName}"
+                        : $"Keyboard: {keyName}";
+                }
+                else
+                {
+                    actionText = "Keyboard: (not set)";
+                }
             }
             else if (Button.Action is ProfileSwitchAction ps)
             {
@@ -146,5 +159,42 @@ public class FlattenedButtonItem
         Button = button;
         NestingLevel = nestingLevel;
         ParentFolderId = parentFolderId;
+    }
+
+    private static string HidKeyName(byte keyCode) => keyCode switch
+    {
+        >= 0x04 and <= 0x1D => ((char)('A' + keyCode - 0x04)).ToString(),
+        >= 0x1E and <= 0x26 => ((char)('1' + keyCode - 0x1E)).ToString(),
+        0x27 => "0",
+        0x28 => "Enter",
+        0x29 => "Esc",
+        0x2A => "Backspace",
+        0x2B => "Tab",
+        0x2C => "Space",
+        >= 0x3A and <= 0x45 => $"F{keyCode - 0x3A + 1}",
+        0x46 => "PrintScreen",
+        0x47 => "ScrollLock",
+        0x48 => "Pause",
+        0x49 => "Insert",
+        0x4A => "Home",
+        0x4B => "PageUp",
+        0x4C => "Delete",
+        0x4D => "End",
+        0x4E => "PageDown",
+        0x4F => "Right",
+        0x50 => "Left",
+        0x51 => "Down",
+        0x52 => "Up",
+        _ => $"0x{keyCode:X2}"
+    };
+
+    private static string FormatModifiers(KeyModifiers mods)
+    {
+        var parts = new System.Collections.Generic.List<string>();
+        if (mods.HasFlag(KeyModifiers.LeftCtrl) || mods.HasFlag(KeyModifiers.RightCtrl)) parts.Add("Ctrl");
+        if (mods.HasFlag(KeyModifiers.LeftShift) || mods.HasFlag(KeyModifiers.RightShift)) parts.Add("Shift");
+        if (mods.HasFlag(KeyModifiers.LeftAlt) || mods.HasFlag(KeyModifiers.RightAlt)) parts.Add("Alt");
+        if (mods.HasFlag(KeyModifiers.LeftGui) || mods.HasFlag(KeyModifiers.RightGui)) parts.Add("Win");
+        return string.Join("+", parts);
     }
 }

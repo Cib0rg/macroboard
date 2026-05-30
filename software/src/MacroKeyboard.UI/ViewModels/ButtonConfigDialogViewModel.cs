@@ -397,7 +397,21 @@ public partial class ButtonConfigDialogViewModel : ViewModelBase
             
             if (buttonConfig.Action is KeyboardAction keyAction)
             {
-                KeySequence = keyAction.Text ?? $"KeyCode: {keyAction.KeyCode}";
+                if (keyAction.KeyCode != 0)
+                {
+                    // Restore captured key from stored HID keycode + modifiers
+                    var displayName = FormatSingleKey(keyAction.KeyCode, keyAction.Modifiers);
+                    _capturedKeys.Add(new CapturedKey(keyAction.KeyCode, keyAction.Modifiers, displayName));
+                    CapturedKeyCode = keyAction.KeyCode;
+                    CapturedModifiers = keyAction.Modifiers;
+                    KeySequence = displayName;
+                }
+                else
+                {
+                    // Text-typing mode
+                    TextToType = keyAction.Text ?? string.Empty;
+                    KeySequence = keyAction.Text ?? string.Empty;
+                }
             }
             else if (buttonConfig.Action is ProfileSwitchAction psAction)
             {
@@ -930,12 +944,18 @@ public partial class ButtonConfigDialogViewModel : ViewModelBase
     /// <summary>
     /// Create a KeyboardAction from captured keys or text input.
     /// Priority: captured keys > TextToType > KeySequence (legacy)
+    ///
+    /// When keys are captured, we store the HID keycode + modifiers and set Text = null.
+    /// The firmware will send a single key press (modifier + keycode).
+    ///
+    /// When TextToType is used, we store Text and set KeyCode = 0.
+    /// The firmware will type the text character by character via usb_hid_keyboard_type_text().
     /// </summary>
     private KeyboardAction CreateKeyboardAction()
     {
         if (_capturedKeys.Count == 0)
         {
-            // No keys captured - use TextToType field (for typing text like "Привет" or "Hello")
+            // No keys captured - use TextToType field (for typing text like "Hello")
             var text = !string.IsNullOrEmpty(TextToType) ? TextToType : KeySequence;
             return new KeyboardAction
             {
@@ -945,12 +965,13 @@ public partial class ButtonConfigDialogViewModel : ViewModelBase
             };
         }
         
-        // Use captured keys - store the display text and first key's code/modifiers
-        // For multiple keys, the Text field contains the full sequence for display
+        // Use captured keys - store HID keycode + modifiers, NO text.
+        // Text must be null when keycode is set, otherwise the firmware
+        // will try to type the display string literally after the key press.
         var firstKey = _capturedKeys[0];
         return new KeyboardAction
         {
-            Text = FormatKeySequence(), // Store the formatted sequence for display
+            Text = null,  // Do NOT store display text — it would be typed literally by firmware
             KeyCode = firstKey.KeyCode,
             Modifiers = firstKey.Modifiers
         };

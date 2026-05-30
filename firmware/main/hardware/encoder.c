@@ -9,6 +9,7 @@
 #include "driver/gpio.h"
 #include "esp_timer.h"
 #include "profile/profile_manager.h"
+#include "profile/action_executor.h"
 
 static const char* TAG = "ENCODER";
 
@@ -134,6 +135,42 @@ esp_err_t encoder_init(void) {
     return ESP_OK;
 }
 
+/**
+ * @brief Default encoder behavior: switch to next/previous profile
+ */
+static void encoder_default_profile_switch(bool clockwise) {
+    uint8_t current = profile_get_current_id();
+    uint8_t next;
+    
+    if (clockwise) {
+        next = (current + 1) % NUM_PROFILES;
+    } else {
+        next = (current == 0) ? (NUM_PROFILES - 1) : (current - 1);
+    }
+    
+    ESP_LOGI(TAG, "Default: switching profile %d -> %d", current, next);
+    profile_switch(next);
+}
+
+/**
+ * @brief Execute encoder action from profile config, or fall back to default
+ */
+static void encoder_execute_action(action_type_t type, const uint8_t* data, uint16_t data_len, bool is_rotation, bool clockwise) {
+    if (type == ACTION_TYPE_NONE) {
+        // No action configured — use default behavior
+        if (is_rotation) {
+            encoder_default_profile_switch(clockwise);
+        } else {
+            // Default button press: reset to profile 0
+            ESP_LOGI(TAG, "Default: encoder press -> profile 0");
+            profile_switch(0);
+        }
+    } else {
+        // Execute configured action
+        action_execute_raw(type, data, data_len);
+    }
+}
+
 void encoder_task(void* arg) {
     encoder_event_t event;
     int16_t step_accumulator = 0;
@@ -142,6 +179,10 @@ void encoder_task(void* arg) {
     
     while (1) {
         if (xQueueReceive(encoder_event_queue, &event, portMAX_DELAY)) {
+            
+            // Get current profile's encoder config
+            profile_t* current_profile = profile_get(profile_get_current_id());
+            encoder_config_t* enc_cfg = current_profile ? &current_profile->encoder : NULL;
             
             if (event.type == ENCODER_ROTATED) {
                 // Accumulate steps
@@ -155,24 +196,18 @@ void encoder_task(void* arg) {
                 
                 // Check if threshold reached
                 if (abs(step_accumulator) >= ENCODER_STEPS_PER_PROFILE) {
-                    uint8_t current = profile_get_current_id();
-                    uint8_t next;
+                    bool clockwise = step_accumulator > 0;
                     
-                    if (step_accumulator > 0) {
-                        // Clockwise - next profile
-                        next = (current + 1) % NUM_PROFILES;
+                    if (enc_cfg != NULL && clockwise && enc_cfg->cw_action_type != ACTION_TYPE_NONE) {
+                        encoder_execute_action(enc_cfg->cw_action_type, enc_cfg->cw_action_data, enc_cfg->cw_action_data_len, true, true);
+                    } else if (enc_cfg != NULL && !clockwise && enc_cfg->ccw_action_type != ACTION_TYPE_NONE) {
+                        encoder_execute_action(enc_cfg->ccw_action_type, enc_cfg->ccw_action_data, enc_cfg->ccw_action_data_len, true, false);
                     } else {
-                        // Counter-clockwise - previous profile
-                        next = (current == 0) ? (NUM_PROFILES - 1) : (current - 1);
+                        // Default: profile switching
+                        encoder_default_profile_switch(clockwise);
                     }
                     
-                    ESP_LOGI(TAG, "Switching profile: %d -> %d", current, next);
-                    
-                    // Switch profile
-                    esp_err_t ret = profile_switch(next);
-                    if (ret == ESP_OK) {
-                        step_accumulator = 0;
-                    }
+                    step_accumulator = 0;
                 }
             }
             else if (event.type == ENCODER_BUTTON_PRESSED) {
@@ -191,15 +226,19 @@ void encoder_task(void* arg) {
                         uint64_t press_duration = esp_timer_get_time() - press_start;
                         if (press_duration >= (BUTTON_LONG_PRESS_MS * 1000)) {
                             ESP_LOGI(TAG, "Encoder button long press");
-                            // Long press action - could toggle WiFi or other function
                             break;
                         }
                     }
                     
                     uint64_t press_duration = esp_timer_get_time() - press_start;
                     if (press_duration < (BUTTON_LONG_PRESS_MS * 1000)) {
-                        ESP_LOGI(TAG, "Encoder button short press - reset to profile 0");
-                        profile_switch(0);
+                        ESP_LOGI(TAG, "Encoder button short press");
+                        if (enc_cfg != NULL) {
+                            encoder_execute_action(enc_cfg->press_action_type, enc_cfg->press_action_data, enc_cfg->press_action_data_len, false, false);
+                        } else {
+                            // Default: reset to profile 0
+                            profile_switch(0);
+                        }
                     }
                 }
             }

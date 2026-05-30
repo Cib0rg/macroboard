@@ -98,6 +98,24 @@ typedef struct {
 } folder_t;
 
 // ============================================
+// Encoder Configuration
+// ============================================
+
+typedef struct {
+    action_type_t cw_action_type;           // Action on clockwise rotation
+    uint16_t cw_action_data_len;
+    uint8_t cw_action_data[ACTION_DATA_MAX_LEN];
+    
+    action_type_t ccw_action_type;          // Action on counter-clockwise rotation
+    uint16_t ccw_action_data_len;
+    uint8_t ccw_action_data[ACTION_DATA_MAX_LEN];
+    
+    action_type_t press_action_type;        // Action on button press
+    uint16_t press_action_data_len;
+    uint8_t press_action_data[ACTION_DATA_MAX_LEN];
+} encoder_config_t;
+
+// ============================================
 // Profile Structure
 // ============================================
 
@@ -106,6 +124,7 @@ typedef struct {
     char name[PROFILE_NAME_MAX_LEN];
     button_config_t buttons[NUM_BUTTONS];
     folder_t folders[NUM_FOLDERS];
+    encoder_config_t encoder;
     uint32_t crc32;
 } profile_t;
 

@@ -50,6 +50,33 @@ public partial class ProfileEditorViewModel : ViewModelBase
     [ObservableProperty]
     private bool _isSyncing;
 
+    // ============================================
+    // Encoder configuration
+    // ============================================
+    
+    [ObservableProperty]
+    private EncoderActionItem? _encoderCwActionType;
+    
+    [ObservableProperty]
+    private EncoderActionItem? _encoderCcwActionType;
+    
+    [ObservableProperty]
+    private EncoderActionItem? _encoderPressActionType;
+    
+    /// <summary>
+    /// Available encoder action types for ComboBox binding
+    /// </summary>
+    public ObservableCollection<EncoderActionItem> EncoderActionTypes { get; } = new()
+    {
+        new EncoderActionItem("Default (profile switch)", null),
+        new EncoderActionItem("🔊 Volume Up", () => new MediaAction { Key = MediaKey.VolumeUp }),
+        new EncoderActionItem("🔉 Volume Down", () => new MediaAction { Key = MediaKey.VolumeDown }),
+        new EncoderActionItem("🔇 Mute/Unmute", () => new MediaAction { Key = MediaKey.Mute }),
+        new EncoderActionItem("⏯ Play/Pause", () => new MediaAction { Key = MediaKey.PlayPause }),
+        new EncoderActionItem("⏭ Next Track", () => new MediaAction { Key = MediaKey.NextTrack }),
+        new EncoderActionItem("⏮ Previous Track", () => new MediaAction { Key = MediaKey.PreviousTrack }),
+    };
+
     [ObservableProperty]
     private ButtonConfigDialogViewModel? _buttonConfigViewModel;
 
@@ -105,6 +132,74 @@ public partial class ProfileEditorViewModel : ViewModelBase
     partial void OnSelectedProfileChanged(Profile? value)
     {
         BuildFlattenedButtons();
+        SyncEncoderFromProfile();
+    }
+
+    /// <summary>
+    /// Sync encoder UI from the selected profile's EncoderConfig
+    /// </summary>
+    private void SyncEncoderFromProfile()
+    {
+        var defaultItem = EncoderActionTypes[0]; // "Default (profile switch)"
+        
+        if (SelectedProfile?.Encoder == null)
+        {
+            EncoderCwActionType = defaultItem;
+            EncoderCcwActionType = defaultItem;
+            EncoderPressActionType = defaultItem;
+            return;
+        }
+        
+        EncoderCwActionType = FindEncoderActionItem(SelectedProfile.Encoder.RotateCwAction) ?? defaultItem;
+        EncoderCcwActionType = FindEncoderActionItem(SelectedProfile.Encoder.RotateCcwAction) ?? defaultItem;
+        EncoderPressActionType = FindEncoderActionItem(SelectedProfile.Encoder.PressAction) ?? defaultItem;
+    }
+
+    private EncoderActionItem? FindEncoderActionItem(ActionConfig? action)
+    {
+        if (action == null) return null;
+        
+        if (action is MediaAction ma)
+        {
+            return EncoderActionTypes.FirstOrDefault(e =>
+            {
+                var created = e.CreateAction?.Invoke();
+                return created is MediaAction cma && cma.Key == ma.Key;
+            });
+        }
+        
+        // For other action types, return null (will fall back to default)
+        return null;
+    }
+
+    partial void OnEncoderCwActionTypeChanged(EncoderActionItem? value)
+    {
+        if (SelectedProfile != null)
+        {
+            SelectedProfile.Encoder ??= new EncoderConfig();
+            SelectedProfile.Encoder.RotateCwAction = value?.CreateAction?.Invoke();
+            SelectedProfile.Touch();
+        }
+    }
+
+    partial void OnEncoderCcwActionTypeChanged(EncoderActionItem? value)
+    {
+        if (SelectedProfile != null)
+        {
+            SelectedProfile.Encoder ??= new EncoderConfig();
+            SelectedProfile.Encoder.RotateCcwAction = value?.CreateAction?.Invoke();
+            SelectedProfile.Touch();
+        }
+    }
+
+    partial void OnEncoderPressActionTypeChanged(EncoderActionItem? value)
+    {
+        if (SelectedProfile != null)
+        {
+            SelectedProfile.Encoder ??= new EncoderConfig();
+            SelectedProfile.Encoder.PressAction = value?.CreateAction?.Invoke();
+            SelectedProfile.Touch();
+        }
     }
 
     /// <summary>
@@ -849,4 +944,21 @@ public partial class ProfileEditorViewModel : ViewModelBase
             _logger.LogWarning(ex, "Error sending button config to device (non-critical)");
         }
     }
+}
+
+/// <summary>
+/// Represents an encoder action option for ComboBox display
+/// </summary>
+public class EncoderActionItem
+{
+    public string DisplayName { get; }
+    public Func<ActionConfig?>? CreateAction { get; }
+    
+    public EncoderActionItem(string displayName, Func<ActionConfig?>? createAction)
+    {
+        DisplayName = displayName;
+        CreateAction = createAction;
+    }
+    
+    public override string ToString() => DisplayName;
 }

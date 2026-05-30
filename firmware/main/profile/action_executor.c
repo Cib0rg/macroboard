@@ -140,6 +140,10 @@ static esp_err_t execute_single_action(action_type_t type, const uint8_t* data, 
     return ESP_OK;
 }
 
+esp_err_t action_execute_raw(action_type_t type, const uint8_t* data, uint16_t data_len) {
+    return execute_single_action(type, data, data_len, 0xFF);
+}
+
 /**
  * @brief Execute a sequence of actions
  */
