@@ -156,9 +156,9 @@ void app_main(void) {
     usb_vendor_init();
     ESP_LOGI(TAG, "✓ USB Vendor interface ready");
     
-    // Wait for USB enumeration
+    // Brief wait for USB enumeration (non-blocking: device works fine without USB)
     ESP_LOGI(TAG, "Waiting for USB enumeration...");
-    int timeout = 50; // 5 seconds
+    int timeout = 10; // 1 second max (USB enum typically takes <500ms)
     while (!tud_mounted() && timeout > 0) {
         vTaskDelay(pdMS_TO_TICKS(100));
         timeout--;
@@ -167,7 +167,7 @@ void app_main(void) {
     if (tud_mounted()) {
         ESP_LOGI(TAG, "✓ USB enumerated");
     } else {
-        ESP_LOGW(TAG, "USB enumeration timeout (device may still work)");
+        ESP_LOGI(TAG, "USB not connected — continuing without host");
     }
     
     // ============================================
