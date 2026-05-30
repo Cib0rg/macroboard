@@ -42,7 +42,7 @@ docker --version
 
 ```bash
 # Перейти в директорию прошивки
-cd /home/andrewp/elgato/firmware
+cd <project_dir>/elgato/firmware
 
 # Собрать проект используя Docker
 ./scripts/docker-build.sh
@@ -66,19 +66,6 @@ docker run --rm \
     idf.py -p /dev/ttyUSB0 flash
 
 # Прошить и открыть монитор
-docker run --rm -it \
-    -v "$PWD:/project" \
-    -w /project \
-    --device=/dev/ttyUSB0:/dev/ttyUSB0 \
-    espressif/idf:v5.3 \
-    idf.py -p /dev/ttyUSB0 flash monitor
-```
-
-#### Быстрая команда (сборка и прошивка)
-
-```bash
-cd /home/andrewp/elgato/firmware && \
-./scripts/docker-build.sh && \
 docker run --rm -it \
     -v "$PWD:/project" \
     -w /project \
@@ -124,7 +111,7 @@ newgrp docker
 
 ```bash
 # 1. Перейти в директорию прошивки
-cd /home/andrewp/elgato/firmware
+cd <project_dir>/elgato/firmware
 
 # 2. Активировать ESP-IDF окружение
 . ~/esp/esp-idf/export.sh
@@ -149,7 +136,7 @@ idf.py -p /dev/ttyUSB0 flash monitor
 ### Быстрая команда (всё в одной строке)
 
 ```bash
-cd /home/andrewp/elgato/firmware && . ~/esp/esp-idf/export.sh && idf.py build && idf.py -p /dev/ttyUSB0 flash monitor
+cd <project_dir>/elgato/firmware && . ~/esp/esp-idf/export.sh && idf.py build && idf.py -p /dev/ttyUSB0 flash monitor
 ```
 
 ### Результаты сборки
@@ -207,7 +194,7 @@ software/src/
 
 ```bash
 # Перейти в директорию с проектами
-cd /home/andrewp/elgato/software/src
+cd <project_dir>/elgato/firmware/software/src
 
 # Восстановить зависимости
 dotnet restore
@@ -228,7 +215,7 @@ dotnet build -c Release
 Backend - это фоновый сервис, который управляет устройством.
 
 ```bash
-cd /home/andrewp/elgato/software/src/MacroKeyboard.Backend
+cd <project_dir>/elgato/firmware/firmware/elgato/software/src/MacroKeyboard.Backend
 dotnet run
 ```
 
@@ -236,29 +223,14 @@ dotnet run
 - Подключение к HID устройству
 - Обработка нажатий кнопок
 - Выполнение действий (запуск программ, эмуляция клавиш)
-- IPC интерфейс для UI и TrayApp
-
-### TrayApp
-
-TrayApp - приложение в системном трее для быстрого доступа.
-
-```bash
-cd /home/andrewp/elgato/software/src/MacroKeyboard.TrayApp
-dotnet run
-```
-
-**Функции:**
-- Иконка в системном трее
-- Быстрое переключение профилей
-- Статус подключения устройства
-- Открытие главного UI
+- IPC интерфейс для UI
 
 ### UI
 
 UI - главное приложение для настройки.
 
 ```bash
-cd /home/andrewp/elgato/software/src/MacroKeyboard.UI
+cd <project_dir>/elgato/firmware/software/src/MacroKeyboard.UI
 dotnet run
 ```
 
@@ -276,32 +248,23 @@ dotnet run
 
 ### Терминал 1: Backend
 ```bash
-cd /home/andrewp/elgato/software/src/MacroKeyboard.Backend
-dotnet run
-```
-
-### Терминал 2: TrayApp
-```bash
-cd /home/andrewp/elgato/software/src/MacroKeyboard.TrayApp
+cd <project_dir>/elgato/firmware/software/src/MacroKeyboard.Backend
 dotnet run
 ```
 
 ### Терминал 3: UI (опционально)
 ```bash
-cd /home/andrewp/elgato/software/src/MacroKeyboard.UI
+cd <project_dir>/elgato/firmware/software/src/MacroKeyboard.UI
 dotnet run
 ```
 
 ### Альтернатива: Запуск в фоне
 
 ```bash
-cd /home/andrewp/elgato/software/src
+cd <project_dir>/elgato/firmware/software/src
 
 # Запустить Backend в фоне
 dotnet run --project MacroKeyboard.Backend/MacroKeyboard.Backend.csproj &
-
-# Запустить TrayApp в фоне
-dotnet run --project MacroKeyboard.TrayApp/MacroKeyboard.TrayApp.csproj &
 
 # Запустить UI (в текущем терминале)
 dotnet run --project MacroKeyboard.UI/MacroKeyboard.UI.csproj
@@ -314,17 +277,12 @@ dotnet run --project MacroKeyboard.UI/MacroKeyboard.UI.csproj
 ### Создание исполняемых файлов
 
 ```bash
-cd /home/andrewp/elgato/software/src
+cd <project_dir>/elgato/firmware/software/src
 
 # Backend
 dotnet publish MacroKeyboard.Backend/MacroKeyboard.Backend.csproj \
     -c Release \
     -o ../publish/backend
-
-# TrayApp
-dotnet publish MacroKeyboard.TrayApp/MacroKeyboard.TrayApp.csproj \
-    -c Release \
-    -o ../publish/trayapp
 
 # UI
 dotnet publish MacroKeyboard.UI/MacroKeyboard.UI.csproj \
@@ -339,7 +297,7 @@ dotnet publish MacroKeyboard.UI/MacroKeyboard.UI.csproj \
 Для распространения без требования установки .NET:
 
 ```bash
-cd /home/andrewp/elgato/software/src
+cd <project_dir>/elgato/firmware/software/src
 
 # Для Linux
 dotnet publish MacroKeyboard.Backend/MacroKeyboard.Backend.csproj \
@@ -371,7 +329,7 @@ dotnet publish MacroKeyboard.Backend/MacroKeyboard.Backend.csproj \
 
 ```bash
 # Очистить сборку
-cd /home/andrewp/elgato/firmware && idf.py fullclean
+cd <project_dir>/elgato/firmware/firmware && idf.py fullclean
 
 # Размер прошивки
 idf.py size
@@ -383,7 +341,7 @@ idf.py -p /dev/ttyUSB0 erase-flash
 ### C# проекты
 
 ```bash
-cd /home/andrewp/elgato/software/src
+cd <project_dir>/elgato/firmware/software/src
 
 # Очистить сборку
 dotnet clean
@@ -456,7 +414,7 @@ sudo chmod 666 /dev/ttyUSB0
 dotnet --version
 
 # Очистить и восстановить
-cd /home/andrewp/elgato/software/src
+cd <project_dir>/elgato/firmware/software/src
 dotnet clean
 dotnet nuget locals all --clear
 dotnet restore
@@ -476,7 +434,7 @@ dotnet build
 ### 1. Первая сборка прошивки
 
 ```bash
-cd /home/andrewp/elgato/firmware
+cd <project_dir>/elgato/firmware/firmware
 . ~/esp/esp-idf/export.sh
 idf.py build
 idf.py -p /dev/ttyUSB0 flash monitor
@@ -485,7 +443,7 @@ idf.py -p /dev/ttyUSB0 flash monitor
 ### 2. Первая сборка C# проектов
 
 ```bash
-cd /home/andrewp/elgato/software/src
+cd <project_dir>/elgato/firmware/software/src
 dotnet restore
 dotnet build
 ```
@@ -494,11 +452,11 @@ dotnet build
 
 ```bash
 # Терминал 1
-cd /home/andrewp/elgato/software/src/MacroKeyboard.Backend
+cd <project_dir>/elgato/firmware/software/src/MacroKeyboard.Backend
 dotnet run
 
 # Терминал 2
-cd /home/andrewp/elgato/software/src/MacroKeyboard.UI
+cd <project_dir>/elgato/firmware/software/src/MacroKeyboard.UI
 dotnet run
 ```
 
