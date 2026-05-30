@@ -42,8 +42,14 @@ public class ProfileService : IProfileService
     {
         // Найти свободный ID
         var existingProfiles = await _repository.GetAllAsync();
-        byte profileId = 0;
         
+        if (existingProfiles.Count >= 5)
+        {
+            throw new InvalidOperationException(
+                "Maximum number of profiles (5) reached. Delete an existing profile before creating a new one.");
+        }
+        
+        byte profileId = 0;
         for (byte i = 0; i < 5; i++)
         {
             if (!existingProfiles.Any(p => p.ProfileId == i))
