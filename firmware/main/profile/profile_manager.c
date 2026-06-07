@@ -453,10 +453,24 @@ static void generate_action_label(const button_config_t* btn, char* label, size_
             snprintf(label, label_size, "HID");
             break;
 
+        case ACTION_TYPE_NIGHT_MODE:
+            snprintf(label, label_size, "Night");
+            break;
+
         default:
             snprintf(label, label_size, "0x%02X", btn->action_type);
             break;
     }
+}
+
+void profile_restore_leds(void) {
+    xSemaphoreTake(profile_mutex, portMAX_DELAY);
+    for (int i = 0; i < NUM_BUTTONS; i++) {
+        button_config_t* btn = &current_profile.buttons[i];
+        led_set_color(i, btn->led_r, btn->led_g, btn->led_b, btn->led_brightness);
+    }
+    led_update();
+    xSemaphoreGive(profile_mutex);
 }
 
 /**

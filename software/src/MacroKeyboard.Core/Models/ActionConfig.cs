@@ -333,6 +333,15 @@ public class MediaAction : ActionConfig
 }
 
 /// <summary>
+/// Ночной режим — не имеет параметров, просто переключает состояние.
+/// </summary>
+public class NightModeAction : ActionConfig
+{
+    public override ActionType ActionType => ActionType.NightMode;
+    public override byte[] ToBytes() => Array.Empty<byte>();
+}
+
+/// <summary>
 /// JSON converter for ActionConfig abstract class.
 /// Uses the ActionType property to determine the concrete type during deserialization.
 /// Writing is handled by the default serializer (CanWrite = false).
@@ -367,6 +376,7 @@ public class ActionConfigConverter : JsonConverter<ActionConfig>
             ActionType.Sequence => new SequenceAction(),
             ActionType.LaunchApp => new LaunchAppAction(),
             ActionType.Media => new MediaAction(),
+            ActionType.NightMode => new NightModeAction(),
             _ => null
         };
 

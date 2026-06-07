@@ -176,6 +176,7 @@ public partial class ButtonConfigDialogViewModel : ViewModelBase
         ActionType.Sequence,
         ActionType.ProfileSwitch,
         ActionType.Folder,
+        ActionType.NightMode,
         ActionType.CustomHid,
     };
     

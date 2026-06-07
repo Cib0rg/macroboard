@@ -7,6 +7,7 @@ idf_component_register(
         "hardware/buttons.c"
         "hardware/encoder.c"
         "hardware/leds.c"
+        "hardware/night_mode.c"
         "usb/usb_hid_keyboard.c"
         "usb/usb_vendor.c"
         "usb/usb_descriptors.c"

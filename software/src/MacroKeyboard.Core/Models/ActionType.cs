@@ -53,5 +53,11 @@ public enum ActionType : byte
     /// <summary>
     /// Медиа-клавиши (Consumer Control: громкость, mute и т.д.)
     /// </summary>
-    Media = 0x09
+    Media = 0x09,
+
+    /// <summary>
+    /// Ночной режим — отключает LEDs и уменьшает яркость дисплеев до 0.
+    /// Повторное нажатие восстанавливает предыдущие настройки.
+    /// </summary>
+    NightMode = 0x0A
 }

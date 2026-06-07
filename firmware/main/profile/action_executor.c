@@ -9,6 +9,7 @@
 #include "usb/usb_hid_keyboard.h"
 #include "protocol/protocol_handler.h"
 #include "protocol/protocol_types.h"
+#include "hardware/night_mode.h"
 #include "config.h"
 
 static const char* TAG = "ACTION";
@@ -104,6 +105,10 @@ static esp_err_t execute_single_action(action_type_t type, const uint8_t* data, 
             break;
         }
         
+        case ACTION_TYPE_NIGHT_MODE:
+            night_mode_toggle();
+            break;
+
         case ACTION_TYPE_MEDIA: {
             // Media key action - send Consumer Control HID report
             if (data_len >= 2) {

@@ -132,4 +132,10 @@ bool profile_is_in_folder(void);
  */
 uint8_t profile_get_folder_depth(void);
 
+/**
+ * @brief Re-apply LED colors from the current profile to hardware without
+ *        modifying stored settings.  Used by night mode to restore LEDs.
+ */
+void profile_restore_leds(void);
+
 #endif // PROFILE_MANAGER_H
