@@ -21,9 +21,9 @@ public class LedConfig
     public byte B { get; set; }
     
     /// <summary>
-    /// Яркость (0-255)
+    /// Яркость (0-100)
     /// </summary>
-    public byte Brightness { get; set; } = 200;
+    public byte Brightness { get; set; } = 80;
     
     /// <summary>
     /// Эффект подсветки
@@ -33,7 +33,7 @@ public class LedConfig
     /// <summary>
     /// Создать конфигурацию LED с заданным цветом
     /// </summary>
-    public static LedConfig FromRgb(byte r, byte g, byte b, byte brightness = 200)
+    public static LedConfig FromRgb(byte r, byte g, byte b, byte brightness = 80)
     {
         return new LedConfig
         {
@@ -47,7 +47,7 @@ public class LedConfig
     /// <summary>
     /// Создать конфигурацию LED из HEX цвета
     /// </summary>
-    public static LedConfig FromHex(string hex, byte brightness = 200)
+    public static LedConfig FromHex(string hex, byte brightness = 80)
     {
         hex = hex.TrimStart('#');
         

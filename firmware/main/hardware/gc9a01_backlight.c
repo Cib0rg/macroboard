@@ -15,7 +15,7 @@
 static const char* TAG = "BACKLIGHT";
 static bool backlight_initialized = false;
 static bool backlight_enabled = true;
-static uint8_t current_brightness = 255;
+static uint8_t current_brightness = 100;  // 0-100 scale
 
 // LEDC configuration for backlight PWM
 #define BACKLIGHT_LEDC_TIMER       LEDC_TIMER_1
@@ -53,7 +53,7 @@ static esp_err_t backlight_pwm_init(void) {
         .timer_sel  = BACKLIGHT_LEDC_TIMER,
         .intr_type  = LEDC_INTR_DISABLE,
         .gpio_num   = PIN_DISPLAY_BACKLIGHT,
-        .duty       = current_brightness,  // Start at current brightness
+        .duty       = (uint32_t)current_brightness * 255 / 100,  // Convert 0-100 to 8-bit PWM duty
         .hpoint     = 0,
     };
     ret = ledc_channel_config(&channel_config);
@@ -81,9 +81,9 @@ esp_err_t gc9a01_set_backlight(bool enabled) {
     }
 
     if (enabled) {
-        ledc_set_duty(BACKLIGHT_LEDC_MODE, BACKLIGHT_LEDC_CHANNEL, current_brightness);
+        ledc_set_duty(BACKLIGHT_LEDC_MODE, BACKLIGHT_LEDC_CHANNEL, (uint32_t)current_brightness * 255 / 100);
         ledc_update_duty(BACKLIGHT_LEDC_MODE, BACKLIGHT_LEDC_CHANNEL);
-        ESP_LOGI(TAG, "Backlight enabled (brightness: %d)", current_brightness);
+        ESP_LOGI(TAG, "Backlight enabled (brightness: %d%%)", current_brightness);
     } else {
         ledc_set_duty(BACKLIGHT_LEDC_MODE, BACKLIGHT_LEDC_CHANNEL, 0);
         ledc_update_duty(BACKLIGHT_LEDC_MODE, BACKLIGHT_LEDC_CHANNEL);
@@ -94,6 +94,7 @@ esp_err_t gc9a01_set_backlight(bool enabled) {
 }
 
 esp_err_t gc9a01_set_brightness(uint8_t brightness) {
+    if (brightness > 100) brightness = 100;
     current_brightness = brightness;
 
     // Initialize PWM on first use
@@ -113,10 +114,11 @@ esp_err_t gc9a01_set_brightness(uint8_t brightness) {
         backlight_enabled = false;
     }
 
-    ledc_set_duty(BACKLIGHT_LEDC_MODE, BACKLIGHT_LEDC_CHANNEL, brightness);
+    uint32_t duty = (uint32_t)brightness * 255 / 100;
+    ledc_set_duty(BACKLIGHT_LEDC_MODE, BACKLIGHT_LEDC_CHANNEL, duty);
     ledc_update_duty(BACKLIGHT_LEDC_MODE, BACKLIGHT_LEDC_CHANNEL);
 
-    ESP_LOGI(TAG, "Backlight brightness set to %d", brightness);
+    ESP_LOGI(TAG, "Backlight brightness set to %d%%", brightness);
     return ESP_OK;
 }
 

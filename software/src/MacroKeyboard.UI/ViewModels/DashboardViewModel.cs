@@ -50,7 +50,7 @@ public partial class DashboardViewModel : ViewModelBase
     private bool _isInFolder;
 
     [ObservableProperty]
-    private double _displayBrightness = 255;
+    private double _displayBrightness = 100;
 
     public ObservableCollection<string> RecentEvents { get; } = new();
 

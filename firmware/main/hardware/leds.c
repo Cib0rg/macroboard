@@ -65,10 +65,10 @@ esp_err_t led_set_color(uint8_t led_id, uint8_t r, uint8_t g, uint8_t b, uint8_t
     
     xSemaphoreTake(led_mutex, portMAX_DELAY);
     
-    // Apply brightness
-    led_colors[led_id].r = (r * brightness) / 255;
-    led_colors[led_id].g = (g * brightness) / 255;
-    led_colors[led_id].b = (b * brightness) / 255;
+    // Apply brightness (0-100 scale)
+    led_colors[led_id].r = (r * brightness) / 100;
+    led_colors[led_id].g = (g * brightness) / 100;
+    led_colors[led_id].b = (b * brightness) / 100;
     
     xSemaphoreGive(led_mutex);
     

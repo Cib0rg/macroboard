@@ -143,8 +143,8 @@
 // ============================================
 // LED Configuration
 // ============================================
-#define LED_DEFAULT_BRIGHTNESS  128
-#define LED_MAX_BRIGHTNESS      255
+#define LED_DEFAULT_BRIGHTNESS  80
+#define LED_MAX_BRIGHTNESS      100
 
 // ============================================
 // System Events (FreeRTOS Event Group bits)

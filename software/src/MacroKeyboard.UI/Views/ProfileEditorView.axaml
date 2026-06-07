@@ -501,7 +501,7 @@
                                                 <StackPanel Orientation="Horizontal" Spacing="8">
                                                     <TextBlock Text="Brightness:" Opacity="0.7"
                                                                VerticalAlignment="Center" Width="70" />
-                                                    <Slider Minimum="0" Maximum="255"
+                                                    <Slider Minimum="0" Maximum="100"
                                                             Value="{Binding Brightness}"
                                                             Width="140" VerticalAlignment="Center" />
                                                     <TextBlock Text="{Binding Brightness, StringFormat={}{0:F0}}"

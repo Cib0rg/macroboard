@@ -87,7 +87,7 @@ public partial class ButtonConfigDialogViewModel : ViewModelBase
     private double _colorB = 255;
 
     [ObservableProperty]
-    private double _brightness = 200;
+    private double _brightness = 80;
 
     [ObservableProperty]
     private bool _isColorPickerVisible = false;

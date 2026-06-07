@@ -45,10 +45,10 @@ public partial class SettingsViewModel : ViewModelBase
     private Color _defaultLedColor = Color.FromRgb(0, 255, 255);
 
     [ObservableProperty]
-    private byte _defaultLedBrightness = 200;
+    private byte _defaultLedBrightness = 80;
 
     [ObservableProperty]
-    private byte _defaultDisplayBrightness = 255;
+    private byte _defaultDisplayBrightness = 100;
 
     [ObservableProperty]
     private bool _isDefaultColorPickerVisible = false;
@@ -156,8 +156,8 @@ public partial class SettingsViewModel : ViewModelBase
             WebSocketPort = 28196;
             PluginsDirectory = "Plugins";
             DefaultLedColorHex = "#00FFFF";
-            DefaultLedBrightness = 200;
-            DefaultDisplayBrightness = 255;
+            DefaultLedBrightness = 80;
+            DefaultDisplayBrightness = 100;
             UpdateDefaultColorFromHex();
             
             await SaveSettings();

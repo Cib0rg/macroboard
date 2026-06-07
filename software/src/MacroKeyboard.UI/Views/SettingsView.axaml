@@ -92,9 +92,9 @@
                     </Border>
                     
                     <StackPanel Spacing="8">
-                        <TextBlock Text="Default brightness:" Opacity="0.7" />
+                        <TextBlock Text="Default brightness (%):" Opacity="0.7" />
                         <StackPanel Orientation="Horizontal" Spacing="12">
-                            <Slider Minimum="0" Maximum="255"
+                            <Slider Minimum="0" Maximum="100"
                                     Value="{Binding DefaultLedBrightness}"
                                     Width="200" />
                             <TextBlock Text="{Binding DefaultLedBrightness}"
@@ -112,15 +112,15 @@
                     <Separator />
                     
                     <StackPanel Spacing="8">
-                        <TextBlock Text="Display backlight brightness:" Opacity="0.7" />
+                        <TextBlock Text="Display backlight brightness (%):" Opacity="0.7" />
                         <StackPanel Orientation="Horizontal" Spacing="12">
-                            <Slider Minimum="0" Maximum="255"
+                            <Slider Minimum="0" Maximum="100"
                                     Value="{Binding DefaultDisplayBrightness}"
                                     Width="200" />
                             <TextBlock Text="{Binding DefaultDisplayBrightness}"
                                        VerticalAlignment="Center" Width="30" />
                         </StackPanel>
-                        <TextBlock Text="Controls the PWM backlight level for all button displays (0 = off, 255 = max)"
+                        <TextBlock Text="Controls the PWM backlight level for all button displays (0 = off, 100 = max)"
                                    FontSize="10" Opacity="0.5" TextWrapping="Wrap" />
                     </StackPanel>
                 </StackPanel>

@@ -86,7 +86,7 @@
                     
                     <StackPanel Orientation="Horizontal" Spacing="12">
                         <TextBlock Text="☀" FontSize="14" Opacity="0.5" VerticalAlignment="Center" />
-                        <Slider Minimum="0" Maximum="255"
+                        <Slider Minimum="0" Maximum="100"
                                 Value="{Binding DisplayBrightness}"
                                 Width="300"
                                 VerticalAlignment="Center" />

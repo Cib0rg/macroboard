@@ -52,12 +52,12 @@ public class AppSettings
     public string DefaultLedColor { get; set; } = "#00FFFF";
     
     /// <summary>
-    /// Яркость LED по умолчанию (0-255)
+    /// Яркость LED по умолчанию (0-100)
     /// </summary>
-    public byte DefaultLedBrightness { get; set; } = 200;
-    
+    public byte DefaultLedBrightness { get; set; } = 80;
+
     /// <summary>
-    /// Яркость подсветки дисплеев по умолчанию (0-255)
+    /// Яркость подсветки дисплеев по умолчанию (0-100)
     /// </summary>
-    public byte DefaultDisplayBrightness { get; set; } = 255;
+    public byte DefaultDisplayBrightness { get; set; } = 100;
 }
