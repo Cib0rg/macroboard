@@ -58,13 +58,5 @@ esp_err_t usb_hid_consumer_press(uint16_t usage_code);
  */
 esp_err_t usb_hid_consumer_release(void);
 
-// Common Consumer Control usage codes
-#define HID_USAGE_CONSUMER_VOLUME_INCREMENT  0x00E9
-#define HID_USAGE_CONSUMER_VOLUME_DECREMENT  0x00EA
-#define HID_USAGE_CONSUMER_MUTE              0x00E2
-#define HID_USAGE_CONSUMER_PLAY_PAUSE        0x00CD
-#define HID_USAGE_CONSUMER_SCAN_NEXT         0x00B5
-#define HID_USAGE_CONSUMER_SCAN_PREVIOUS     0x00B6
-#define HID_USAGE_CONSUMER_STOP              0x00B7
 
 #endif // USB_HID_KEYBOARD_H

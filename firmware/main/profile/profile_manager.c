@@ -14,6 +14,7 @@
 #include "protocol/protocol_types.h"
 #include "utils/crc.h"
 #include "utils/jpeg_decode_util.h"
+#include "utils/text_render.h"
 #include "config.h"
 
 // Embedded firmware assets (compiled into binary via EMBED_FILES in CMakeLists.txt)
@@ -27,6 +28,8 @@ static uint8_t current_profile_id = 0;
 static SemaphoreHandle_t profile_mutex = NULL;
 
 // Folder navigation stack
+// Forward declaration — defined in the Display Helper section below
+static void profile_update_button_display(uint8_t button_id, button_config_t* btn);
 static uint8_t folder_stack[FOLDER_STACK_DEPTH];
 static uint8_t folder_stack_depth = 0;
 static uint8_t folder_entry_button = 0xFF;  // Button that was used to enter current folder
@@ -151,6 +154,26 @@ esp_err_t profile_set_button_action(uint8_t profile_id, uint8_t button_id,
     return ESP_OK;
 }
 
+esp_err_t profile_set_button_name(uint8_t profile_id, uint8_t button_id, const char* name) {
+    if (profile_id >= NUM_PROFILES || button_id >= NUM_BUTTONS || name == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    xSemaphoreTake(profile_mutex, portMAX_DELAY);
+
+    button_config_t* btn = &current_profile.buttons[button_id];
+    memset(btn->name, 0, BUTTON_NAME_MAX_LEN);
+    strncpy(btn->name, name, BUTTON_NAME_MAX_LEN - 1);
+
+    // Refresh display immediately if this button is currently visible and has no image
+    if (profile_id == current_profile_id && btn->image_size == 0) {
+        profile_update_button_display(button_id, btn);
+    }
+
+    xSemaphoreGive(profile_mutex);
+    return ESP_OK;
+}
+
 esp_err_t profile_set_led_color(uint8_t profile_id, uint8_t button_id,
                                  uint8_t r, uint8_t g, uint8_t b,
                                  uint8_t brightness, uint8_t effect) {
@@ -250,22 +273,206 @@ esp_err_t profile_create_defaults(void) {
 // Display Helper
 // ============================================
 
+// HID keycode → short key name (covers the most common codes)
+static const char* hid_keycode_name(uint8_t kc) {
+    if (kc >= 0x04 && kc <= 0x1D) {
+        static char buf[2] = {0, 0};
+        buf[0] = 'A' + (kc - 0x04);
+        return buf;
+    }
+    if (kc >= 0x1E && kc <= 0x27) {
+        static char buf[2] = {0, 0};
+        buf[0] = (kc == 0x27) ? '0' : ('1' + (kc - 0x1E));
+        return buf;
+    }
+    if (kc >= 0x3A && kc <= 0x45) {
+        static char buf[4];
+        snprintf(buf, sizeof(buf), "F%d", kc - 0x3A + 1);
+        return buf;
+    }
+    if (kc >= 0x68 && kc <= 0x73) {
+        static char buf[5];
+        snprintf(buf, sizeof(buf), "F%d", kc - 0x68 + 13);
+        return buf;
+    }
+    switch (kc) {
+        case 0x28: return "Enter";
+        case 0x29: return "Esc";
+        case 0x2A: return "Bksp";
+        case 0x2B: return "Tab";
+        case 0x2C: return "Space";
+        case 0x4F: return "Right";
+        case 0x50: return "Left";
+        case 0x51: return "Down";
+        case 0x52: return "Up";
+        case 0x4A: return "Home";
+        case 0x4D: return "End";
+        case 0x4B: return "PgUp";
+        case 0x4E: return "PgDn";
+        case 0x46: return "Print";
+        case 0x47: return "Scrl";
+        case 0x48: return "Pause";
+        case 0x49: return "Ins";
+        case 0x4C: return "Del";
+        default: {
+            static char buf[7];
+            snprintf(buf, sizeof(buf), "0x%02X", kc);
+            return buf;
+        }
+    }
+}
+
+// HID Consumer Control usage code → short name
+static const char* media_key_name(uint16_t usage) {
+    switch (usage) {
+        case 0x00E2: return "Mute";
+        case 0x00E9: return "Vol+";
+        case 0x00EA: return "Vol-";
+        case 0x00B5: return "Next";
+        case 0x00B6: return "Prev";
+        case 0x00CD: return "Play";
+        case 0x00B3: return "FFwd";
+        case 0x00B4: return "Rwd";
+        default: {
+            static char buf[8];
+            snprintf(buf, sizeof(buf), "0x%04X", usage);
+            return buf;
+        }
+    }
+}
+
+// Build a text label from the button's action when no name is set.
+// Uses '\n' as line separator for the text renderer.
+static void generate_action_label(const button_config_t* btn, char* label, size_t label_size) {
+    switch (btn->action_type) {
+        case ACTION_TYPE_NONE:
+            snprintf(label, label_size, "Empty");
+            break;
+
+        case ACTION_TYPE_KEYBOARD:
+            if (btn->action_data_len >= 2) {
+                uint8_t modifier = btn->action_data[0];
+                uint8_t keycode  = btn->action_data[1];
+                if (keycode != 0) {
+                    // Single key press
+                    char mod_str[16] = {0};
+                    if (modifier & 0x01) strncat(mod_str, "Ctrl+", sizeof(mod_str) - strlen(mod_str) - 1);
+                    if (modifier & 0x02) strncat(mod_str, "Sft+",  sizeof(mod_str) - strlen(mod_str) - 1);
+                    if (modifier & 0x04) strncat(mod_str, "Alt+",  sizeof(mod_str) - strlen(mod_str) - 1);
+                    if (modifier & 0x08) strncat(mod_str, "GUI+",  sizeof(mod_str) - strlen(mod_str) - 1);
+                    if (mod_str[0]) {
+                        snprintf(label, label_size, "%s\n%s", mod_str, hid_keycode_name(keycode));
+                    } else {
+                        snprintf(label, label_size, "%s", hid_keycode_name(keycode));
+                    }
+                } else if (btn->action_data_len > 7) {
+                    // Text string to type — show first chars
+                    int text_len = btn->action_data_len - 7;
+                    int show = (text_len <= 10) ? text_len : 10;
+                    char preview[11];
+                    memcpy(preview, btn->action_data + 7, show);
+                    preview[show] = '\0';
+                    snprintf(label, label_size, "Type\n%s", preview);
+                } else {
+                    snprintf(label, label_size, "Key");
+                }
+            } else {
+                snprintf(label, label_size, "Key");
+            }
+            break;
+
+        case ACTION_TYPE_MEDIA:
+            if (btn->action_data_len >= 2) {
+                uint16_t usage = (uint16_t)btn->action_data[0] | ((uint16_t)btn->action_data[1] << 8);
+                snprintf(label, label_size, "%s", media_key_name(usage));
+            } else {
+                snprintf(label, label_size, "Media");
+            }
+            break;
+
+        case ACTION_TYPE_PROFILE_SWITCH:
+            if (btn->action_data_len >= 1) {
+                snprintf(label, label_size, "Profile\n%d", btn->action_data[0] + 1);
+            } else {
+                snprintf(label, label_size, "Profile");
+            }
+            break;
+
+        case ACTION_TYPE_FOLDER:
+            snprintf(label, label_size, "Folder\n%d", btn->folder_id + 1);
+            break;
+
+        case ACTION_TYPE_DELAY:
+            if (btn->action_data_len >= 2) {
+                uint16_t ms = (uint16_t)btn->action_data[0] | ((uint16_t)btn->action_data[1] << 8);
+                snprintf(label, label_size, "Delay\n%dms", ms);
+            } else {
+                snprintf(label, label_size, "Delay");
+            }
+            break;
+
+        case ACTION_TYPE_SHELL: {
+            // action_data contains flags byte + null-terminated command
+            const char* cmd = (btn->action_data_len > 1)
+                              ? (const char*)(btn->action_data + 1)
+                              : (const char*)btn->action_data;
+            int show = 0;
+            while (show < 12 && cmd[show] && cmd[show] != '\0') show++;
+            char preview[13];
+            memcpy(preview, cmd, show);
+            preview[show] = '\0';
+            snprintf(label, label_size, "$\n%s", preview);
+            break;
+        }
+
+        case ACTION_TYPE_LAUNCH_APP: {
+            // Extract the filename from a path for brevity
+            const char* path = (const char*)btn->action_data;
+            const char* base = path;
+            for (const char* p = path; *p; p++) {
+                if (*p == '/' || *p == '\\') base = p + 1;
+            }
+            int show = 0;
+            while (show < 12 && base[show] && base[show] != '\0') show++;
+            char preview[13];
+            memcpy(preview, base, show);
+            preview[show] = '\0';
+            snprintf(label, label_size, "App\n%s", preview);
+            break;
+        }
+
+        case ACTION_TYPE_SEQUENCE:
+            if (btn->action_data_len >= 1) {
+                snprintf(label, label_size, "Seq\n%d steps", btn->action_data[0]);
+            } else {
+                snprintf(label, label_size, "Sequence");
+            }
+            break;
+
+        case ACTION_TYPE_CUSTOM_HID:
+            snprintf(label, label_size, "HID");
+            break;
+
+        default:
+            snprintf(label, label_size, "0x%02X", btn->action_type);
+            break;
+    }
+}
+
 /**
- * @brief Update a single button's display with its image or clear to black.
- *        Loads JPEG from storage and renders to the GC9A01 display.
- *        If no image is available, clears the display.
- *        NOTE: JPEG decode is not yet implemented — currently just clears display.
+ * @brief Update a single button's display with its image, text label, or solid color.
+ *        Priority: JPEG image > button name > action-derived label > solid color.
  * @param button_id Button/display ID (0-9)
- * @param btn Button configuration (for image metadata)
+ * @param btn Button configuration
  */
 static void profile_update_button_display(uint8_t button_id, button_config_t* btn) {
     if (button_id >= NUM_BUTTONS || btn == NULL) return;
-    
+
     if (btn->image_size > 0) {
         // Image exists in config — try to load from storage
         uint8_t* image_data = NULL;
         size_t image_size = 0;
-        
+
         esp_err_t ret = image_storage_load(current_profile_id, button_id, &image_data, &image_size);
         if (ret == ESP_OK && image_data != NULL) {
             // Decode JPEG → RGB565 → display
@@ -276,7 +483,7 @@ static void profile_update_button_display(uint8_t button_id, button_config_t* bt
                     gc9a01_draw_image(button_id, rgb565_buf, w, h);
                     ESP_LOGD(TAG, "Image displayed for button %d (%dx%d)", button_id, w, h);
                 } else {
-                    ESP_LOGW(TAG, "JPEG decode failed for button %d, clearing display", button_id);
+                    ESP_LOGW(TAG, "JPEG decode failed for button %d", button_id);
                     gc9a01_clear(button_id, COLOR_BLACK);
                 }
                 free(rgb565_buf);
@@ -288,10 +495,27 @@ static void profile_update_button_display(uint8_t button_id, button_config_t* bt
         } else {
             gc9a01_clear(button_id, COLOR_BLACK);
         }
+        return;
+    }
+
+    // No image — build a text label and render it
+    char label[64] = {0};
+
+    if (btn->name[0] != '\0') {
+        // Button has an explicit name
+        strncpy(label, btn->name, sizeof(label) - 1);
+    } else if (btn->action_type != ACTION_TYPE_NONE) {
+        // Derive label from action type and data
+        generate_action_label(btn, label, sizeof(label));
+    }
+
+    if (label[0] != '\0') {
+        ESP_LOGD(TAG, "Rendering text label for button %d: '%s'", button_id, label);
+        if (text_render_to_display(button_id, label, COLOR_WHITE, COLOR_BLACK) != ESP_OK) {
+            gc9a01_clear(button_id, COLOR_BLACK);
+        }
     } else {
-        // No image — clear display with LED color as fallback
-        uint16_t color = ((btn->led_r >> 3) << 11) | ((btn->led_g >> 2) << 5) | (btn->led_b >> 3);
-        gc9a01_clear(button_id, color);
+        gc9a01_clear(button_id, COLOR_BLACK);
     }
 }
 

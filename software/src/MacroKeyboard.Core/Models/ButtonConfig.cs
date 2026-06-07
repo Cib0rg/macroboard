@@ -9,6 +9,11 @@ public class ButtonConfig
     /// ID кнопки (0-9)
     /// </summary>
     public byte ButtonId { get; set; }
+
+    /// <summary>
+    /// Отображаемое имя кнопки (показывается на дисплее если нет картинки)
+    /// </summary>
+    public string? Name { get; set; }
     
     /// <summary>
     /// Конфигурация действия

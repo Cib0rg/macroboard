@@ -70,21 +70,24 @@ typedef struct {
     action_type_t action_type;
     uint16_t action_data_len;
     uint8_t action_data[ACTION_DATA_MAX_LEN];
-    
+
     // Folder configuration (for ACTION_TYPE_FOLDER)
     uint8_t folder_id;  // ID of the folder (0-255)
-    
+
     // LED configuration
     uint8_t led_r;
     uint8_t led_g;
     uint8_t led_b;
     uint8_t led_brightness;
     led_effect_t led_effect;
-    
+
     // Image metadata
     uint32_t image_offset;
     uint32_t image_size;
     uint8_t image_format;  // 0 = JPEG
+
+    // Display name shown when no image is set (empty = derive from action)
+    char name[BUTTON_NAME_MAX_LEN];
 } button_config_t;
 
 // ============================================

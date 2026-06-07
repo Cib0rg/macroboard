@@ -92,6 +92,7 @@ public static class IpcMessageTypes
     public const string ButtonConfig = "button.config";
     public const string SetButtonAction = "button.setaction";
     public const string GetButtonAction = "button.getaction";
+    public const string SetButtonName   = "button.setname";
     
     // LED messages
     public const string SetLedColor = "led.setcolor";

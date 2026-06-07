@@ -91,7 +91,13 @@ public interface IDeviceService
     /// <summary>
     /// Установить действие для кнопки
     /// </summary>
-    Task<bool> SetButtonActionAsync(byte profileId, byte buttonId, ActionConfig action, 
+    Task<bool> SetButtonActionAsync(byte profileId, byte buttonId, ActionConfig action,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Установить отображаемое имя кнопки (показывается на дисплее если нет картинки)
+    /// </summary>
+    Task<bool> SetButtonNameAsync(byte profileId, byte buttonId, string? name,
         CancellationToken cancellationToken = default);
     
     /// <summary>

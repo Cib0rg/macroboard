@@ -58,6 +58,15 @@ esp_err_t profile_set_button_action(uint8_t profile_id, uint8_t button_id,
                                      uint16_t action_len);
 
 /**
+ * @brief Set display name for a button (shown when no image is assigned)
+ * @param profile_id Profile ID
+ * @param button_id  Button ID
+ * @param name       Null-terminated UTF-8 string (max BUTTON_NAME_MAX_LEN-1 chars)
+ * @return ESP_OK on success
+ */
+esp_err_t profile_set_button_name(uint8_t profile_id, uint8_t button_id, const char* name);
+
+/**
  * @brief Set LED color for button
  * @param profile_id Profile ID
  * @param button_id Button ID

@@ -31,6 +31,7 @@ static esp_err_t handle_end_image_transfer(const uint8_t* payload, uint16_t leng
 static esp_err_t handle_get_button_image(const uint8_t* payload, uint16_t length, uint8_t* response, uint16_t* response_len);
 static esp_err_t handle_set_button_action(const uint8_t* payload, uint16_t length, uint8_t* response, uint16_t* response_len);
 static esp_err_t handle_get_button_action(const uint8_t* payload, uint16_t length, uint8_t* response, uint16_t* response_len);
+static esp_err_t handle_set_button_name(const uint8_t* payload, uint16_t length, uint8_t* response, uint16_t* response_len);
 static esp_err_t handle_set_led_color(const uint8_t* payload, uint16_t length, uint8_t* response, uint16_t* response_len);
 static esp_err_t handle_get_led_color(const uint8_t* payload, uint16_t length, uint8_t* response, uint16_t* response_len);
 static esp_err_t handle_set_backlight(const uint8_t* payload, uint16_t length, uint8_t* response, uint16_t* response_len);
@@ -53,6 +54,7 @@ static const command_entry_t command_table[] = {
     {CMD_GET_BUTTON_IMAGE, handle_get_button_image},
     {CMD_SET_BUTTON_ACTION, handle_set_button_action},
     {CMD_GET_BUTTON_ACTION, handle_get_button_action},
+    {CMD_SET_BUTTON_NAME,   handle_set_button_name},
     {CMD_SET_LED_COLOR, handle_set_led_color},
     {CMD_GET_LED_COLOR, handle_get_led_color},
     {CMD_SET_BACKLIGHT, handle_set_backlight},
@@ -325,6 +327,31 @@ static esp_err_t handle_set_button_action(const uint8_t* payload, uint16_t lengt
     response[0] = (ret == ESP_OK) ? STATUS_OK : STATUS_ERROR;
     *response_len = 1;
     
+    return ESP_OK;
+}
+
+static esp_err_t handle_set_button_name(const uint8_t* payload, uint16_t length,
+                                         uint8_t* response, uint16_t* response_len) {
+    // payload: [profile_id][button_id][name (UTF-8, null-terminated, max 32 bytes)]
+    if (length < 2) {
+        response[0] = STATUS_ERROR;
+        *response_len = 1;
+        return ESP_OK;
+    }
+
+    uint8_t profile_id = payload[0];
+    uint8_t button_id  = payload[1];
+
+    char name[BUTTON_NAME_MAX_LEN];
+    memset(name, 0, sizeof(name));
+
+    uint16_t name_len = length - 2;
+    if (name_len >= BUTTON_NAME_MAX_LEN) name_len = BUTTON_NAME_MAX_LEN - 1;
+    if (name_len > 0) memcpy(name, &payload[2], name_len);
+
+    esp_err_t ret = profile_set_button_name(profile_id, button_id, name);
+    response[0] = (ret == ESP_OK) ? STATUS_OK : STATUS_ERROR;
+    *response_len = 1;
     return ESP_OK;
 }
 

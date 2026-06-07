@@ -32,6 +32,7 @@ public static class ProtocolConstants
     public const byte CMD_GET_BUTTON_IMAGE = 0x23;
     public const byte CMD_SET_BUTTON_ACTION = 0x30;
     public const byte CMD_GET_BUTTON_ACTION = 0x31;
+    public const byte CMD_SET_BUTTON_NAME   = 0x32;
     public const byte CMD_SET_LED_COLOR = 0x40;
     public const byte CMD_SET_BACKLIGHT = 0x41;
     public const byte CMD_GET_LED_COLOR = 0x42;

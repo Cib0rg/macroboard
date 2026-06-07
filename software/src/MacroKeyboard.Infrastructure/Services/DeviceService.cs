@@ -22,6 +22,7 @@ public class DeviceService : IDeviceService
     private readonly SetProfileCommand _setProfileCommand;
     private readonly ImageTransferCommand _imageTransferCommand;
     private readonly SetButtonActionCommand _setButtonActionCommand;
+    private readonly SetButtonNameCommand _setButtonNameCommand;
     private readonly SetLedColorCommand _setLedColorCommand;
     private readonly GetButtonActionCommand _getButtonActionCommand;
     private readonly GetLedColorCommand _getLedColorCommand;
@@ -54,6 +55,7 @@ public class DeviceService : IDeviceService
         _setProfileCommand = new SetProfileCommand(_protocol, loggerFactory.CreateLogger<SetProfileCommand>());
         _imageTransferCommand = new ImageTransferCommand(_protocol, loggerFactory.CreateLogger<ImageTransferCommand>());
         _setButtonActionCommand = new SetButtonActionCommand(_protocol, loggerFactory.CreateLogger<SetButtonActionCommand>());
+        _setButtonNameCommand = new SetButtonNameCommand(_protocol, loggerFactory.CreateLogger<SetButtonNameCommand>());
         _setLedColorCommand = new SetLedColorCommand(_protocol, loggerFactory.CreateLogger<SetLedColorCommand>());
         _getButtonActionCommand = new GetButtonActionCommand(_protocol, loggerFactory.CreateLogger<GetButtonActionCommand>());
         _getLedColorCommand = new GetLedColorCommand(_protocol, loggerFactory.CreateLogger<GetLedColorCommand>());
@@ -136,12 +138,21 @@ public class DeviceService : IDeviceService
     }
     
     public async Task<bool> SetButtonActionAsync(
-        byte profileId, 
-        byte buttonId, 
+        byte profileId,
+        byte buttonId,
         ActionConfig action,
         CancellationToken cancellationToken = default)
     {
         return await _setButtonActionCommand.ExecuteAsync(profileId, buttonId, action, cancellationToken);
+    }
+
+    public async Task<bool> SetButtonNameAsync(
+        byte profileId,
+        byte buttonId,
+        string? name,
+        CancellationToken cancellationToken = default)
+    {
+        return await _setButtonNameCommand.ExecuteAsync(profileId, buttonId, name, cancellationToken);
     }
     
     public async Task<bool> SetLedColorAsync(

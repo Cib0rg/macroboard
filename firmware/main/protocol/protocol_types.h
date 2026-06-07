@@ -25,6 +25,7 @@
 #define CMD_GET_BUTTON_IMAGE        0x23
 #define CMD_SET_BUTTON_ACTION       0x30
 #define CMD_GET_BUTTON_ACTION       0x31
+#define CMD_SET_BUTTON_NAME         0x32
 #define CMD_SET_LED_COLOR           0x40
 #define CMD_GET_LED_COLOR           0x42
 #define CMD_SET_BACKLIGHT           0x41

@@ -192,7 +192,14 @@ public class ProfileService : IProfileService
                         button.Action,
                         cancellationToken);
                 }
-                
+
+                // Отправить имя кнопки (пустая строка — firmware сгенерирует имя из типа команды)
+                await _deviceService.SetButtonNameAsync(
+                    profile.ProfileId,
+                    button.ButtonId,
+                    button.Name ?? string.Empty,
+                    cancellationToken);
+
                 // Отправить LED
                 await _deviceService.SetLedColorAsync(
                     profile.ProfileId,

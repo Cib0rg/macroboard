@@ -919,6 +919,24 @@ public partial class ProfileEditorViewModel : ViewModelBase
                 }
             }
 
+            // Send button name (empty string clears it; firmware falls back to auto-label from action)
+            var nameMsg = new IpcMessage
+            {
+                MessageType = IpcMessageTypes.SetButtonName,
+                Data = new
+                {
+                    profileId = profileId,
+                    buttonId = button.ButtonId,
+                    name = button.Name ?? string.Empty
+                }
+            };
+
+            var nameResponse = await _ipcClient.SendAndWaitAsync(nameMsg, TimeSpan.FromSeconds(5));
+            if (!nameResponse.Success)
+            {
+                _logger.LogWarning("Failed to set button name on device: {Error}", nameResponse.Error);
+            }
+
             // Send LED color
             var ledMsg = new IpcMessage
             {

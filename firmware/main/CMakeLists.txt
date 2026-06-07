@@ -21,6 +21,7 @@ idf_component_register(
         "utils/logger.c"
         "utils/crc.c"
         "utils/jpeg_decoder.c"
+        "utils/text_render.c"
     INCLUDE_DIRS
         "."
         "hardware"

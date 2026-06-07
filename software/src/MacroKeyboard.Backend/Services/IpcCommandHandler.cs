@@ -52,6 +52,7 @@ public class IpcCommandHandler
                 IpcMessageTypes.ProfileGetInfo => await HandleProfileGetInfo(message),
                 IpcMessageTypes.SetButtonAction => await HandleSetButtonAction(message),
                 IpcMessageTypes.GetButtonAction => await HandleGetButtonAction(message),
+                IpcMessageTypes.SetButtonName   => await HandleSetButtonName(message),
                 IpcMessageTypes.SetLedColor => await HandleSetLedColor(message),
                 IpcMessageTypes.GetLedColor => await HandleGetLedColor(message),
                 IpcMessageTypes.SetDisplayBrightness => await HandleSetDisplayBrightness(message),
@@ -274,6 +275,25 @@ public class IpcCommandHandler
         return success 
             ? IpcResponse.Ok(message) 
             : IpcResponse.Fail(message, "Failed to set button action on device");
+    }
+
+    private async Task<IpcResponse> HandleSetButtonName(IpcMessage message)
+    {
+        if (!_deviceService.IsConnected)
+            return IpcResponse.Fail(message, "Device not connected");
+
+        var data = message.GetDataAsDictionary();
+        if (data == null)
+            return IpcResponse.Fail(message, "Invalid data");
+
+        var profileId = Convert.ToByte(data.GetValueOrDefault("profileId", (byte)0));
+        var buttonId  = Convert.ToByte(data.GetValueOrDefault("buttonId",  (byte)0));
+        var name      = data.GetValueOrDefault("name", null)?.ToString();
+
+        var success = await _deviceService.SetButtonNameAsync(profileId, buttonId, name);
+        return success
+            ? IpcResponse.Ok(message)
+            : IpcResponse.Fail(message, "Failed to set button name on device");
     }
 
     private async Task<IpcResponse> HandleGetButtonAction(IpcMessage message)
