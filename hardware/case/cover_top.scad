@@ -68,6 +68,9 @@ wall_thick = 2.0;
 cutout_x_start = 11;
 cutout_x_end = 42;
 
+// Дополнительный вырез в верхней плоскости (крышке) под USB
+usb_cutout_length = 20;  // длина по оси Y (глубина)
+
 $fn = 64;
 
 // ===== МОДУЛИ ЛЕВОЙ ЧАСТИ =====
@@ -106,12 +109,13 @@ module left_screw_holes() {
     }
 }
 
+// Изменение 1: диаметр отверстия под энкодер увеличен до 15 мм
 module left_encoder_cutout() {
     x = margin + encoder_from_left;
     y = margin + encoder_y_top;
     center_x = x + encoder_w / 2;
     center_y = y + encoder_h / 2;
-    r = 7 / 2;
+    r = 15 / 2;   // было 7/2, изменено на 15/2
     translate([center_x, center_y, left_space_height - 0.1])
         cylinder(h = lid_thick + 0.2, r = r);
 }
@@ -127,6 +131,13 @@ module left_walls() {
         translate([cutout_x_start, -0.01, -0.01])
             cube([cutout_x_end - cutout_x_start, wall_thick + 0.02, left_space_height + 0.02]);
     }
+}
+
+// Изменение 2: вырез в верхней плоскости левой крышки (длина 20 мм по Y)
+module left_lid_usb_cutout() {
+    width = cutout_x_end - cutout_x_start;  // 31 мм
+    translate([cutout_x_start, 0, left_space_height])
+        cube([width, usb_cutout_length, lid_thick + 0.1]);
 }
 
 // ===== МОДУЛИ ПРАВОЙ ЧАСТИ =====
@@ -204,7 +215,7 @@ module right_walls() {
     }
 }
 
-mirror(0,1,0)
+mirror([0,1,0])   // исправлено: была ошибка в синтаксисе mirror(0,1,0) -> mirror([0,1,0])
 
 // ===== СБОРКА =====
 union() {
@@ -214,6 +225,7 @@ union() {
         left_lid();
         left_screw_holes();
         left_encoder_cutout();
+        left_lid_usb_cutout();   // добавлен вырез в верхней плоскости
     }
     left_walls();
 

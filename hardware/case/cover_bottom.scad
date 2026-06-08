@@ -14,7 +14,7 @@ case_h = pcb_h + margin*2;
 hole_LU = [5, 7.0];
 hole_LD = [5, pcb_h - 7.3 - brim_correction + 1.5];
 hole_RU = [pcb_w - 5.2, 7.0];
-hole_RD = [pcb_w - 5.2 - 1, pcb_h - 7.3];
+hole_RD = [pcb_w - 5.2, pcb_h - 7.3];  
 
 holes_left  = [hole_LU, hole_LD];
 holes_right = [hole_RU, hole_RD];
