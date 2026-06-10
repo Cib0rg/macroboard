@@ -26,6 +26,8 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <string.h>
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 
 static const char* TAG = "IMG_STOR";
 
@@ -149,13 +151,6 @@ static void release_image(uint32_t crc32) {
     }
 }
 
-/** Check if a blob file exists on flash */
-static bool blob_exists(uint32_t crc32) {
-    char path[48];
-    build_blob_path(crc32, path, sizeof(path));
-    struct stat st;
-    return (stat(path, &st) == 0);
-}
 
 // ============================================
 // Persistence: save/load mapping table
@@ -279,6 +274,9 @@ static void migrate_legacy_images(void) {
 
     for (uint8_t p = 0; p < NUM_PROFILES; p++) {
         for (uint8_t b = 0; b < NUM_BUTTONS; b++) {
+            // Yield between iterations so the IDLE task can run and reset the WDT.
+            // SPIFFS stat() can be slow enough on its own to starve the idle task.
+            vTaskDelay(pdMS_TO_TICKS(1));
             char old_path[64];
             snprintf(old_path, sizeof(old_path), IMAGE_FILE_FMT, p, b);
 
@@ -333,16 +331,25 @@ esp_err_t image_storage_init(void) {
     if (s_initialized) return ESP_OK;
 
     esp_err_t ret = load_map_from_flash();
+    bool map_was_empty = false;
     if (ret != ESP_OK) {
         // Start fresh if map is corrupted
         s_num_mappings = 0;
         s_num_images = 0;
+        map_was_empty = true;
+    } else if (s_num_mappings == 0 && s_num_images == 0) {
+        map_was_empty = true;
     }
 
     s_initialized = true;
 
-    // Migrate any legacy per-button files
-    migrate_legacy_images();
+    // Only scan for legacy per-button files when the map is fresh (first boot or
+    // after a firmware format change). On subsequent boots the map already contains
+    // the migrated data, so skipping avoids 50+ slow SPIFFS stat() calls that
+    // would trigger the task watchdog.
+    if (map_was_empty) {
+        migrate_legacy_images();
+    }
 
     ESP_LOGI(TAG, "Image storage initialized: %d unique images, %d mappings",
              s_num_images, s_num_mappings);
