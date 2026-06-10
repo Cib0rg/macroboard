@@ -764,6 +764,9 @@ public partial class ProfileEditorViewModel : ViewModelBase
 
         try
         {
+            // Ensure LaunchApp icon is extracted even when path was typed manually
+            await ButtonConfigViewModel.EnsureIconExtractedAsync();
+
             // The ButtonConfigDialogViewModel already modifies the ButtonConfig directly
             // via its Save logic, so we just need to persist
             ButtonConfigViewModel.SaveToButtonConfig();
@@ -839,13 +842,16 @@ public partial class ProfileEditorViewModel : ViewModelBase
             {
                 bool isFolderButton = !SelectedProfile.Buttons.Contains(button);
                 bool isFolderAction = button.Action?.ActionType == ActionType.Folder;
+                bool hasImage = !string.IsNullOrEmpty(button.ImagePath);
 
-                if (isFolderButton || isFolderAction)
+                if (isFolderButton || isFolderAction || hasImage)
                 {
                     // Folder buttons have no profile-level address in the IPC protocol —
                     // individual button update would land on the wrong slot.
                     // Full profile sync also ensures firmware has initialized folder data
                     // before the user presses the folder button (prevents reboot on folder enter).
+                    // Buttons with images also require full sync — there is no per-button
+                    // image transfer IPC message, only the full ProfileSendToDevice path.
                     await SendFullProfileToDeviceAsync();
                 }
                 else

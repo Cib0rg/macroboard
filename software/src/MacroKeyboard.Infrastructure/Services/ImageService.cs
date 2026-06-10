@@ -80,20 +80,18 @@ public class ImageService
     /// </summary>
     private async Task<byte[]> ProcessRasterImageAsync(string imagePath)
     {
-        using var image = await Image.LoadAsync<Rgba32>(imagePath);
-        
-        // Resize to display size (maintain aspect ratio, then crop to square)
-        ResizeToDisplaySize(image);
-        
+        using var source = await Image.LoadAsync<Rgba32>(imagePath);
+        using var image = PrepareForDisplay(source);
+
         // Apply circular mask for round display
         ApplyCircularMask(image);
-        
+
         // Convert to JPEG
         using var ms = new MemoryStream();
         await image.SaveAsJpegAsync(ms, new JpegEncoder { Quality = 85 });
-        
+
         var result = ms.ToArray();
-        _logger.LogInformation("Raster image processed: {Path} → {Size} bytes ({W}x{H})", 
+        _logger.LogInformation("Raster image processed: {Path} → {Size} bytes ({W}x{H})",
             imagePath, result.Length, DisplaySize, DisplaySize);
         return result;
     }
@@ -150,18 +148,16 @@ public class ImageService
     private async Task<byte[]> ProcessIcoAsync(string imagePath)
     {
         // ImageSharp can load ICO files directly (they contain embedded BMP/PNG)
-        using var image = await Image.LoadAsync<Rgba32>(imagePath);
-        
-        // Resize to display size
-        ResizeToDisplaySize(image);
-        
+        using var source = await Image.LoadAsync<Rgba32>(imagePath);
+        using var image = PrepareForDisplay(source);
+
         // Apply circular mask
         ApplyCircularMask(image);
-        
+
         // Convert to JPEG
         using var ms = new MemoryStream();
         await image.SaveAsJpegAsync(ms, new JpegEncoder { Quality = 85 });
-        
+
         var result = ms.ToArray();
         _logger.LogInformation("ICO image processed: {Path} → {Size} bytes", imagePath, result.Length);
         return result;
@@ -218,7 +214,44 @@ public class ImageService
     }
     
     /// <summary>
-    /// Resize image to display size (square, cover mode)
+    /// Resize a source image to display size and return the result as a new image.
+    /// Small icons (< 64 px) are centered on a black canvas instead of stretched.
+    /// Large images are cropped to fill 160×160.
+    /// Caller owns the returned image and must dispose it.
+    /// </summary>
+    private static Image<Rgba32> PrepareForDisplay(Image<Rgba32> source)
+    {
+        if (source.Width < 64 || source.Height < 64)
+        {
+            // Small icon: scale to at most 60 % of display, then center on black canvas.
+            // Avoids the ugly 5× upscale that ResizeMode.Crop would produce for a 32×32 icon.
+            const int MaxIconSize = (int)(DisplaySize * 0.6); // 96 px
+            float scale = Math.Min((float)MaxIconSize / source.Width, (float)MaxIconSize / source.Height);
+            int scaledW = Math.Max(1, (int)(source.Width  * scale));
+            int scaledH = Math.Max(1, (int)(source.Height * scale));
+
+            var canvas = new Image<Rgba32>(DisplaySize, DisplaySize);
+            canvas.Mutate(ctx => ctx.BackgroundColor(Color.Black));
+
+            using var scaled = source.Clone(ctx => ctx.Resize(scaledW, scaledH, KnownResamplers.Lanczos3));
+            int ox = (DisplaySize - scaledW) / 2;
+            int oy = (DisplaySize - scaledH) / 2;
+            canvas.Mutate(ctx => ctx.DrawImage(scaled, new Point(ox, oy), opacity: 1.0f));
+
+            return canvas;
+        }
+
+        // Regular image: crop-fill to 160×160.
+        return source.Clone(ctx => ctx.Resize(new ResizeOptions
+        {
+            Size = new Size(DisplaySize, DisplaySize),
+            Mode = ResizeMode.Crop,
+            Position = AnchorPositionMode.Center
+        }));
+    }
+
+    /// <summary>
+    /// Resize image to display size in-place (square, cover mode). Used for GIF frames.
     /// </summary>
     private static void ResizeToDisplaySize(Image<Rgba32> image)
     {

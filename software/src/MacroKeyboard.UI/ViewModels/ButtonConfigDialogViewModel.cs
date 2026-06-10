@@ -1098,10 +1098,131 @@ public partial class ButtonConfigDialogViewModel : ViewModelBase
     [System.Runtime.Versioning.SupportedOSPlatform("windows")]
     private static void ExtractWindowsAppIcon(string executablePath, string outputPath)
     {
-        using var icon = System.Drawing.Icon.ExtractAssociatedIcon(executablePath);
-        if (icon == null) return;
-        using var bitmap = icon.ToBitmap();
-        bitmap.Save(outputPath, System.Drawing.Imaging.ImageFormat.Png);
+        // Method 1: JUMBO (256×256) icon via SHGetImageList — scaling DOWN to 160×160 looks great
+        var hJumbo = TryGetJumboIcon(executablePath);
+        if (hJumbo != IntPtr.Zero)
+        {
+            try
+            {
+                using var bmp = System.Drawing.Bitmap.FromHicon(hJumbo);
+                bmp.Save(outputPath, System.Drawing.Imaging.ImageFormat.Png);
+                return;
+            }
+            catch { }
+            finally { DestroyIcon(hJumbo); }
+        }
+
+        // Method 2: Shell32 ExtractIconEx (32×32 fallback)
+        var largeIcons = new IntPtr[1];
+        var smallIcons = new IntPtr[1];
+        try
+        {
+            ExtractIconEx(executablePath, 0, largeIcons, smallIcons, 1);
+            var hIcon = largeIcons[0] != IntPtr.Zero ? largeIcons[0] : smallIcons[0];
+            if (hIcon != IntPtr.Zero)
+            {
+                using var icon = System.Drawing.Icon.FromHandle(hIcon);
+                using var bitmap = icon.ToBitmap();
+                bitmap.Save(outputPath, System.Drawing.Imaging.ImageFormat.Png);
+                return;
+            }
+        }
+        finally
+        {
+            if (largeIcons[0] != IntPtr.Zero) DestroyIcon(largeIcons[0]);
+            if (smallIcons[0] != IntPtr.Zero) DestroyIcon(smallIcons[0]);
+        }
+
+        // Method 3: ExtractAssociatedIcon last resort
+        try
+        {
+            using var icon = System.Drawing.Icon.ExtractAssociatedIcon(executablePath);
+            if (icon != null)
+            {
+                using var bitmap = icon.ToBitmap();
+                bitmap.Save(outputPath, System.Drawing.Imaging.ImageFormat.Png);
+            }
+        }
+        catch { }
+    }
+
+    /// <summary>Returns an HICON for the JUMBO (256×256) shell icon, or Zero on failure. Caller must DestroyIcon.</summary>
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
+    private static IntPtr TryGetJumboIcon(string executablePath)
+    {
+        try
+        {
+            var shfi = default(SHFILEINFO);
+            var res = SHGetFileInfo(executablePath, 0, ref shfi,
+                (uint)System.Runtime.InteropServices.Marshal.SizeOf<SHFILEINFO>(),
+                SHGFI_SYSICONINDEX);
+            if (res == IntPtr.Zero) return IntPtr.Zero;
+
+            var iid = new Guid("46EB5926-582E-4017-9FDF-E8998DAA0950"); // IID_IImageList
+            if (SHGetImageList(SHIL_JUMBO, ref iid, out var imageList) != 0 || imageList is null)
+                return IntPtr.Zero;
+
+            imageList.GetIcon(shfi.iIcon, ILD_TRANSPARENT, out var hIcon);
+            return hIcon;
+        }
+        catch { return IntPtr.Zero; }
+    }
+
+    // ── P/Invoke ─────────────────────────────────────────────────────────────
+
+    [System.Runtime.InteropServices.DllImport("Shell32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
+    private static extern IntPtr SHGetFileInfo(string pszPath, uint dwFileAttributes,
+        ref SHFILEINFO psfi, uint cbFileInfo, uint uFlags);
+
+    [System.Runtime.InteropServices.DllImport("Shell32.dll")]
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
+    private static extern int SHGetImageList(int iImageList, ref Guid riid,
+        [System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Interface)]
+        out IShellImageList? ppv);
+
+    [System.Runtime.InteropServices.DllImport("Shell32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
+    private static extern uint ExtractIconEx(string lpszFile, int nIconIndex,
+        IntPtr[] phiconLarge, IntPtr[] phiconSmall, uint nIcons);
+
+    [System.Runtime.InteropServices.DllImport("User32.dll")]
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
+    private static extern bool DestroyIcon(IntPtr hIcon);
+
+    private const uint SHGFI_SYSICONINDEX = 0x4000;
+    private const int  SHIL_JUMBO         = 4;
+    private const int  ILD_TRANSPARENT    = 0x1;
+
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential,
+        CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+    private struct SHFILEINFO
+    {
+        public IntPtr hIcon;
+        public int    iIcon;
+        public uint   dwAttributes;
+        [System.Runtime.InteropServices.MarshalAs(
+            System.Runtime.InteropServices.UnmanagedType.ByValTStr, SizeConst = 260)]
+        public string szDisplayName;
+        [System.Runtime.InteropServices.MarshalAs(
+            System.Runtime.InteropServices.UnmanagedType.ByValTStr, SizeConst = 80)]
+        public string szTypeName;
+    }
+
+    // Minimal IImageList COM interface — vtable slots 1-8 must be declared in order; GetIcon is slot 8.
+    [System.Runtime.InteropServices.ComImport]
+    [System.Runtime.InteropServices.Guid("46EB5926-582E-4017-9FDF-E8998DAA0950")]
+    [System.Runtime.InteropServices.InterfaceType(System.Runtime.InteropServices.ComInterfaceType.InterfaceIsIUnknown)]
+    private interface IShellImageList
+    {
+        [System.Runtime.InteropServices.PreserveSig] int Add(IntPtr hbmImage, IntPtr hbmMask, out int pi);
+        [System.Runtime.InteropServices.PreserveSig] int ReplaceIcon(int i, IntPtr hicon, out int pi);
+        [System.Runtime.InteropServices.PreserveSig] int SetOverlayImage(int iImage, int iOverlay);
+        [System.Runtime.InteropServices.PreserveSig] int Replace(int i, IntPtr hbmImage, IntPtr hbmMask);
+        [System.Runtime.InteropServices.PreserveSig] int AddMasked(IntPtr hbmImage, int crMask, out int pi);
+        [System.Runtime.InteropServices.PreserveSig] int Draw(IntPtr pimldp);
+        [System.Runtime.InteropServices.PreserveSig] int Remove(int i);
+        [System.Runtime.InteropServices.PreserveSig] int GetIcon(int i, int flags, out IntPtr picon);
     }
 
     /// <summary>
@@ -1264,6 +1385,22 @@ public partial class ButtonConfigDialogViewModel : ViewModelBase
     public void SaveToButtonConfig()
     {
         Save();
+    }
+
+    /// <summary>
+    /// Ensures a LaunchApp button has its icon extracted before the config is persisted.
+    /// Called from ProfileEditorViewModel before SaveToButtonConfig() so that ImagePath
+    /// is populated even when the user typed the exe path manually instead of using Browse.
+    /// </summary>
+    public async Task EnsureIconExtractedAsync()
+    {
+        if (SelectedActionType != ActionType.LaunchApp) return;
+        if (!string.IsNullOrWhiteSpace(ImagePath)) return;
+        if (string.IsNullOrWhiteSpace(LaunchAppPath)) return;
+        if (!File.Exists(LaunchAppPath)) return;
+
+        _logger.LogInformation("Extracting icon for manually-entered exe: {Path}", LaunchAppPath);
+        await ExtractAndSetAppIconAsync(LaunchAppPath);
     }
 
     [RelayCommand]

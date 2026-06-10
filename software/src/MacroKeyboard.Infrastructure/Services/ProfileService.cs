@@ -122,8 +122,8 @@ public class ProfileService : IProfileService
             for (int b = 0; b < profile.Buttons.Count; b++)
             {
                 var btn = profile.Buttons[b];
-                _logger.LogDebug("  Button {Id}: Action={Action}, ImagePath={ImagePath}, LED=({R},{G},{B})",
-                    btn.ButtonId, btn.Action?.ActionType, btn.ImagePath, btn.Led.R, btn.Led.G, btn.Led.B);
+                _logger.LogInformation("  Button {Id}: Action={Action}, ImagePath={ImagePath}",
+                    btn.ButtonId, btn.Action?.ActionType, btn.ImagePath ?? "(null)");
             }
             
             // 1. Установить профиль

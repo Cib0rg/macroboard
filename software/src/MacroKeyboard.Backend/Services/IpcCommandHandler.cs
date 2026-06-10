@@ -261,6 +261,7 @@ public class IpcCommandHandler
                 ActionType.Shell => actionObj.ToObject<ShellAction>(),
                 ActionType.Sequence => actionObj.ToObject<SequenceAction>(),
                 ActionType.Media => actionObj.ToObject<MediaAction>(),
+                ActionType.LaunchApp => actionObj.ToObject<LaunchAppAction>(),
                 ActionType.NightMode => new NightModeAction(),
                 _ => null
             };
