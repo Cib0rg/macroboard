@@ -1,5 +1,8 @@
 using System;
 using System.Linq;
+using System.Threading.Tasks;
+using Avalonia.Layout;
+using Avalonia.Media;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
@@ -50,11 +53,18 @@ public partial class App : Application
             _mainWindow = _serviceProvider.GetRequiredService<MainWindow>();
             desktop.MainWindow = _mainWindow;
 
-            // Handle window close: hide to tray instead of exiting
-            _mainWindow.Closing += (_, e) =>
+            // Handle window close: hide to tray, but warn about unsaved changes first
+            _mainWindow.Closing += async (_, e) =>
             {
                 e.Cancel = true;
-                _mainWindow.Hide();
+                var vm = _serviceProvider?.GetRequiredService<ProfileEditorViewModel>();
+                if (vm?.HasUnsavedChanges == true)
+                {
+                    var save = await ShowUnsavedChangesDialog(_mainWindow);
+                    if (save == null) return; // Cancel — keep window open
+                    if (save == true) await vm.SaveCurrentProfileAsync();
+                }
+                _mainWindow?.Hide();
             };
 
             // Setup tray icon
@@ -121,9 +131,22 @@ public partial class App : Application
         menu.Add(new NativeMenuItemSeparator());
 
         var exitItem = new NativeMenuItem { Header = "Exit" };
-        exitItem.Click += (_, _) =>
+        exitItem.Click += async (_, _) =>
         {
-            _trayIcon.IsVisible = false;
+            try
+            {
+                var vm = _serviceProvider?.GetRequiredService<ProfileEditorViewModel>();
+                if (vm?.HasUnsavedChanges == true)
+                {
+                    // ShowDialog requires a visible parent — bring window up first
+                    ShowMainWindow();
+                    var save = await ShowUnsavedChangesDialog(_mainWindow);
+                    if (save == null) return; // Cancel — stay running
+                    if (save == true) await vm.SaveCurrentProfileAsync();
+                }
+            }
+            catch { /* ensure we can always exit */ }
+            _trayIcon!.IsVisible = false;
             desktop.Shutdown();
         };
         menu.Add(exitItem);
@@ -148,6 +171,58 @@ public partial class App : Application
         }
 
         _trayIcon.IsVisible = true;
+    }
+
+    /// <summary>
+    /// Returns true = save, false = discard, null = cancel.
+    /// </summary>
+    private static async Task<bool?> ShowUnsavedChangesDialog(Window? parent)
+    {
+        bool? result = null;
+
+        var saveBtn    = new Button { Content = "Save",    Width = 80, Margin = new Avalonia.Thickness(0, 0, 8, 0) };
+        var discardBtn = new Button { Content = "Discard", Width = 80, Margin = new Avalonia.Thickness(0, 0, 8, 0) };
+        var cancelBtn  = new Button { Content = "Cancel",  Width = 80 };
+
+        var dialog = new Window
+        {
+            Title = "Unsaved Changes",
+            Width = 380,
+            SizeToContent = SizeToContent.Height,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            CanResize = false,
+            Content = new StackPanel
+            {
+                Margin = new Avalonia.Thickness(24),
+                Spacing = 20,
+                Children =
+                {
+                    new TextBlock
+                    {
+                        Text = "You have unsaved changes. Save before closing?",
+                        TextWrapping = TextWrapping.Wrap,
+                        FontSize = 14
+                    },
+                    new StackPanel
+                    {
+                        Orientation = Orientation.Horizontal,
+                        HorizontalAlignment = HorizontalAlignment.Right,
+                        Children = { saveBtn, discardBtn, cancelBtn }
+                    }
+                }
+            }
+        };
+
+        saveBtn.Click    += (_, _) => { result = true;  dialog.Close(); };
+        discardBtn.Click += (_, _) => { result = false; dialog.Close(); };
+        cancelBtn.Click  += (_, _) => {                 dialog.Close(); };
+
+        if (parent != null)
+            await dialog.ShowDialog(parent);
+        else
+            dialog.Show();
+
+        return result;
     }
 
     private void ShowMainWindow()

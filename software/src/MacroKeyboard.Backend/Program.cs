@@ -11,6 +11,10 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Serilog;
 
+// When running as a Windows Service the default working directory is System32.
+// Pin it to the binary directory so that relative paths (logs, data) resolve correctly.
+Environment.CurrentDirectory = AppContext.BaseDirectory;
+
 // Configure Serilog
 Log.Logger = new LoggerConfiguration()
     .MinimumLevel.Debug()

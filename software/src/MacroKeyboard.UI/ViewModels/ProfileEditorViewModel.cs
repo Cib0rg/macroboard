@@ -26,7 +26,6 @@ public partial class ProfileEditorViewModel : ViewModelBase
     private readonly IpcClient _ipcClient;
     private readonly ILogger<ProfileEditorViewModel> _logger;
     private readonly ILogger<ButtonConfigDialogViewModel> _dialogLogger;
-    private readonly MacroKeyboard.Infrastructure.Services.ImageService _imageService;
     private IStorageProvider? _storageProvider;
 
     /// <summary>
@@ -83,6 +82,9 @@ public partial class ProfileEditorViewModel : ViewModelBase
     [ObservableProperty]
     private bool _isButtonConfigVisible;
 
+    [ObservableProperty]
+    private bool _hasUnsavedChanges;
+
     /// <summary>
     /// Reference to the ButtonConfig currently being edited (used for inline expansion matching)
     /// </summary>
@@ -115,13 +117,11 @@ public partial class ProfileEditorViewModel : ViewModelBase
     public ProfileEditorViewModel(
         IProfileService profileService,
         IpcClient ipcClient,
-        MacroKeyboard.Infrastructure.Services.ImageService imageService,
         ILogger<ProfileEditorViewModel> logger,
         ILogger<ButtonConfigDialogViewModel> dialogLogger)
     {
         _profileService = profileService;
         _ipcClient = ipcClient;
-        _imageService = imageService;
         _logger = logger;
         _dialogLogger = dialogLogger;
     }
@@ -133,6 +133,7 @@ public partial class ProfileEditorViewModel : ViewModelBase
     {
         BuildFlattenedButtons();
         SyncEncoderFromProfile();
+        HasUnsavedChanges = false;
     }
 
     /// <summary>
@@ -179,6 +180,7 @@ public partial class ProfileEditorViewModel : ViewModelBase
             SelectedProfile.Encoder ??= new EncoderConfig();
             SelectedProfile.Encoder.RotateCwAction = value?.CreateAction?.Invoke();
             SelectedProfile.Touch();
+            HasUnsavedChanges = true;
         }
     }
 
@@ -189,6 +191,7 @@ public partial class ProfileEditorViewModel : ViewModelBase
             SelectedProfile.Encoder ??= new EncoderConfig();
             SelectedProfile.Encoder.RotateCcwAction = value?.CreateAction?.Invoke();
             SelectedProfile.Touch();
+            HasUnsavedChanges = true;
         }
     }
 
@@ -199,6 +202,7 @@ public partial class ProfileEditorViewModel : ViewModelBase
             SelectedProfile.Encoder ??= new EncoderConfig();
             SelectedProfile.Encoder.PressAction = value?.CreateAction?.Invoke();
             SelectedProfile.Touch();
+            HasUnsavedChanges = true;
         }
     }
 
@@ -328,6 +332,17 @@ public partial class ProfileEditorViewModel : ViewModelBase
         _storageProvider = storageProvider;
     }
 
+    /// <summary>
+    /// Save the current profile to internal storage without showing a file dialog.
+    /// Used when the application exits with unsaved changes.
+    /// </summary>
+    public async Task SaveCurrentProfileAsync()
+    {
+        if (SelectedProfile == null) return;
+        await _profileService.UpdateProfileAsync(SelectedProfile);
+        HasUnsavedChanges = false;
+    }
+
     [RelayCommand]
     private async Task SaveProfile()
     {
@@ -340,6 +355,7 @@ public partial class ProfileEditorViewModel : ViewModelBase
             {
                 _logger.LogWarning("StorageProvider not set, saving to default location");
                 await _profileService.UpdateProfileAsync(SelectedProfile);
+                HasUnsavedChanges = false;
                 StatusMessage = $"Saved: {SelectedProfile.Name}";
                 return;
             }
@@ -377,6 +393,7 @@ public partial class ProfileEditorViewModel : ViewModelBase
 
             // Also save to internal storage
             await _profileService.UpdateProfileAsync(SelectedProfile);
+            HasUnsavedChanges = false;
 
             StatusMessage = $"Saved: {Path.GetFileName(filePath)}";
             _logger.LogInformation("Profile saved to {Path}", filePath);
@@ -667,6 +684,7 @@ public partial class ProfileEditorViewModel : ViewModelBase
             ButtonConfigViewModel.SetStorageProvider(_storageProvider);
         ConfiguredButtonConfig = button;
         IsButtonConfigVisible = true;
+        HasUnsavedChanges = true;
     }
 
     /// <summary>
@@ -675,7 +693,7 @@ public partial class ProfileEditorViewModel : ViewModelBase
     public void HandleActionDropOnButton(FlattenedButtonItem buttonItem, ActionType actionType)
     {
         _logger.LogInformation("🎯 Action {ActionType} dropped on button {ButtonId}", actionType, buttonItem.Button.ButtonId);
-        
+
         // Open inline config for this button with available profiles and folders
         var profileItems = GetAvailableProfileItems();
         var folderItems = GetAvailableFolderItems();
@@ -685,6 +703,7 @@ public partial class ProfileEditorViewModel : ViewModelBase
         ButtonConfigViewModel.SelectedActionType = actionType;
         ConfiguredButtonConfig = buttonItem.Button;
         IsButtonConfigVisible = true;
+        HasUnsavedChanges = true;
     }
 
     /// <summary>
@@ -800,45 +819,13 @@ public partial class ProfileEditorViewModel : ViewModelBase
                 }
             }
             
-            // Auto-generate text image if no image is set
-            if (string.IsNullOrWhiteSpace(button.ImagePath) && button.Action != null)
-            {
-                var displayText = GetActionDisplayText(button.Action);
-                if (!string.IsNullOrEmpty(displayText))
-                {
-                    try
-                    {
-                        var imageBytes = await _imageService.CreateTextImageAsync(displayText, fontSize: 18);
-                        if (imageBytes != null)
-                        {
-                            // Save auto-generated image to app data
-                            var autoImagesDir = Path.Combine(
-                                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                                "MacroKeyboard", "auto-images");
-                            Directory.CreateDirectory(autoImagesDir);
-                            
-                            var fileName = $"btn_{button.ButtonId}_{SelectedProfile?.ProfileId ?? 0}.jpg";
-                            var filePath = Path.Combine(autoImagesDir, fileName);
-                            await File.WriteAllBytesAsync(filePath, imageBytes);
-                            
-                            button.ImagePath = filePath;
-                            _logger.LogInformation("Auto-generated text image for button {ButtonId}: '{Text}'",
-                                button.ButtonId, displayText);
-                        }
-                    }
-                    catch (Exception imgEx)
-                    {
-                        _logger.LogWarning(imgEx, "Failed to auto-generate image for button {ButtonId}", button.ButtonId);
-                    }
-                }
-            }
-            
             _logger.LogInformation("Button {ButtonId} configured successfully", button.ButtonId);
-            
+
             // Save profile locally
             if (SelectedProfile != null)
             {
                 await _profileService.UpdateProfileAsync(SelectedProfile);
+                HasUnsavedChanges = false;
                 StatusMessage = $"Button {button.ButtonId + 1} configured";
             }
 
@@ -858,27 +845,6 @@ public partial class ProfileEditorViewModel : ViewModelBase
         }
     }
 
-    /// <summary>
-    /// Get a short display text for an action (used for auto-generated button images)
-    /// </summary>
-    private static string? GetActionDisplayText(ActionConfig action)
-    {
-        return action switch
-        {
-            KeyboardAction ka => !string.IsNullOrEmpty(ka.Text) ? ka.Text : "Key",
-            ShellAction sh => !string.IsNullOrEmpty(sh.Command)
-                ? (sh.Command.Length > 15 ? sh.Command[..15] : sh.Command)
-                : "Shell",
-            LaunchAppAction la => !string.IsNullOrEmpty(la.ExecutablePath)
-                ? Path.GetFileNameWithoutExtension(la.ExecutablePath)
-                : "App",
-            ProfileSwitchAction ps => $"Profile\n{ps.TargetProfileId}",
-            FolderAction => "Folder",
-            SequenceAction => "Sequence",
-            CustomHidAction => "HID",
-            _ => action.ActionType.ToString()
-        };
-    }
 
     /// <summary>
     /// Close the inline button config editor without saving
@@ -889,6 +855,7 @@ public partial class ProfileEditorViewModel : ViewModelBase
         IsButtonConfigVisible = false;
         ButtonConfigViewModel = null;
         ConfiguredButtonConfig = null;
+        HasUnsavedChanges = false;
     }
 
     /// <summary>

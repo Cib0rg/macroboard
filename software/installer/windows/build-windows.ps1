@@ -1,112 +1,146 @@
 #!/usr/bin/env pwsh
 # MacroKeyboard Windows Build & Package Script
-# 
+#
 # Prerequisites:
-#   - .NET 10 SDK
-#   - Inno Setup 6.x (optional, for installer)
+#   .NET 10 SDK     https://dotnet.microsoft.com/download
+#   Inno Setup 6.x  https://jrsoftware.org/isinfo.php  (needed only for -Installer)
 #
 # Usage:
-#   .\build-windows.ps1              # Build only (self-contained publish)
-#   .\build-windows.ps1 -Installer   # Build + create installer
-#   .\build-windows.ps1 -Runtime linux-x64  # Cross-compile for Linux
+#   .\build-windows.ps1                             # publish only
+#   .\build-windows.ps1 -Installer                  # publish + create .exe installer
+#   .\build-windows.ps1 -Installer -Version 1.2.0   # explicit version number
+#   .\build-windows.ps1 -Runtime win-arm64           # cross-compile for ARM64
 
 param(
     [switch]$Installer,
-    [string]$Runtime = "win-x64",
+    [string]$Version    = "",
+    [string]$Runtime    = "win-x64",
     [string]$Configuration = "Release"
 )
 
+Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
-$ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$SoftwareDir = Resolve-Path "$ScriptDir\..\.."
-$PublishDir = "$SoftwareDir\publish\$Runtime"
 
+$ScriptDir   = Split-Path -Parent $MyInvocation.MyCommand.Path
+$SoftwareDir = Resolve-Path "$ScriptDir\..\.."
+$PublishDir  = "$SoftwareDir\publish\$Runtime"
+
+# ── Version resolution ────────────────────────────────────────────────────────
+# Priority: -Version argument > version.txt next to this script > "1.0.0"
+if (-not $Version) {
+    $VersionFile = "$ScriptDir\version.txt"
+    if (Test-Path $VersionFile) {
+        $Version = (Get-Content $VersionFile -First 1).Trim()
+        Write-Host "Version read from version.txt: $Version" -ForegroundColor DarkGray
+    } else {
+        $Version = "1.0.0"
+        Write-Host "No -Version or version.txt found, defaulting to $Version" -ForegroundColor Yellow
+    }
+}
+
+if ($Version -notmatch '^\d+\.\d+\.\d+') {
+    throw "Version '$Version' is not in the expected format (Major.Minor.Patch)"
+}
+
+# ── Summary ───────────────────────────────────────────────────────────────────
+Write-Host ""
 Write-Host "=== MacroKeyboard Build Script ===" -ForegroundColor Cyan
-Write-Host "Runtime:       $Runtime"
-Write-Host "Configuration: $Configuration"
-Write-Host "Publish dir:   $PublishDir"
+Write-Host "  Version:       $Version"
+Write-Host "  Runtime:       $Runtime"
+Write-Host "  Configuration: $Configuration"
+Write-Host "  Publish dir:   $PublishDir"
+Write-Host "  Build installer: $Installer"
 Write-Host ""
 
-# Clean previous publish
+# ── Clean previous publish ────────────────────────────────────────────────────
 if (Test-Path $PublishDir) {
-    Write-Host "Cleaning previous publish..." -ForegroundColor Yellow
+    Write-Host "Cleaning $PublishDir ..." -ForegroundColor Yellow
     Remove-Item -Recurse -Force $PublishDir
 }
 
-# Publish Backend
-Write-Host "Publishing Backend..." -ForegroundColor Green
-dotnet publish "$SoftwareDir\src\MacroKeyboard.Backend\MacroKeyboard.Backend.csproj" `
-    -c $Configuration `
-    -r $Runtime `
-    --self-contained true `
-    -p:PublishSingleFile=true `
-    -p:IncludeNativeLibrariesForSelfExtract=true `
-    -o "$PublishDir\backend"
+# ── Helper: dotnet publish ────────────────────────────────────────────────────
+function Publish-Project {
+    param([string]$ProjectPath, [string]$OutDir)
 
-if ($LASTEXITCODE -ne 0) { throw "Backend publish failed" }
+    Write-Host "Publishing $(Split-Path $ProjectPath -Leaf) -> $OutDir" -ForegroundColor Green
 
-# Publish UI
-Write-Host "Publishing UI..." -ForegroundColor Green
-dotnet publish "$SoftwareDir\src\MacroKeyboard.UI\MacroKeyboard.UI.csproj" `
-    -c $Configuration `
-    -r $Runtime `
-    --self-contained true `
-    -p:PublishSingleFile=true `
-    -p:IncludeNativeLibrariesForSelfExtract=true `
-    -o "$PublishDir\ui"
+    dotnet publish $ProjectPath `
+        -c $Configuration `
+        -r $Runtime `
+        --self-contained true `
+        -p:PublishSingleFile=true `
+        -p:IncludeNativeLibrariesForSelfExtract=true `
+        -p:Version=$Version `
+        -p:AssemblyVersion=$Version `
+        -p:FileVersion=$Version `
+        -o $OutDir
 
-if ($LASTEXITCODE -ne 0) { throw "UI publish failed" }
+    if ($LASTEXITCODE -ne 0) { throw "Publish failed for $ProjectPath" }
+}
 
-# Copy icon for installer
-if (Test-Path "$SoftwareDir\src\MacroKeyboard.UI\Assets\app-icon.ico") {
-    Copy-Item "$SoftwareDir\src\MacroKeyboard.UI\Assets\app-icon.ico" "$PublishDir\ui\Assets\" -Force -ErrorAction SilentlyContinue
+# ── Publish Backend ───────────────────────────────────────────────────────────
+Publish-Project "$SoftwareDir\src\MacroKeyboard.Backend\MacroKeyboard.Backend.csproj" "$PublishDir\backend"
+
+# ── Publish UI ────────────────────────────────────────────────────────────────
+Publish-Project "$SoftwareDir\src\MacroKeyboard.UI\MacroKeyboard.UI.csproj" "$PublishDir\ui"
+
+# Ensure Assets directory exists and copy the icon so Inno Setup can find it
+$AssetsDir = "$PublishDir\ui\Assets"
+New-Item -ItemType Directory -Force -Path $AssetsDir | Out-Null
+
+$IconSource = "$SoftwareDir\src\MacroKeyboard.UI\Assets\app-icon.ico"
+if (Test-Path $IconSource) {
+    Copy-Item $IconSource $AssetsDir -Force
 }
 
 Write-Host ""
-Write-Host "=== Publish complete ===" -ForegroundColor Green
-Write-Host "Backend: $PublishDir\backend"
-Write-Host "UI:      $PublishDir\ui"
+Write-Host "Publish complete" -ForegroundColor Green
+Write-Host "  Backend: $PublishDir\backend"
+Write-Host "  UI:      $PublishDir\ui"
 
-# Build installer if requested
-if ($Installer) {
+# ── Installer ─────────────────────────────────────────────────────────────────
+if (-not $Installer) {
     Write-Host ""
-    Write-Host "=== Building Installer ===" -ForegroundColor Cyan
-    
-    $IsccPath = $null
-    $PossiblePaths = @(
-        "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
-        "${env:ProgramFiles}\Inno Setup 6\ISCC.exe",
-        "C:\Program Files (x86)\Inno Setup 6\ISCC.exe",
-        "C:\Program Files\Inno Setup 6\ISCC.exe"
-    )
-    
-    foreach ($path in $PossiblePaths) {
-        if (Test-Path $path) {
-            $IsccPath = $path
-            break
-        }
-    }
-    
-    if (-not $IsccPath) {
-        Write-Host "ERROR: Inno Setup not found. Install from https://jrsoftware.org/isinfo.php" -ForegroundColor Red
-        Write-Host "Skipping installer build. Published files are in: $PublishDir" -ForegroundColor Yellow
-        exit 0
-    }
-    
-    Write-Host "Using Inno Setup: $IsccPath"
-    
-    # Create output directory
-    New-Item -ItemType Directory -Force -Path "$ScriptDir\output" | Out-Null
-    
-    & $IsccPath "$ScriptDir\MacroKeyboard.iss"
-    
-    if ($LASTEXITCODE -ne 0) { throw "Installer build failed" }
-    
-    Write-Host ""
-    Write-Host "=== Installer created ===" -ForegroundColor Green
-    Write-Host "Output: $ScriptDir\output\"
-    Get-ChildItem "$ScriptDir\output\*.exe" | ForEach-Object { Write-Host "  $($_.Name) ($([math]::Round($_.Length / 1MB, 1)) MB)" }
+    Write-Host "Tip: add -Installer to also build the .exe installer." -ForegroundColor DarkGray
+    exit 0
 }
 
 Write-Host ""
-Write-Host "Done!" -ForegroundColor Green
+Write-Host "=== Building Installer ===" -ForegroundColor Cyan
+
+# Locate ISCC.exe
+$IsccCandidates = @(
+    "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
+    "${env:ProgramFiles}\Inno Setup 6\ISCC.exe",
+    "C:\Program Files (x86)\Inno Setup 6\ISCC.exe",
+    "C:\Program Files\Inno Setup 6\ISCC.exe",
+    (Get-Command "iscc" -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source -ErrorAction SilentlyContinue)
+) | Where-Object { $_ -and (Test-Path $_) }
+
+$IsccPath = $IsccCandidates | Select-Object -First 1
+
+if (-not $IsccPath) {
+    Write-Host ""
+    Write-Host "ERROR: Inno Setup 6 not found." -ForegroundColor Red
+    Write-Host "  Install from: https://jrsoftware.org/isinfo.php"   -ForegroundColor Red
+    Write-Host "  Published files are ready in: $PublishDir"          -ForegroundColor Yellow
+    exit 1
+}
+
+Write-Host "  ISCC: $IsccPath"
+
+New-Item -ItemType Directory -Force -Path "$ScriptDir\output" | Out-Null
+
+& $IsccPath /DAppVersion=$Version "$ScriptDir\MacroKeyboard.iss"
+
+if ($LASTEXITCODE -ne 0) { throw "Inno Setup build failed (exit code $LASTEXITCODE)" }
+
+Write-Host ""
+Write-Host "Installer created:" -ForegroundColor Green
+Get-ChildItem "$ScriptDir\output\MacroKeyboard-Setup-$Version*.exe" | ForEach-Object {
+    $SizeMB = [math]::Round($_.Length / 1MB, 1)
+    Write-Host "  $($_.Name)  ($SizeMB MB)"
+}
+
+Write-Host ""
+Write-Host "Done." -ForegroundColor Green

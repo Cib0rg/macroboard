@@ -1,63 +1,41 @@
 # Быстрое руководство по сборке и запуску
 
-Это краткое руководство для быстрого старта работы с проектом макроклавиатуры.
-
-## 📋 Содержание
+## Содержание
 
 - [Прошивка ESP32-S3](#прошивка-esp32-s3)
-- [C# Проекты](#c-проекты)
-  - [Backend](#backend)
-  - [TrayApp](#trayapp)
-  - [UI](#ui)
+  - [Linux](#linux)
+  - [Windows](#windows)
+- [C# Приложение](#c-приложение)
+- [Windows Installer](#windows-installer)
+- [Troubleshooting](#troubleshooting)
 
 ---
 
-## 🔧 Прошивка ESP32-S3
+## Прошивка ESP32-S3
 
-### Вариант 1: Через Docker (Рекомендуется)
+Рабочая директория для всех команд прошивки — `firmware/`.
 
-Docker позволяет собрать и прошить устройство без установки ESP-IDF локально.
+### Linux
 
-#### Предварительные требования
-
-- Docker установлен
-- ESP32-S3 подключен через USB
-
-#### Установка Docker (если еще нет)
+#### Сборка через Docker (рекомендуется)
 
 ```bash
-# Установить Docker
-sudo apt-get update
-sudo apt-get install docker.io
+cd firmware
 
-# Добавить пользователя в группу docker
-sudo usermod -aG docker $USER
-newgrp docker
-
-# Проверить установку
-docker --version
-```
-
-#### Сборка прошивки через Docker
-
-```bash
-# Перейти в директорию прошивки
-cd <project_dir>/elgato/firmware
-
-# Собрать проект используя Docker
+# Обычная сборка
 ./scripts/docker-build.sh
 
-# Или с очисткой перед сборкой
+# Сборка с очисткой
 ./scripts/docker-build.sh --clean
 ```
 
-#### Прошивка устройства через Docker
+#### Прошивка через Docker
 
 ```bash
-# Определить порт (обычно /dev/ttyUSB0 или /dev/ttyACM0)
+# Определить порт устройства
 ls /dev/ttyUSB* /dev/ttyACM*
 
-# Прошить устройство
+# Прошить
 docker run --rm \
     -v "$PWD:/project" \
     -w /project \
@@ -65,356 +43,205 @@ docker run --rm \
     espressif/idf:v5.3 \
     idf.py -p /dev/ttyUSB0 flash
 
-# Прошить и открыть монитор
+# Прошить + открыть монитор
 docker run --rm -it \
     -v "$PWD:/project" \
     -w /project \
-    --device=/dev/ttyUSB0:/dev/ttyUSB0 \
+    --device=/dev/ttyACM0:/dev/ttyUSB0 \
     espressif/idf:v5.3 \
     idf.py -p /dev/ttyUSB0 flash monitor
+# Выход из монитора: Ctrl+]
 ```
 
-#### Troubleshooting для Docker
-
-**Проблема: Permission denied для /dev/ttyUSB0**
+#### Сборка и прошивка одной командой (локальный ESP-IDF)
 
 ```bash
-# Решение 1: Добавить в группу dialout
-sudo usermod -aG dialout $USER
-newgrp dialout
-
-# Решение 2: Дать права на устройство (временно)
-sudo chmod 666 /dev/ttyUSB0
-```
-
-**Проблема: Docker не установлен**
-
-```bash
-# Установить Docker
-sudo apt-get update
-sudo apt-get install docker.io
-sudo systemctl start docker
-sudo usermod -aG docker $USER
-newgrp docker
-```
-
----
-
-### Вариант 2: Локальная установка ESP-IDF
-
-#### Предварительные требования
-
-- ESP-IDF v5.3 установлен в `~/esp/esp-idf`
-- ESP32-S3 подключен через USB
-
-#### Сборка прошивки
-
-```bash
-# 1. Перейти в директорию прошивки
-cd <project_dir>/elgato/firmware
-
-# 2. Активировать ESP-IDF окружение
+cd firmware
 . ~/esp/esp-idf/export.sh
-
-# 3. Собрать проект
-idf.py build
+idf.py build flash monitor -p /dev/ttyUSB0
 ```
-
-### Прошивка устройства
-
-```bash
-# Определить порт (обычно /dev/ttyUSB0 или /dev/ttyACM0)
-ls /dev/ttyUSB* /dev/ttyACM*
-
-# Прошить устройство
-idf.py -p /dev/ttyUSB0 flash
-
-# Или прошить и сразу открыть монитор
-idf.py -p /dev/ttyUSB0 flash monitor
-```
-
-### Быстрая команда (всё в одной строке)
-
-```bash
-cd <project_dir>/elgato/firmware && . ~/esp/esp-idf/export.sh && idf.py build && idf.py -p /dev/ttyUSB0 flash monitor
-```
-
-### Результаты сборки
-
-После успешной сборки файлы будут в `firmware/build/`:
-- `bootloader/bootloader.bin` - загрузчик
-- `partition_table/partition-table.bin` - таблица разделов
-- `*.bin` - основная прошивка
-- `*.elf` - файл для отладки
-
-### Полезные команды
-
-```bash
-# Открыть конфигурацию
-idf.py menuconfig
-
-# Очистить сборку
-idf.py fullclean
-
-# Показать размер прошивки
-idf.py size
-
-# Только монитор (без прошивки)
-idf.py -p /dev/ttyUSB0 monitor
-# Выход: Ctrl+]
-```
-
-### Подробная документация
-
-См. [`firmware/SETUP.md`](firmware/SETUP.md)
 
 ---
 
-## 💻 C# Проекты
+### Windows
 
-### Предварительные требования
+Docker Desktop на Windows **не поддерживает проброс COM-портов** (`--device` не работает). Поэтому сборка — в Docker, прошивка — отдельно.
 
-- .NET 8.0 SDK установлен
-- Проверка: `dotnet --version` должна показать 8.0.x
+#### Вариант А: Сборка в Docker, прошивка через esptool (проще)
+
+**Шаг 1 — сборка:**
+
+```powershell
+cd firmware
+
+docker run --rm `
+    -v "${PWD}:/project" `
+    -w /project `
+    -e IDF_TARGET=esp32s3 `
+    espressif/idf:v5.3 `
+    idf.py build
+```
+
+**Шаг 2 — установить esptool:**
+
+```powershell
+pip install esptool
+```
+
+**Шаг 3 — найти COM-порт:**
+
+Диспетчер устройств → Порты (COM и LPT) → найти `USB Serial Device (COMx)`.
+
+**Шаг 4 — прошить:**
+
+```powershell
+# Заменить COM3 на свой порт
+esptool.py -p COM3 -b 460800 --before default_reset --after hard_reset write_flash "@build/flash_args"
+```
+
+`build/flash_args` генерируется автоматически при сборке и содержит все нужные адреса и бинарники.
+
+---
+
+#### Вариант Б: WSL2 + usbipd (полный Docker-воркфлоу, как на Linux)
+
+Позволяет пробросить USB-устройство в WSL2 и использовать `--device` в Docker.
+
+**Однократная установка (PowerShell от администратора):**
+
+```powershell
+winget install usbipd
+```
+
+**Перед каждой прошивкой (PowerShell от администратора):**
+
+```powershell
+# Найти busid устройства (столбец BUSID)
+usbipd list
+
+# Первый раз — разрешить устройство
+usbipd bind --busid 2-3   # подставить свой busid
+
+# Подключить к WSL2
+usbipd attach --wsl --busid 2-3
+```
+
+**Сборка и прошивка в WSL2 (точно как на Linux):**
+
+```bash
+cd <project-dir>/elgato/firmware   # или ваш путь
+
+docker run --rm -it \
+    -v "$PWD:/project" \
+    -w /project \
+    --device=/dev/ttyACM0:/dev/ttyUSB0 \
+    espressif/idf:v5.3 \
+    idf.py -p /dev/ttyUSB0 build flash monitor
+```
+
+---
+
+## C# Приложение
+
+Требования: **.NET 10 SDK** — скачать на [dot.net](https://dotnet.microsoft.com/download).
+
+```bash
+dotnet --version   # должно показать 10.x.x
+```
 
 ### Структура проектов
 
 ```
 software/src/
-├── MacroKeyboard.Backend/      # Фоновый сервис
-├── MacroKeyboard.TrayApp/      # Приложение в системном трее
-├── MacroKeyboard.UI/           # Главное UI приложение
-├── MacroKeyboard.Core/         # Основные модели и интерфейсы
-├── MacroKeyboard.Communication/# HID коммуникация
+├── MacroKeyboard.Backend/       # Windows Service / фоновый демон
+├── MacroKeyboard.UI/            # Avalonia UI приложение
+├── MacroKeyboard.Core/          # Модели и интерфейсы
+├── MacroKeyboard.Communication/ # HID протокол
 ├── MacroKeyboard.Infrastructure/# Реализация сервисов
-└── MacroKeyboard.Shared/       # Общие компоненты
+└── MacroKeyboard.Shared/        # Общие компоненты
 ```
 
-### Сборка всех проектов
+### Сборка
 
 ```bash
-# Перейти в директорию с проектами
-cd <project_dir>/elgato/firmware/software/src
-
-# Восстановить зависимости
+cd software/src
 dotnet restore
-
-# Собрать все проекты
 dotnet build
-
-# Собрать в Release режиме (оптимизированная версия)
-dotnet build -c Release
 ```
 
----
+### Запуск
 
-## 🚀 Запуск компонентов
-
-### Backend
-
-Backend - это фоновый сервис, который управляет устройством.
+Запускать в двух отдельных терминалах:
 
 ```bash
-cd <project_dir>/elgato/firmware/firmware/elgato/software/src/MacroKeyboard.Backend
+# Терминал 1 — Backend (должен стартовать первым)
+cd software/src/MacroKeyboard.Backend
 dotnet run
 ```
 
-**Функции:**
-- Подключение к HID устройству
-- Обработка нажатий кнопок
-- Выполнение действий (запуск программ, эмуляция клавиш)
-- IPC интерфейс для UI
-
-### UI
-
-UI - главное приложение для настройки.
-
 ```bash
-cd <project_dir>/elgato/firmware/software/src/MacroKeyboard.UI
+# Терминал 2 — UI
+cd software/src/MacroKeyboard.UI
 dotnet run
 ```
 
-**Функции:**
-- Управление профилями
-- Настройка действий для кнопок
-- Загрузка изображений на дисплеи
-- Мониторинг состояния
+---
+
+## Windows Installer
+
+Создаёт `.exe`-установщик с помощью [Inno Setup 6](https://jrsoftware.org/isinfo.php).
+
+```powershell
+cd software/installer/windows
+
+# Собрать приложение и создать installer
+.\build-windows.ps1 -Installer
+
+# Указать версию явно
+.\build-windows.ps1 -Installer -Version 1.2.0
+
+# Только сборка без installer
+.\build-windows.ps1
+```
+
+Готовый `.exe` появится в `software/installer/windows/output/`.
+
+Версия берётся из (по приоритету):
+1. Параметр `-Version`
+2. Файл `software/installer/windows/version.txt`
+3. Дефолт `1.0.0`
 
 ---
 
-## 🎯 Запуск всей системы
+## Troubleshooting
 
-Для полноценной работы нужно запустить все три компонента в разных терминалах:
-
-### Терминал 1: Backend
-```bash
-cd <project_dir>/elgato/firmware/software/src/MacroKeyboard.Backend
-dotnet run
-```
-
-### Терминал 3: UI (опционально)
-```bash
-cd <project_dir>/elgato/firmware/software/src/MacroKeyboard.UI
-dotnet run
-```
-
-### Альтернатива: Запуск в фоне
+### Прошивка: Permission denied для /dev/ttyUSB0 (Linux)
 
 ```bash
-cd <project_dir>/elgato/firmware/software/src
-
-# Запустить Backend в фоне
-dotnet run --project MacroKeyboard.Backend/MacroKeyboard.Backend.csproj &
-
-# Запустить UI (в текущем терминале)
-dotnet run --project MacroKeyboard.UI/MacroKeyboard.UI.csproj
-```
-
----
-
-## 📦 Публикация приложений
-
-### Создание исполняемых файлов
-
-```bash
-cd <project_dir>/elgato/firmware/software/src
-
-# Backend
-dotnet publish MacroKeyboard.Backend/MacroKeyboard.Backend.csproj \
-    -c Release \
-    -o ../publish/backend
-
-# UI
-dotnet publish MacroKeyboard.UI/MacroKeyboard.UI.csproj \
-    -c Release \
-    -o ../publish/ui
-```
-
-Результат будет в `software/publish/`.
-
-### Self-contained сборка (со встроенным .NET)
-
-Для распространения без требования установки .NET:
-
-```bash
-cd <project_dir>/elgato/firmware/software/src
-
-# Для Linux
-dotnet publish MacroKeyboard.Backend/MacroKeyboard.Backend.csproj \
-    -c Release \
-    -r linux-x64 \
-    --self-contained true \
-    -o ../publish/backend-linux
-
-# Для Windows
-dotnet publish MacroKeyboard.Backend/MacroKeyboard.Backend.csproj \
-    -c Release \
-    -r win-x64 \
-    --self-contained true \
-    -o ../publish/backend-windows
-
-# Для macOS
-dotnet publish MacroKeyboard.Backend/MacroKeyboard.Backend.csproj \
-    -c Release \
-    -r osx-x64 \
-    --self-contained true \
-    -o ../publish/backend-macos
-```
-
----
-
-## 🔍 Полезные команды
-
-### Прошивка
-
-```bash
-# Очистить сборку
-cd <project_dir>/elgato/firmware/firmware && idf.py fullclean
-
-# Размер прошивки
-idf.py size
-
-# Стереть flash полностью
-idf.py -p /dev/ttyUSB0 erase-flash
-```
-
-### C# проекты
-
-```bash
-cd <project_dir>/elgato/firmware/software/src
-
-# Очистить сборку
-dotnet clean
-
-# Восстановить пакеты
-dotnet restore
-
-# Запустить тесты (если есть)
-dotnet test
-
-# Очистить кэш NuGet
-dotnet nuget locals all --clear
-```
-
----
-
-## 📚 Дополнительная документация
-
-### Прошивка
-- [`firmware/SETUP.md`](firmware/SETUP.md) - Полная инструкция по настройке ESP-IDF
-- [`firmware/README.md`](firmware/README.md) - Описание структуры прошивки
-- [`firmware/plans/REQUIREMENTS.md`](firmware/plans/REQUIREMENTS.md) - Требования к прошивке
-
-### C# Проекты
-- [`software/SETUP.md`](software/SETUP.md) - Полная инструкция по настройке .NET
-- [`software/README.md`](software/README.md) - Описание архитектуры
-- [`software/REQUIREMENTS.md`](software/REQUIREMENTS.md) - Требования к софту
-- [`software/plans/architecture.md`](software/plans/architecture.md) - Архитектура системы
-- [`software/plans/plugin_system.md`](software/plans/plugin_system.md) - Система плагинов
-
-### Общее
-- [`plans/README.md`](plans/README.md) - Общий обзор проекта
-- [`plans/protocol.md`](plans/protocol.md) - Протокол обмена данными
-- [`plans/system_flow.md`](plans/system_flow.md) - Потоки данных в системе
-
----
-
-## ⚠️ Troubleshooting
-
-### Прошивка не собирается
-
-```bash
-# Проверить ESP-IDF
-. ~/esp/esp-idf/export.sh
-idf.py --version
-
-# Переустановить инструменты
-cd ~/esp/esp-idf
-./install.sh esp32s3
-```
-
-### Устройство не прошивается
-
-```bash
-# Проверить порт
-ls -l /dev/ttyUSB* /dev/ttyACM*
-
-# Добавить права
-sudo usermod -a -G dialout $USER
+sudo usermod -aG dialout $USER
 newgrp dialout
-
-# Или временно
-sudo chmod 666 /dev/ttyUSB0
 ```
 
-### .NET проекты не собираются
+### Прошивка: устройство не определяется (Windows)
+
+- Проверить Диспетчер устройств → Порты (COM и LPT)
+- Если порт не появился — переустановить драйвер CP210x / CH340
+
+### Прошивка: ошибка при использовании esptool (Windows)
+
+```powershell
+# Попробовать явно указать чип
+esptool.py -p COM3 -b 460800 --chip esp32s3 --before default_reset --after hard_reset write_flash "@build/flash_args"
+```
+
+### Прошивка: Device Manager показывает порт, но esptool не может подключиться
+
+Зажать кнопку BOOT на плате, подключить USB, отпустить — войдёт в режим загрузчика.
+
+### C# проекты не собираются
 
 ```bash
-# Проверить .NET
-dotnet --version
-
-# Очистить и восстановить
-cd <project_dir>/elgato/firmware/software/src
+cd software/src
 dotnet clean
 dotnet nuget locals all --clear
 dotnet restore
@@ -423,43 +250,6 @@ dotnet build
 
 ### Backend не видит устройство
 
-1. Проверьте, что устройство прошито и подключено
-2. Проверьте права доступа к USB устройству
-3. Проверьте логи Backend для ошибок
-
----
-
-## 🎓 Быстрый старт для новичков
-
-### 1. Первая сборка прошивки
-
-```bash
-cd <project_dir>/elgato/firmware/firmware
-. ~/esp/esp-idf/export.sh
-idf.py build
-idf.py -p /dev/ttyUSB0 flash monitor
-```
-
-### 2. Первая сборка C# проектов
-
-```bash
-cd <project_dir>/elgato/firmware/software/src
-dotnet restore
-dotnet build
-```
-
-### 3. Первый запуск
-
-```bash
-# Терминал 1
-cd <project_dir>/elgato/firmware/software/src/MacroKeyboard.Backend
-dotnet run
-
-# Терминал 2
-cd <project_dir>/elgato/firmware/software/src/MacroKeyboard.UI
-dotnet run
-```
-
----
-
-**Успешной разработки! 🚀**
+1. Убедиться, что прошивка залита и устройство подключено
+2. На Linux: проверить права (`ls -l /dev/ttyUSB*`), добавить в группу `dialout`
+3. Смотреть логи Backend — пишет в консоль и в `logs/backend-*.log`

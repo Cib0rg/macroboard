@@ -25,30 +25,88 @@ installer/
 ### Prerequisites
 
 - [.NET 10 SDK](https://dotnet.microsoft.com/download)
-- [Inno Setup 6.x](https://jrsoftware.org/isinfo.php) (for installer only)
+- [Inno Setup 6.x](https://jrsoftware.org/isinfo.php) (needed only for `-Installer`)
 
-### Build & Install
+### Version
+
+The version number is read from `installer/windows/version.txt`.  
+Edit that file before building to set the version for both the installer filename
+and the embedded assembly metadata.
+
+```
+1.0.0
+```
+
+You can also pass it explicitly:
 
 ```powershell
-# Build self-contained publish (no installer)
+.\build-windows.ps1 -Installer -Version 1.2.0
+```
+
+### Build & Package
+
+```powershell
 cd software/installer/windows
+
+# Publish only (no installer — useful to test the binaries)
 .\build-windows.ps1
 
-# Build with Inno Setup installer
+# Publish + create the .exe installer
 .\build-windows.ps1 -Installer
+
+# Cross-compile for Windows ARM64
+.\build-windows.ps1 -Installer -Runtime win-arm64
 ```
 
 Output:
-- `software/publish/win-x64/` — published application files
+- `software/publish/win-x64/` — self-contained published binaries
 - `software/installer/windows/output/MacroKeyboard-Setup-1.0.0.exe` — installer
+
+### Upgrading to a new version
+
+Just run the new installer over the existing installation.  
+The installer automatically:
+1. Stops and unregisters the old backend service
+2. Copies new files
+3. Registers and starts the new backend service
+
+No manual uninstall required.
 
 ### What the installer does
 
-1. Installs MacroKeyboard UI and Backend to `C:\Program Files\MacroKeyboard\`
-2. Installs the **WinUSB driver** for the device via `pnputil` (optional, requires admin)
-3. Creates Start Menu shortcuts
-4. Optionally adds backend to Windows autostart (Registry)
-5. On uninstall: stops backend, removes driver, cleans up
+Both components — UI and Backend — are installed and set up for autostart.
+
+| Component | How it starts | When |
+|-----------|--------------|------|
+| **Backend** (`MacroKeyboard.Backend.exe`) | Windows Service (`LocalSystem`) | At system boot, before login |
+| **UI** (`MacroKeyboard.UI.exe`) | Registry `HKCU\Run` key | When the installing user logs in |
+
+Additional install steps:
+
+| Step | Default |
+|------|---------|
+| WinUSB driver via `pnputil` | On (remembered on upgrades) |
+| UI autostart on login | On (remembered on upgrades) |
+| Desktop shortcut | Off |
+| Start Menu shortcuts | Always |
+| Launch UI immediately after install | Optional checkbox on finish page |
+
+### Uninstall
+
+Use **Add or Remove Programs** → MacroKeyboard.  
+The uninstaller stops the backend service, removes it from SCM, removes the driver, and cleans up registry keys.
+
+### Backend Windows Service
+
+The backend runs as a **Windows Service** (`LocalSystem` account) so it starts
+automatically at boot even before a user logs in. You can manage it in
+`services.msc` or via PowerShell:
+
+```powershell
+Get-Service MacroKeyboard.Backend        # check status
+Restart-Service MacroKeyboard.Backend    # restart
+Stop-Service MacroKeyboard.Backend       # stop
+```
 
 ### WinUSB Driver (Manual Install)
 

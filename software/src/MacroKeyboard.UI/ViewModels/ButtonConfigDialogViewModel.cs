@@ -1188,6 +1188,12 @@ public partial class ButtonConfigDialogViewModel : ViewModelBase
     }
 
     [RelayCommand]
+    private void ClearImage()
+    {
+        ImagePath = string.Empty;
+    }
+
+    [RelayCommand]
     private async Task BrowseImage()
     {
         try
