@@ -66,6 +66,18 @@ esp_err_t profile_set_button_action(uint8_t profile_id, uint8_t button_id,
  */
 esp_err_t profile_set_button_name(uint8_t profile_id, uint8_t button_id, const char* name);
 
+esp_err_t profile_set_folder_button_action(uint8_t profile_id, uint8_t folder_id,
+                                            uint8_t button_id, uint8_t action_type,
+                                            const uint8_t* action_data, uint16_t action_len);
+
+esp_err_t profile_set_folder_button_name(uint8_t profile_id, uint8_t folder_id,
+                                          uint8_t button_id, const char* name);
+
+esp_err_t profile_set_folder_button_led(uint8_t profile_id, uint8_t folder_id,
+                                         uint8_t button_id,
+                                         uint8_t r, uint8_t g, uint8_t b,
+                                         uint8_t brightness, uint8_t effect);
+
 /**
  * @brief Set LED color for button
  * @param profile_id Profile ID
@@ -96,23 +108,17 @@ esp_err_t profile_create_defaults(void);
 
 /**
  * @brief Enter a folder (push to folder stack)
- * @param folder_id Folder ID to enter
+ * @param folder_id       Folder ID to enter
+ * @param entry_button_id Button that was pressed to enter (will show the back icon)
  * @return ESP_OK on success
  */
-esp_err_t profile_folder_enter(uint8_t folder_id);
+esp_err_t profile_folder_enter(uint8_t folder_id, uint8_t entry_button_id);
 
 /**
  * @brief Exit current folder (pop from folder stack)
  * @return ESP_OK on success
  */
 esp_err_t profile_folder_exit(void);
-
-/**
- * @brief Show the embedded "back" icon on a button's display.
- *        Called after entering a folder to mark the toggle-exit button.
- * @param button_id Button ID to show the back icon on
- */
-void profile_show_back_icon(uint8_t button_id);
 
 /**
  * @brief Get current folder ID

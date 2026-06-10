@@ -351,24 +351,31 @@ public partial class ProfileEditorViewModel : ViewModelBase
 
         try
         {
-            if (_storageProvider == null)
-            {
-                _logger.LogWarning("StorageProvider not set, saving to default location");
-                await _profileService.UpdateProfileAsync(SelectedProfile);
-                HasUnsavedChanges = false;
-                StatusMessage = $"Saved: {SelectedProfile.Name}";
-                return;
-            }
+            await _profileService.UpdateProfileAsync(SelectedProfile);
+            HasUnsavedChanges = false;
+            StatusMessage = $"Saved: {SelectedProfile.Name}";
+            _logger.LogInformation("Profile '{Name}' saved", SelectedProfile.Name);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error saving profile");
+            StatusMessage = $"Error saving: {ex.Message}";
+        }
+    }
 
-            // Ensure default directory exists
+    [RelayCommand]
+    private async Task ExportProfile()
+    {
+        if (SelectedProfile == null || _storageProvider == null)
+            return;
+
+        try
+        {
             Directory.CreateDirectory(DefaultProfilesDir);
-
-            var suggestedName = $"{SelectedProfile.Name.Replace(' ', '_')}.json";
-
             var options = new FilePickerSaveOptions
             {
-                Title = "Save Profile",
-                SuggestedFileName = suggestedName,
+                Title = "Export Profile",
+                SuggestedFileName = $"{SelectedProfile.Name.Replace(' ', '_')}.json",
                 DefaultExtension = "json",
                 FileTypeChoices = new[]
                 {
@@ -379,29 +386,18 @@ public partial class ProfileEditorViewModel : ViewModelBase
             };
 
             var file = await _storageProvider.SaveFilePickerAsync(options);
-            if (file == null)
-            {
-                StatusMessage = "Save cancelled";
-                return;
-            }
-
-            var filePath = file.Path.LocalPath;
-            _logger.LogInformation("Saving profile to: {Path}", filePath);
+            if (file == null) { StatusMessage = "Export cancelled"; return; }
 
             var json = JsonConvert.SerializeObject(SelectedProfile, Formatting.Indented);
-            await File.WriteAllTextAsync(filePath, json);
-
-            // Also save to internal storage
+            await File.WriteAllTextAsync(file.Path.LocalPath, json);
             await _profileService.UpdateProfileAsync(SelectedProfile);
             HasUnsavedChanges = false;
-
-            StatusMessage = $"Saved: {Path.GetFileName(filePath)}";
-            _logger.LogInformation("Profile saved to {Path}", filePath);
+            StatusMessage = $"Exported: {Path.GetFileName(file.Path.LocalPath)}";
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error saving profile");
-            StatusMessage = $"Error saving: {ex.Message}";
+            _logger.LogError(ex, "Error exporting profile");
+            StatusMessage = $"Error exporting: {ex.Message}";
         }
     }
 
@@ -838,10 +834,24 @@ public partial class ProfileEditorViewModel : ViewModelBase
             // Rebuild flattened list to update button labels
             BuildFlattenedButtons();
 
-            // If connected, also send button action and LED to device
+            // If connected, sync to device
             if (_ipcClient.IsConnected && SelectedProfile != null)
             {
-                await SendButtonConfigToDeviceAsync(SelectedProfile.ProfileId, button);
+                bool isFolderButton = !SelectedProfile.Buttons.Contains(button);
+                bool isFolderAction = button.Action?.ActionType == ActionType.Folder;
+
+                if (isFolderButton || isFolderAction)
+                {
+                    // Folder buttons have no profile-level address in the IPC protocol —
+                    // individual button update would land on the wrong slot.
+                    // Full profile sync also ensures firmware has initialized folder data
+                    // before the user presses the folder button (prevents reboot on folder enter).
+                    await SendFullProfileToDeviceAsync();
+                }
+                else
+                {
+                    await SendButtonConfigToDeviceAsync(SelectedProfile.ProfileId, button);
+                }
             }
         }
         catch (Exception ex)
@@ -862,6 +872,36 @@ public partial class ProfileEditorViewModel : ViewModelBase
         ButtonConfigViewModel = null;
         ConfiguredButtonConfig = null;
         HasUnsavedChanges = false;
+    }
+
+    /// <summary>
+    /// Send the full profile to the device — used when folder structure changes.
+    /// </summary>
+    private async Task SendFullProfileToDeviceAsync()
+    {
+        if (SelectedProfile == null || !_ipcClient.IsConnected) return;
+        IsSyncing = true;
+        try
+        {
+            var message = new IpcMessage
+            {
+                MessageType = IpcMessageTypes.ProfileSendToDevice,
+                Data = SelectedProfile
+            };
+            var response = await _ipcClient.SendAndWaitAsync(message, TimeSpan.FromSeconds(30));
+            StatusMessage = response.Success
+                ? $"✅ {SelectedProfile.Name} sent to device"
+                : $"❌ Failed: {response.Error}";
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error sending full profile to device");
+            StatusMessage = $"Error: {ex.Message}";
+        }
+        finally
+        {
+            IsSyncing = false;
+        }
     }
 
     /// <summary>

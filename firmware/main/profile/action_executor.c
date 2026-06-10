@@ -86,10 +86,9 @@ static esp_err_t execute_single_action(action_type_t type, const uint8_t* data, 
                 folder_entry_button_id = 0xFF;
             } else {
                 ESP_LOGI(TAG, "Entering folder %d via button %d", folder_id, button_id);
-                esp_err_t ret = profile_folder_enter(folder_id);
+                esp_err_t ret = profile_folder_enter(folder_id, button_id);
                 if (ret == ESP_OK) {
                     folder_entry_button_id = button_id;
-                    profile_show_back_icon(button_id);
                 }
             }
             break;
@@ -187,72 +186,84 @@ static esp_err_t execute_sequence(const action_sequence_t* seq, uint8_t button_i
     return ESP_OK;
 }
 
+// Sequence parsing is split into its own function so the ~1732-byte
+// action_sequence_t is only on the stack when a sequence is actually running,
+// not on every button press regardless of action type.
+static esp_err_t execute_sequence_action(button_config_t* btn, uint8_t button_id) {
+    if (btn->action_data_len < 1) {
+        ESP_LOGW(TAG, "Sequence action with no data");
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    action_sequence_t seq;
+    memset(&seq, 0, sizeof(seq));
+
+    const uint8_t* ptr = btn->action_data;
+    const uint8_t* end = btn->action_data + btn->action_data_len;
+
+    seq.num_steps = *ptr++;
+    if (seq.num_steps > MAX_SEQUENCE_STEPS) {
+        seq.num_steps = MAX_SEQUENCE_STEPS;
+    }
+
+    for (int i = 0; i < seq.num_steps && ptr < end; i++) {
+        sequence_step_t* step = &seq.steps[i];
+
+        // Parse step: [action_type][delay_before_ms(2)][data_len(2)][data...]
+        if (ptr + 5 > end) break;
+
+        step->action_type = (action_type_t)*ptr++;
+        step->delay_before_ms = ptr[0] | (ptr[1] << 8);
+        ptr += 2;
+        step->action_data_len = ptr[0] | (ptr[1] << 8);
+        ptr += 2;
+
+        if (step->action_data_len > ACTION_DATA_MAX_LEN) {
+            step->action_data_len = ACTION_DATA_MAX_LEN;
+        }
+
+        if (ptr + step->action_data_len > end) {
+            step->action_data_len = end - ptr;
+        }
+
+        memcpy(step->action_data, ptr, step->action_data_len);
+        ptr += step->action_data_len;
+    }
+
+    return execute_sequence(&seq, button_id);
+}
+
 esp_err_t action_execute(uint8_t button_id) {
     if (button_id >= NUM_BUTTONS) {
         return ESP_ERR_INVALID_ARG;
     }
-    
+
+    // Exit folder toggle: the button that opened the folder acts as a back button
+    // regardless of what action the folder assigns to it (often NONE).
+    // Check before reading the folder's button config.
+    if (profile_is_in_folder() && folder_entry_button_id == button_id) {
+        ESP_LOGI(TAG, "Exiting folder via back button %d", button_id);
+        profile_folder_exit();
+        folder_entry_button_id = 0xFF;
+        return ESP_OK;
+    }
+
     button_config_t* btn = profile_get_button_config(button_id);
     if (btn == NULL) {
         return ESP_FAIL;
     }
-    
+
     ESP_LOGI(TAG, "Executing action for button %d, type=%d", button_id, btn->action_type);
-    
-    // Handle sequence action specially
+
     if (btn->action_type == ACTION_TYPE_SEQUENCE) {
-        // Parse sequence from action_data
-        // Format: [num_steps][step1...][step2...]...
-        if (btn->action_data_len < 1) {
-            ESP_LOGW(TAG, "Sequence action with no data");
-            return ESP_ERR_INVALID_ARG;
-        }
-        
-        // Build sequence structure from action_data
-        action_sequence_t seq;
-        memset(&seq, 0, sizeof(seq));
-        
-        const uint8_t* ptr = btn->action_data;
-        const uint8_t* end = btn->action_data + btn->action_data_len;
-        
-        seq.num_steps = *ptr++;
-        if (seq.num_steps > MAX_SEQUENCE_STEPS) {
-            seq.num_steps = MAX_SEQUENCE_STEPS;
-        }
-        
-        for (int i = 0; i < seq.num_steps && ptr < end; i++) {
-            sequence_step_t* step = &seq.steps[i];
-            
-            // Parse step: [action_type][delay_before_ms(2)][data_len(2)][data...]
-            if (ptr + 5 > end) break;
-            
-            step->action_type = (action_type_t)*ptr++;
-            step->delay_before_ms = ptr[0] | (ptr[1] << 8);
-            ptr += 2;
-            step->action_data_len = ptr[0] | (ptr[1] << 8);
-            ptr += 2;
-            
-            if (step->action_data_len > ACTION_DATA_MAX_LEN) {
-                step->action_data_len = ACTION_DATA_MAX_LEN;
-            }
-            
-            if (ptr + step->action_data_len > end) {
-                step->action_data_len = end - ptr;
-            }
-            
-            memcpy(step->action_data, ptr, step->action_data_len);
-            ptr += step->action_data_len;
-        }
-        
-        return execute_sequence(&seq, button_id);
+        return execute_sequence_action(btn, button_id);
     }
-    
-    // Handle folder action specially (needs folder_id from button config)
+
+    // Folder action needs folder_id from button config, not action_data
     if (btn->action_type == ACTION_TYPE_FOLDER) {
         uint8_t folder_data[1] = { btn->folder_id };
         return execute_single_action(ACTION_TYPE_FOLDER, folder_data, 1, button_id);
     }
-    
-    // Execute single action
+
     return execute_single_action(btn->action_type, btn->action_data, btn->action_data_len, button_id);
 }

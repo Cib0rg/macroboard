@@ -146,7 +146,7 @@ static void draw_char_scaled(uint8_t* buf, int x, int y, char c, int scale,
                 int py = y + row * scale + sy;
                 if (py < 0 || py >= DISPLAY_HEIGHT) continue;
                 for (int sx = 0; sx < scale; sx++) {
-                    int px = x + col * scale + sx;
+                    int px = x + (FONT_W - 1 - col) * scale + sx;
                     if (px < 0 || px >= DISPLAY_WIDTH) continue;
                     put_pixel(buf, px, py, color);
                 }

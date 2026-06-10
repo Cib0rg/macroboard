@@ -183,15 +183,13 @@ public class ProfileService : IProfileService
                         button.ButtonId, button.ImagePath);
                 }
                 
-                // Отправить действие
-                if (button.Action != null)
-                {
-                    await _deviceService.SetButtonActionAsync(
-                        profile.ProfileId,
-                        button.ButtonId,
-                        button.Action,
-                        cancellationToken);
-                }
+                // Отправить действие (null → NoneAction чтобы очистить предыдущую конфигурацию на устройстве)
+                var actionToSend = button.Action ?? new NoneAction();
+                await _deviceService.SetButtonActionAsync(
+                    profile.ProfileId,
+                    button.ButtonId,
+                    actionToSend,
+                    cancellationToken);
 
                 // Отправить имя кнопки (пустая строка — firmware сгенерирует имя из типа команды)
                 await _deviceService.SetButtonNameAsync(
@@ -213,7 +211,33 @@ public class ProfileService : IProfileService
                 await Task.Delay(50, cancellationToken);
             }
             
-            // 3. Сохранить профиль на устройстве
+            // 3. Отправить кнопки внутри папок
+            foreach (var folder in profile.Folders)
+            {
+                for (int i = 0; i < 10; i++)
+                {
+                    if (cancellationToken.IsCancellationRequested) return false;
+
+                    var btn = folder.Buttons.Count > i ? folder.Buttons[i] : null;
+                    byte btnId = btn != null ? btn.ButtonId : (byte)i;
+
+                    var folderAction = btn?.Action ?? new NoneAction();
+                    await _deviceService.SetFolderButtonActionAsync(
+                        profile.ProfileId, folder.FolderId, btnId, folderAction, cancellationToken);
+
+                    await _deviceService.SetFolderButtonNameAsync(
+                        profile.ProfileId, folder.FolderId, btnId,
+                        btn?.Name ?? string.Empty, cancellationToken);
+
+                    var led = btn?.Led ?? LedConfig.FromRgb(80, 80, 80);
+                    await _deviceService.SetFolderButtonLedAsync(
+                        profile.ProfileId, folder.FolderId, btnId, led, cancellationToken);
+
+                    await Task.Delay(50, cancellationToken);
+                }
+            }
+
+            // 4. Сохранить профиль на устройстве
             var saved = await _deviceService.SaveProfileAsync(profile.ProfileId, cancellationToken);
             
             progress?.Report(100);

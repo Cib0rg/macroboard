@@ -14,6 +14,8 @@ public class DeviceManager : IDisposable
     private readonly ILogger<DeviceManager> _logger;
     private bool _isRunning;
     private CancellationTokenSource? _cts;
+    // Cancelled whenever device disconnects, so the monitoring loop wakes up immediately
+    private volatile CancellationTokenSource? _sleepCts;
 
     public event EventHandler<SharedEvents.DeviceEventArgs>? DeviceConnected;
     public event EventHandler<SharedEvents.DeviceEventArgs>? DeviceDisconnected;
@@ -76,6 +78,12 @@ public class DeviceManager : IDisposable
     {
         _logger.LogInformation("Device monitoring started");
         bool wasConnected = false;
+        // Tracks whether the firmware has responded to GetDeviceInfo (i.e., is fully booted).
+        // The ESP32 enumerates USB during Phase 3 of startup but doesn't create protocol tasks
+        // until Phase 6 (after image loading, which can take several seconds). Without this flag,
+        // DeviceConnected fires with a fake DeviceInfo while the firmware is still initialising,
+        // causing every subsequent command to time out.
+        bool firmwareReady = false;
 
         while (!cancellationToken.IsCancellationRequested)
         {
@@ -86,43 +94,59 @@ public class DeviceManager : IDisposable
                     if (wasConnected)
                     {
                         _logger.LogInformation("Device was connected, now disconnected — will attempt reconnection");
-                        wasConnected = false;
                     }
-                    
+                    wasConnected = false;
+                    firmwareReady = false;
+
                     _logger.LogDebug("Attempting to connect to device...");
-                    
+
                     if (await _deviceService.ConnectAsync(cancellationToken))
                     {
-                        _logger.LogInformation("Device connected successfully");
+                        _logger.LogInformation("USB connection established — waiting for firmware...");
                         wasConnected = true;
-                        
-                        try
-                        {
-                            var deviceInfo = await _deviceService.GetDeviceInfoAsync(cancellationToken);
-                            
-                            DeviceConnected?.Invoke(this, new SharedEvents.DeviceEventArgs
-                            {
-                                DeviceId = deviceInfo.DeviceId,
-                                DeviceName = "MacroKeyboard",
-                                FirmwareVersion = deviceInfo.FirmwareVersion.ToString()
-                            });
-                        }
-                        catch (Exception ex)
-                        {
-                            _logger.LogWarning(ex, "Connected but failed to get device info — device may have disconnected again");
-                            wasConnected = false;
-                        }
+                        // firmwareReady stays false; the block below will poll until the firmware responds
                     }
                     else
                     {
                         // Device not found — wait before retrying
-                        await Task.Delay(TimeSpan.FromSeconds(3), cancellationToken);
+                        await InterruptibleDelayAsync(TimeSpan.FromSeconds(1), cancellationToken);
                         continue;
                     }
                 }
 
-                // Device is connected — check less frequently
-                await Task.Delay(TimeSpan.FromSeconds(5), cancellationToken);
+                // USB is up but the firmware has not yet confirmed it is ready.
+                // Retry GetDeviceInfoAsync (each call has a 3 s internal timeout) until
+                // the firmware actually responds. This loop handles:
+                //   • Fresh boot: firmware takes 1–5 s to load images before starting tasks.
+                //   • Backend restart while device is already running: firmware responds immediately.
+                if (wasConnected && !firmwareReady)
+                {
+                    // Brief settle delay on every attempt (avoids log spam; also gives the firmware
+                    // a moment to initialise the USB vendor interface after enumeration).
+                    await Task.Delay(500, cancellationToken);
+
+                    var deviceInfo = await _deviceService.GetDeviceInfoAsync(cancellationToken);
+                    if (deviceInfo.IsConnected)
+                    {
+                        firmwareReady = true;
+                        _logger.LogInformation("Firmware ready — firing DeviceConnected");
+                        DeviceConnected?.Invoke(this, new SharedEvents.DeviceEventArgs
+                        {
+                            DeviceId = deviceInfo.DeviceId,
+                            DeviceName = "MacroKeyboard",
+                            FirmwareVersion = deviceInfo.FirmwareVersion.ToString()
+                        });
+                    }
+                    else
+                    {
+                        _logger.LogDebug("Firmware not ready yet (still booting) — retrying...");
+                        await InterruptibleDelayAsync(TimeSpan.FromSeconds(1), cancellationToken);
+                    }
+                    continue;
+                }
+
+                // Firmware is ready — sleep until disconnect wakes us, or 5 s max
+                await InterruptibleDelayAsync(TimeSpan.FromSeconds(5), cancellationToken);
             }
             catch (OperationCanceledException)
             {
@@ -132,11 +156,33 @@ public class DeviceManager : IDisposable
             {
                 _logger.LogError(ex, "Error in device monitoring loop");
                 wasConnected = false;
-                await Task.Delay(TimeSpan.FromSeconds(5), cancellationToken);
+                firmwareReady = false;
+                await InterruptibleDelayAsync(TimeSpan.FromSeconds(3), cancellationToken);
             }
         }
 
         _logger.LogInformation("Device monitoring stopped");
+    }
+
+    /// <summary>
+    /// Sleep for <paramref name="duration"/> but wake up immediately if the device disconnects.
+    /// </summary>
+    private async Task InterruptibleDelayAsync(TimeSpan duration, CancellationToken cancellationToken)
+    {
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        _sleepCts = cts;
+        try
+        {
+            await Task.Delay(duration, cts.Token);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            // Woken by disconnect signal — not a real cancellation
+        }
+        finally
+        {
+            _sleepCts = null;
+        }
     }
 
     private void OnButtonPressed(object? sender, CoreEvents.ButtonEventArgs e)
@@ -210,7 +256,10 @@ public class DeviceManager : IDisposable
     private void OnDeviceDisconnected(object? sender, EventArgs e)
     {
         _logger.LogWarning("Device disconnected");
-        
+
+        // Wake the monitoring loop so reconnection starts immediately
+        _sleepCts?.Cancel();
+
         DeviceDisconnected?.Invoke(this, new SharedEvents.DeviceEventArgs
         {
             DeviceId = string.Empty,

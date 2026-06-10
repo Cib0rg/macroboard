@@ -27,6 +27,9 @@ public class DeviceService : IDeviceService
     private readonly GetButtonActionCommand _getButtonActionCommand;
     private readonly GetLedColorCommand _getLedColorCommand;
     private readonly SetDisplayBrightnessCommand _setDisplayBrightnessCommand;
+    private readonly SetFolderButtonActionCommand _setFolderButtonActionCommand;
+    private readonly SetFolderButtonNameCommand _setFolderButtonNameCommand;
+    private readonly SetFolderButtonLedCommand _setFolderButtonLedCommand;
     
     public event EventHandler<DeviceEventArgs>? DeviceConnected;
     public event EventHandler<DeviceEventArgs>? DeviceDisconnected;
@@ -60,6 +63,9 @@ public class DeviceService : IDeviceService
         _getButtonActionCommand = new GetButtonActionCommand(_protocol, loggerFactory.CreateLogger<GetButtonActionCommand>());
         _getLedColorCommand = new GetLedColorCommand(_protocol, loggerFactory.CreateLogger<GetLedColorCommand>());
         _setDisplayBrightnessCommand = new SetDisplayBrightnessCommand(_protocol, loggerFactory.CreateLogger<SetDisplayBrightnessCommand>());
+        _setFolderButtonActionCommand = new SetFolderButtonActionCommand(_protocol, loggerFactory.CreateLogger<SetFolderButtonActionCommand>());
+        _setFolderButtonNameCommand   = new SetFolderButtonNameCommand(_protocol, loggerFactory.CreateLogger<SetFolderButtonNameCommand>());
+        _setFolderButtonLedCommand    = new SetFolderButtonLedCommand(_protocol, loggerFactory.CreateLogger<SetFolderButtonLedCommand>());
         
         // Подписаться на события устройства
         _deviceManager.DeviceConnected += OnDeviceConnected;
@@ -169,6 +175,18 @@ public class DeviceService : IDeviceService
         return await _setDisplayBrightnessCommand.ExecuteAsync(brightness, cancellationToken);
     }
     
+    public async Task<bool> SetFolderButtonActionAsync(byte profileId, byte folderId, byte buttonId,
+        ActionConfig action, CancellationToken cancellationToken = default)
+        => await _setFolderButtonActionCommand.ExecuteAsync(profileId, folderId, buttonId, action, cancellationToken);
+
+    public async Task<bool> SetFolderButtonNameAsync(byte profileId, byte folderId, byte buttonId,
+        string? name, CancellationToken cancellationToken = default)
+        => await _setFolderButtonNameCommand.ExecuteAsync(profileId, folderId, buttonId, name, cancellationToken);
+
+    public async Task<bool> SetFolderButtonLedAsync(byte profileId, byte folderId, byte buttonId,
+        LedConfig led, CancellationToken cancellationToken = default)
+        => await _setFolderButtonLedCommand.ExecuteAsync(profileId, folderId, buttonId, led, cancellationToken);
+
     public async Task<bool> SaveProfileAsync(byte profileId, CancellationToken cancellationToken = default)
     {
         var payload = new byte[] { profileId };

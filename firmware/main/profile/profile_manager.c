@@ -28,8 +28,9 @@ static uint8_t current_profile_id = 0;
 static SemaphoreHandle_t profile_mutex = NULL;
 
 // Folder navigation stack
-// Forward declaration — defined in the Display Helper section below
+// Forward declarations — defined in the Display Helper section below
 static void profile_update_button_display(uint8_t button_id, button_config_t* btn);
+static void profile_show_back_icon(uint8_t button_id);
 static uint8_t folder_stack[FOLDER_STACK_DEPTH];
 static uint8_t folder_stack_depth = 0;
 static uint8_t folder_entry_button = 0xFF;  // Button that was used to enter current folder
@@ -69,6 +70,7 @@ esp_err_t profile_switch(uint8_t profile_id) {
     }
     
     if (profile_id == current_profile_id) {
+        nvs_set_current_profile(profile_id);
         return ESP_OK;
     }
     
@@ -76,12 +78,23 @@ esp_err_t profile_switch(uint8_t profile_id) {
     
     xSemaphoreTake(profile_mutex, portMAX_DELAY);
     
-    // Load new profile
+    // Load new profile; initialise empty if not found or corrupted (allows first-time send from PC)
     esp_err_t ret = profile_storage_load(profile_id, &current_profile);
     if (ret != ESP_OK) {
-        xSemaphoreGive(profile_mutex);
-        ESP_LOGE(TAG, "Failed to load profile %d", profile_id);
-        return ret;
+        if (ret == ESP_ERR_NOT_FOUND || ret == ESP_ERR_INVALID_CRC) {
+            ESP_LOGW(TAG, "Profile %d not on disk, starting empty", profile_id);
+            memset(&current_profile, 0, sizeof(profile_t));
+            current_profile.profile_id = profile_id;
+            snprintf(current_profile.name, sizeof(current_profile.name), "Profile %d", profile_id + 1);
+            for (int i = 0; i < NUM_BUTTONS; i++) current_profile.buttons[i].button_id = i;
+            for (int f = 0; f < NUM_FOLDERS; f++)
+                for (int i = 0; i < NUM_BUTTONS; i++)
+                    current_profile.folders[f].buttons[i].button_id = i;
+        } else {
+            xSemaphoreGive(profile_mutex);
+            ESP_LOGE(TAG, "Failed to load profile %d: %s", profile_id, esp_err_to_name(ret));
+            return ret;
+        }
     }
     
     current_profile_id = profile_id;
@@ -148,9 +161,65 @@ esp_err_t profile_set_button_action(uint8_t profile_id, uint8_t button_id,
     if (action_data != NULL && action_len > 0) {
         memcpy(btn->action_data, action_data, action_len);
     }
-    
+
+    // Folder action: also populate the dedicated folder_id field used by the executor
+    if (action_type == ACTION_TYPE_FOLDER && action_len >= 1 && action_data != NULL) {
+        btn->folder_id = action_data[0];
+    }
+
     xSemaphoreGive(profile_mutex);
-    
+
+    return ESP_OK;
+}
+
+// ---- Folder button setters -----------------------------------------------
+
+esp_err_t profile_set_folder_button_action(uint8_t profile_id, uint8_t folder_id,
+                                            uint8_t button_id, uint8_t action_type,
+                                            const uint8_t* action_data, uint16_t action_len) {
+    if (profile_id >= NUM_PROFILES || folder_id >= NUM_FOLDERS || button_id >= NUM_BUTTONS)
+        return ESP_ERR_INVALID_ARG;
+    if (action_len > ACTION_DATA_MAX_LEN)
+        return ESP_ERR_INVALID_SIZE;
+
+    xSemaphoreTake(profile_mutex, portMAX_DELAY);
+    button_config_t* btn = &current_profile.folders[folder_id].buttons[button_id];
+    btn->button_id   = button_id;
+    btn->action_type = action_type;
+    btn->action_data_len = action_len;
+    if (action_data != NULL && action_len > 0)
+        memcpy(btn->action_data, action_data, action_len);
+    if (action_type == ACTION_TYPE_FOLDER && action_len >= 1 && action_data != NULL)
+        btn->folder_id = action_data[0];
+    xSemaphoreGive(profile_mutex);
+    return ESP_OK;
+}
+
+esp_err_t profile_set_folder_button_name(uint8_t profile_id, uint8_t folder_id,
+                                          uint8_t button_id, const char* name) {
+    if (profile_id >= NUM_PROFILES || folder_id >= NUM_FOLDERS || button_id >= NUM_BUTTONS || name == NULL)
+        return ESP_ERR_INVALID_ARG;
+
+    xSemaphoreTake(profile_mutex, portMAX_DELAY);
+    button_config_t* btn = &current_profile.folders[folder_id].buttons[button_id];
+    memset(btn->name, 0, BUTTON_NAME_MAX_LEN);
+    strncpy(btn->name, name, BUTTON_NAME_MAX_LEN - 1);
+    xSemaphoreGive(profile_mutex);
+    return ESP_OK;
+}
+
+esp_err_t profile_set_folder_button_led(uint8_t profile_id, uint8_t folder_id,
+                                         uint8_t button_id,
+                                         uint8_t r, uint8_t g, uint8_t b,
+                                         uint8_t brightness, uint8_t effect) {
+    if (profile_id >= NUM_PROFILES || folder_id >= NUM_FOLDERS || button_id >= NUM_BUTTONS)
+        return ESP_ERR_INVALID_ARG;
+
+    xSemaphoreTake(profile_mutex, portMAX_DELAY);
+    button_config_t* btn = &current_profile.folders[folder_id].buttons[button_id];
+    btn->led_r = r; btn->led_g = g; btn->led_b = b;
+    btn->led_brightness = brightness; btn->led_effect = effect;
+    xSemaphoreGive(profile_mutex);
     return ESP_OK;
 }
 
@@ -482,6 +551,15 @@ void profile_restore_leds(void) {
 static void profile_update_button_display(uint8_t button_id, button_config_t* btn) {
     if (button_id >= NUM_BUTTONS || btn == NULL) return;
 
+    // While inside a folder, the entry button always shows the embedded back icon
+    // regardless of what action/image the folder assigns to it.
+    // (folder_stack_depth is already decremented before the render loop in profile_folder_exit,
+    //  so this check is false on exit and the button renders its root content normally.)
+    if (profile_is_in_folder() && button_id == folder_entry_button) {
+        profile_show_back_icon(button_id);
+        return;
+    }
+
     if (btn->image_size > 0) {
         // Image exists in config — try to load from storage
         uint8_t* image_data = NULL;
@@ -537,7 +615,7 @@ static void profile_update_button_display(uint8_t button_id, button_config_t* bt
 // Folder Navigation Functions
 // ============================================
 
-esp_err_t profile_folder_enter(uint8_t folder_id) {
+esp_err_t profile_folder_enter(uint8_t folder_id, uint8_t entry_button_id) {
     if (folder_id >= NUM_FOLDERS) {
         ESP_LOGE(TAG, "Invalid folder ID: %d", folder_id);
         return ESP_ERR_INVALID_ARG;
@@ -549,11 +627,14 @@ esp_err_t profile_folder_enter(uint8_t folder_id) {
     }
     
     xSemaphoreTake(profile_mutex, portMAX_DELAY);
-    
+
     // Push folder to stack
     folder_stack[folder_stack_depth] = folder_id;
     folder_stack_depth++;
-    
+    // Record which button entered the folder so profile_update_button_display
+    // can substitute the back icon for it inside the normal render loop.
+    folder_entry_button = entry_button_id;
+
     // Get folder configuration
     folder_t* folder = &current_profile.folders[folder_id];
     
@@ -652,7 +733,7 @@ uint8_t profile_get_folder_depth(void) {
     return folder_stack_depth;
 }
 
-void profile_show_back_icon(uint8_t button_id) {
+static void profile_show_back_icon(uint8_t button_id) {
     if (button_id >= NUM_BUTTONS) return;
     
     size_t back_icon_size = back_icon_jpg_end - back_icon_jpg_start;

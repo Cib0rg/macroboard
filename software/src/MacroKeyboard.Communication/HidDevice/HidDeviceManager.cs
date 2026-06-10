@@ -80,15 +80,16 @@ public class HidDeviceManager : IDisposable
                 CancelAllPendingResponses();
                 CleanupDevice();
             }
+
+            // Reset inside the lock so HandleDisconnect (via Task.Run) can safely
+            // detect we're reconnecting and bail out before it destroys the new link.
+            _deviceLost = false;
         }
 
         try
         {
             _logger.LogInformation("Searching for device (VID: 0x{VID:X4}, PID: 0x{PID:X4})...",
                 ProtocolConstants.VendorId, ProtocolConstants.ProductId);
-
-            // Reset device-lost flag
-            _deviceLost = false;
 
             // Create USB wrapper and open device
             var usb = new UsbDeviceWrapper();
@@ -164,6 +165,14 @@ public class HidDeviceManager : IDisposable
             if (_usb == null)
             {
                 // Already disconnected
+                return;
+            }
+
+            // If deviceLost was already cleared, a reconnect succeeded before this
+            // stale Task.Run fired — don't interrupt the new connection.
+            if (!_deviceLost)
+            {
+                _logger.LogDebug("HandleDisconnect: skipping stale disconnect (already reconnected)");
                 return;
             }
 

@@ -341,6 +341,12 @@ public class NightModeAction : ActionConfig
     public override byte[] ToBytes() => Array.Empty<byte>();
 }
 
+public class NoneAction : ActionConfig
+{
+    public override ActionType ActionType => ActionType.None;
+    public override byte[] ToBytes() => Array.Empty<byte>();
+}
+
 /// <summary>
 /// JSON converter for ActionConfig abstract class.
 /// Uses the ActionType property to determine the concrete type during deserialization.

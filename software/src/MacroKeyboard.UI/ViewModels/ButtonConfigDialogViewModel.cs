@@ -50,6 +50,9 @@ public partial class ButtonConfigDialogViewModel : ViewModelBase
     private readonly List<CapturedKey> _capturedKeys = new();
 
     [ObservableProperty]
+    private string _buttonName = string.Empty;
+
+    [ObservableProperty]
     private string _imagePath = string.Empty;
 
     private Bitmap? _imagePreviewBitmap;
@@ -444,6 +447,7 @@ public partial class ButtonConfigDialogViewModel : ViewModelBase
         var existingFolder = AvailableFolders.FirstOrDefault(f => f.FolderId == buttonConfig.FolderId);
         SelectedTargetFolder = existingFolder;
         FolderName = existingFolder?.Name ?? $"Folder {buttonConfig.FolderId}";
+        ButtonName = buttonConfig.Name ?? string.Empty;
         ImagePath = buttonConfig.ImagePath ?? string.Empty;
         LoadImagePreview(ImagePath);
         
@@ -1051,12 +1055,20 @@ public partial class ButtonConfigDialogViewModel : ViewModelBase
             
             if (OperatingSystem.IsWindows())
             {
-                // On Windows, extract icon from exe using System.Drawing (via shell)
-                // Use a simple approach: copy the exe path and let the backend handle icon extraction
-                // For now, store the path — the backend will extract the icon when syncing
-                LaunchAppIconPath = executablePath; // Will be resolved to actual icon by backend
-                ImagePath = iconOutputPath; // Placeholder path for the extracted icon
-                _logger.LogInformation("App icon will be extracted from: {Path}", executablePath);
+#pragma warning disable CA1416
+                await Task.Run(() => ExtractWindowsAppIcon(executablePath, iconOutputPath));
+#pragma warning restore CA1416
+                if (File.Exists(iconOutputPath))
+                {
+                    LaunchAppIconPath = executablePath;
+                    ImagePath = iconOutputPath;
+                    _logger.LogInformation("App icon extracted to: {Path}", iconOutputPath);
+                }
+                else
+                {
+                    LaunchAppIconPath = executablePath;
+                    _logger.LogWarning("Icon extraction produced no output for: {Path}", executablePath);
+                }
             }
             else
             {
@@ -1081,6 +1093,15 @@ public partial class ButtonConfigDialogViewModel : ViewModelBase
         }
         
         await Task.CompletedTask;
+    }
+
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
+    private static void ExtractWindowsAppIcon(string executablePath, string outputPath)
+    {
+        using var icon = System.Drawing.Icon.ExtractAssociatedIcon(executablePath);
+        if (icon == null) return;
+        using var bitmap = icon.ToBitmap();
+        bitmap.Save(outputPath, System.Drawing.Imaging.ImageFormat.Png);
     }
 
     /// <summary>
@@ -1292,6 +1313,7 @@ public partial class ButtonConfigDialogViewModel : ViewModelBase
                 ButtonConfig.FolderId = FolderId;
             }
 
+            ButtonConfig.Name = string.IsNullOrWhiteSpace(ButtonName) ? null : ButtonName.Trim();
             ButtonConfig.ImagePath = string.IsNullOrWhiteSpace(ImagePath) ? null : ImagePath;
             
             // Update LED color and brightness from sliders

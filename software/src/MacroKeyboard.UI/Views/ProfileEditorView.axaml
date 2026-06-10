@@ -13,11 +13,12 @@
         <conv:ObjectEqualityConverter x:Key="ObjectEqualityConverter" />
     </UserControl.Resources>
 
-    <Grid ColumnDefinitions="240,*,200" Margin="10">
+    <Grid ColumnDefinitions="240,*,200" RowDefinitions="*" Margin="10">
         <!-- Left Panel - Profile List -->
         <Border Grid.Column="0" Padding="12" Margin="0,0,5,0"
                 Background="#0D1117" CornerRadius="8"
                 BorderBrush="#00FFFF" BorderThickness="1">
+            <ScrollViewer VerticalScrollBarVisibility="Auto">
             <StackPanel Spacing="10">
                 <TextBlock Text="📂 PROFILES" FontSize="16" FontWeight="Bold" Foreground="#00FFFF" />
                 
@@ -39,6 +40,9 @@
                             HorizontalAlignment="Stretch" />
                     <Button Content="💾 SAVE"
                             Command="{Binding SaveProfileCommand}"
+                            HorizontalAlignment="Stretch" />
+                    <Button Content="📤 EXPORT"
+                            Command="{Binding ExportProfileCommand}"
                             HorizontalAlignment="Stretch" />
                     <Button Content="📂 LOAD"
                             Command="{Binding LoadProfileCommand}"
@@ -71,6 +75,7 @@
                 <ProgressBar IsIndeterminate="True" 
                              IsVisible="{Binding IsSyncing}" />
             </StackPanel>
+            </ScrollViewer>
         </Border>
 
         <!-- Center Panel - Buttons List with inline config -->
@@ -218,6 +223,17 @@
                                             </Grid>
                                             
                                             <Separator />
+
+                                            <!-- Button display name (shown on device when no image) -->
+                                            <Border Background="#161B22" CornerRadius="4" Padding="10">
+                                                <StackPanel Spacing="6">
+                                                    <TextBlock Text="BUTTON NAME" FontSize="12" FontWeight="Bold" />
+                                                    <TextBlock Text="Shown on device when no image is set. Leave empty to auto-generate."
+                                                               FontSize="10" Opacity="0.6" TextWrapping="Wrap" />
+                                                    <TextBox Text="{Binding ButtonName}"
+                                                             PlaceholderText="e.g. Git Push, Volume Up..." />
+                                                </StackPanel>
+                                            </Border>
 
                                             <!-- Keyboard: Key Capture -->
                                             <Border Background="#161B22" CornerRadius="4" Padding="10"

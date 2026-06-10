@@ -111,6 +111,15 @@ public interface IDeviceService
     /// </summary>
     Task<byte?> SetDisplayBrightnessAsync(byte brightness, CancellationToken cancellationToken = default);
     
+    Task<bool> SetFolderButtonActionAsync(byte profileId, byte folderId, byte buttonId, ActionConfig action,
+        CancellationToken cancellationToken = default);
+
+    Task<bool> SetFolderButtonNameAsync(byte profileId, byte folderId, byte buttonId, string? name,
+        CancellationToken cancellationToken = default);
+
+    Task<bool> SetFolderButtonLedAsync(byte profileId, byte folderId, byte buttonId, LedConfig led,
+        CancellationToken cancellationToken = default);
+
     /// <summary>
     /// Сохранить профиль в энергонезависимую память
     /// </summary>
