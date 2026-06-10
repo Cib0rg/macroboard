@@ -263,7 +263,7 @@ public partial class ProfileEditorViewModel : ViewModelBase
                 
                 foreach (var folderButton in folder.Buttons)
                 {
-                    FlattenedButtons.Add(new FlattenedButtonItem(folderButton, 1, folderId));
+                    FlattenedButtons.Add(new FlattenedButtonItem(folderButton, 1, folderId, button.ButtonId));
                 }
             }
         }
@@ -655,7 +655,7 @@ public partial class ProfileEditorViewModel : ViewModelBase
     [RelayCommand]
     private void ConfigureFlattenedButton(FlattenedButtonItem? item)
     {
-        if (item == null)
+        if (item == null || item.IsBackButton)
             return;
 
         OpenButtonConfigInline(item.Button);
@@ -692,6 +692,12 @@ public partial class ProfileEditorViewModel : ViewModelBase
     /// </summary>
     public void HandleActionDropOnButton(FlattenedButtonItem buttonItem, ActionType actionType)
     {
+        if (buttonItem.IsFolderHeader || buttonItem.IsBackButton)
+        {
+            _logger.LogInformation("⛔ Drag blocked: button {ButtonId} is locked (folder entry or back slot)", buttonItem.Button.ButtonId);
+            return;
+        }
+
         _logger.LogInformation("🎯 Action {ActionType} dropped on button {ButtonId}", actionType, buttonItem.Button.ButtonId);
 
         // Open inline config for this button with available profiles and folders

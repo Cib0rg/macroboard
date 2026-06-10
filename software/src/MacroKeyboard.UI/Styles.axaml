@@ -123,7 +123,8 @@
         <Setter Property="Foreground" Value="#00FFFF"/>
         <Setter Property="FontFamily" Value="Consolas, monospace"/>
         <Setter Property="CaretBrush" Value="#00FFFF"/>
-        <Setter Property="SelectionBrush" Value="#00FFFF44"/>
+        <Setter Property="SelectionBrush" Value="#00FFFF"/>
+        <Setter Property="SelectionForegroundBrush" Value="#000000"/>
         <Setter Property="Padding" Value="8,6"/>
         <Setter Property="CornerRadius" Value="4"/>
     </Style>
@@ -258,6 +259,12 @@
         <Setter Property="Background" Value="#1A1A40"/>
     </Style>
 
+    <!-- Back-slot button row in folder (reserved by firmware, not configurable) -->
+    <Style Selector="Border.back-slot">
+        <Setter Property="Opacity" Value="0.4"/>
+        <Setter Property="BorderBrush" Value="#444466"/>
+    </Style>
+
     <!-- Горизонтальный разделитель -->
     <Style Selector="Border.TronDivider">
         <Setter Property="Height" Value="2"/>
@@ -280,7 +287,7 @@
         <Setter Property="Foreground" Value="#00FFFF"/>
         <Setter Property="FontFamily" Value="Consolas, monospace"/>
         <Setter Property="CaretBrush" Value="#00FFFF"/>
-        <Setter Property="SelectionBrush" Value="#00FFFF88"/>
+        <Setter Property="SelectionBrush" Value="#00FFFF"/>
         <Setter Property="SelectionForegroundBrush" Value="#000000"/>
         <Setter Property="PlaceholderText" Value="..."/>
         <Setter Property="Effect">

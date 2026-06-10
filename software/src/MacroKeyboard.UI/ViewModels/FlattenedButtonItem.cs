@@ -39,6 +39,10 @@ public class FlattenedButtonItem
         get
         {
             var prefix = NestingLevel > 0 ? "  ↳ " : "";
+
+            if (IsBackButton)
+                return $"{prefix}Button {Button.ButtonId + 1}: ⬅ Back (reserved)";
+
             var actionText = Button.Action?.ActionType.ToString() ?? "Not configured";
             
             if (Button.Action is KeyboardAction ka)
@@ -110,6 +114,18 @@ public class FlattenedButtonItem
     public byte? ParentFolderId { get; set; }
 
     /// <summary>
+    /// ButtonId of the root button that entered this folder (only set for folder sub-buttons).
+    /// The sub-button with the same index is the implicit back button — firmware ignores its action.
+    /// </summary>
+    public byte? EntryButtonId { get; set; }
+
+    /// <summary>
+    /// True when this sub-button slot is reserved as the "Back" button by the firmware.
+    /// Its action cannot be configured — pressing it always exits the folder.
+    /// </summary>
+    public bool IsBackButton => NestingLevel > 0 && EntryButtonId.HasValue && Button.ButtonId == EntryButtonId.Value;
+
+    /// <summary>
     /// Whether this button has an image assigned
     /// </summary>
     public bool HasImage => !string.IsNullOrWhiteSpace(Button.ImagePath) && File.Exists(Button.ImagePath);
@@ -154,11 +170,12 @@ public class FlattenedButtonItem
         }
     }
 
-    public FlattenedButtonItem(ButtonConfig button, int nestingLevel, byte? parentFolderId = null)
+    public FlattenedButtonItem(ButtonConfig button, int nestingLevel, byte? parentFolderId = null, byte? entryButtonId = null)
     {
         Button = button;
         NestingLevel = nestingLevel;
         ParentFolderId = parentFolderId;
+        EntryButtonId = entryButtonId;
     }
 
     private static string HidKeyName(byte keyCode) => keyCode switch

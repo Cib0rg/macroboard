@@ -147,7 +147,8 @@
                                             Padding="10,6"
                                             Margin="{Binding Margin}"
                                             MinHeight="36"
-                                            DragDrop.AllowDrop="True"
+                                            Classes.back-slot="{Binding IsBackButton}"
+                                            DragDrop.AllowDrop="{Binding !IsBackButton}"
                                             Tag="{Binding}">
                                         <Grid ColumnDefinitions="Auto,*,Auto">
                                             <!-- Thumbnail preview -->
@@ -168,6 +169,7 @@
                                                     Padding="0"
                                                     HorizontalAlignment="Stretch"
                                                     HorizontalContentAlignment="Left"
+                                                    IsEnabled="{Binding !IsBackButton}"
                                                     Command="{Binding #ProfileEditorRoot.DataContext.ConfigureFlattenedButtonCommand}"
                                                     CommandParameter="{Binding}">
                                                 <TextBlock Text="{Binding Label}"
@@ -203,7 +205,12 @@
                                                                FontSize="14" FontWeight="Bold" Foreground="#00FFFF"
                                                                VerticalAlignment="Center" />
                                                     <TextBlock Text="← drag to change"
+                                                               IsVisible="{Binding !IsFolderAction}"
                                                                FontSize="10" Opacity="0.4"
+                                                               VerticalAlignment="Center" Margin="8,0,0,0" />
+                                                    <TextBlock Text="🔒 folder entry — action locked"
+                                                               IsVisible="{Binding IsFolderAction}"
+                                                               FontSize="10" Opacity="0.7" Foreground="#FFA500"
                                                                VerticalAlignment="Center" Margin="8,0,0,0" />
                                                 </StackPanel>
                                                 <Button Grid.Column="1" Content="✕" Width="28" Height="28"
