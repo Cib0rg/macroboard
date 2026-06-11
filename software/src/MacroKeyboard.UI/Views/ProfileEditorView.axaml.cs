@@ -14,10 +14,11 @@ public partial class ProfileEditorView : UserControl
     private bool _profilesLoaded;
 
     /// <summary>
-    /// Custom in-process string data format for passing ActionType name via drag-n-drop
+    /// Custom in-process format for passing the ActionPaletteItem via drag-n-drop.
+    /// Using the object directly lets the drop handler access PreConfiguredAction.
     /// </summary>
-    private static readonly DataFormat<string> ActionTypeFormat = 
-        DataFormat.CreateInProcessFormat<string>("MacroKeyboard.ActionType");
+    private static readonly DataFormat<ActionPaletteItem> PaletteItemFormat =
+        DataFormat.CreateInProcessFormat<ActionPaletteItem>("MacroKeyboard.PaletteItem");
 
     public ProfileEditorView()
     {
@@ -175,12 +176,8 @@ public partial class ProfileEditorView : UserControl
     {
         if (sender is Border border && border.Tag is ActionPaletteItem item)
         {
-            // Create DataTransfer with the ActionType as string
             var data = new DataTransfer();
-            var transferItem = DataTransferItem.Create(ActionTypeFormat, item.ActionType.ToString());
-            data.Add(transferItem);
-
-            // Start the drag operation
+            data.Add(DataTransferItem.Create(PaletteItemFormat, item));
             await DragDrop.DoDragDropAsync(e, data, DragDropEffects.Copy);
         }
     }
@@ -190,9 +187,8 @@ public partial class ProfileEditorView : UserControl
     /// </summary>
     private void OnActionDragOver(object? sender, DragEventArgs e)
     {
-        if (e.DataTransfer.Contains(ActionTypeFormat))
+        if (e.DataTransfer.Contains(PaletteItemFormat))
         {
-            // Check if we're over a button item (has Tag with FlattenedButtonItem)
             var target = FindButtonDropTarget(e.Source as Interactive);
             if (target != null)
             {
@@ -200,43 +196,42 @@ public partial class ProfileEditorView : UserControl
                 return;
             }
 
-            // Also accept drops on the config panel action type zone
             if (DataContext is ProfileEditorViewModel vm && vm.IsButtonConfigVisible)
             {
                 e.DragEffects = DragDropEffects.Copy;
                 return;
             }
         }
-        
+
         e.DragEffects = DragDropEffects.None;
     }
 
     /// <summary>
-    /// Handle drop of an action type - either onto a button or onto the config panel
+    /// Handle drop — pre-configured sub-items apply directly; group headers open the config editor.
     /// </summary>
-    private void OnActionDropped(object? sender, DragEventArgs e)
+    private async void OnActionDropped(object? sender, DragEventArgs e)
     {
-        var actionTypeName = e.DataTransfer.TryGetValue(ActionTypeFormat);
-        if (actionTypeName == null || !Enum.TryParse<ActionType>(actionTypeName, out var actionType))
+        var paletteItem = e.DataTransfer.TryGetValue(PaletteItemFormat);
+        if (paletteItem == null || DataContext is not ProfileEditorViewModel vm)
             return;
 
-        if (DataContext is not ProfileEditorViewModel vm)
-            return;
-
-        // Try to find a button drop target
         var buttonTarget = FindButtonDropTarget(e.Source as Interactive);
         if (buttonTarget != null)
         {
-            // Drop on a button in the list → open config with this action type
-            vm.HandleActionDropOnButton(buttonTarget, actionType);
+            if (paletteItem.PreConfiguredAction != null)
+                await vm.HandlePreConfiguredActionDrop(buttonTarget, paletteItem.PreConfiguredAction);
+            else
+                vm.HandleActionDropOnButton(buttonTarget, paletteItem.ActionType);
             e.Handled = true;
             return;
         }
 
-        // Drop on the config panel (if already open) → change action type
+        // Drop on the open config panel → change action type (and pre-fill key if applicable)
         if (vm.ButtonConfigViewModel != null && vm.IsButtonConfigVisible)
         {
-            vm.ButtonConfigViewModel.SelectedActionType = actionType;
+            vm.ButtonConfigViewModel.SelectedActionType = paletteItem.ActionType;
+            if (paletteItem.PreConfiguredAction is MediaAction mediaAction)
+                vm.ButtonConfigViewModel.SelectedMediaKey = mediaAction.Key;
             e.Handled = true;
         }
     }

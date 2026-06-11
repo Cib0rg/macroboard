@@ -103,15 +103,32 @@ public partial class ProfileEditorViewModel : ViewModelBase
     /// </summary>
     public ObservableCollection<ActionPaletteItem> ActionPaletteItems { get; } = new()
     {
-        new ActionPaletteItem(ActionType.Keyboard, "Keyboard", "⌨", "Emulate keyboard key press or text input"),
-        new ActionPaletteItem(ActionType.Media, "Media", "🔊", "Volume up/down, mute, play/pause"),
-        new ActionPaletteItem(ActionType.LaunchApp, "Launch App", "🚀", "Launch an application with optional arguments"),
-        new ActionPaletteItem(ActionType.Shell, "Shell", "💻", "Execute a shell command on the PC"),
-        new ActionPaletteItem(ActionType.Sequence, "Sequence", "📋", "Execute multiple actions in sequence"),
-        new ActionPaletteItem(ActionType.ProfileSwitch, "Profile", "🔄", "Switch to another profile"),
-        new ActionPaletteItem(ActionType.Folder, "Folder", "📁", "Open a folder of sub-buttons"),
-        new ActionPaletteItem(ActionType.CustomHid, "Custom HID", "🔌", "Send custom HID report"),
-        new ActionPaletteItem(ActionType.None, "None", "⊘", "No action assigned"),
+        new ActionPaletteItem(ActionType.Keyboard,  "Keyboard",   "⌨",  "Emulate keyboard key press or text input"),
+
+        // Media — group header + pre-configured sub-items
+        new ActionPaletteItem(ActionType.Media, "Media", "🔊", "Media keys — choose specific key below or drag to configure"),
+        new ActionPaletteItem(ActionType.Media, "Volume Up",    "🔊", "Increase system volume")
+            { IndentLevel = 1, PreConfiguredAction = new MediaAction { Key = MediaKey.VolumeUp } },
+        new ActionPaletteItem(ActionType.Media, "Volume Down",  "🔉", "Decrease system volume")
+            { IndentLevel = 1, PreConfiguredAction = new MediaAction { Key = MediaKey.VolumeDown } },
+        new ActionPaletteItem(ActionType.Media, "Mute",         "🔇", "Toggle mute")
+            { IndentLevel = 1, PreConfiguredAction = new MediaAction { Key = MediaKey.Mute } },
+        new ActionPaletteItem(ActionType.Media, "Play / Pause", "⏯",  "Play or pause media")
+            { IndentLevel = 1, PreConfiguredAction = new MediaAction { Key = MediaKey.PlayPause } },
+        new ActionPaletteItem(ActionType.Media, "Next Track",   "⏭",  "Skip to next track")
+            { IndentLevel = 1, PreConfiguredAction = new MediaAction { Key = MediaKey.NextTrack } },
+        new ActionPaletteItem(ActionType.Media, "Prev Track",   "⏮",  "Go to previous track")
+            { IndentLevel = 1, PreConfiguredAction = new MediaAction { Key = MediaKey.PreviousTrack } },
+        new ActionPaletteItem(ActionType.Media, "Stop",         "⏹",  "Stop playback")
+            { IndentLevel = 1, PreConfiguredAction = new MediaAction { Key = MediaKey.Stop } },
+
+        new ActionPaletteItem(ActionType.LaunchApp,     "Launch App",  "🚀", "Launch an application with optional arguments"),
+        new ActionPaletteItem(ActionType.Shell,         "Shell",       "💻", "Execute a shell command on the PC"),
+        new ActionPaletteItem(ActionType.Sequence,      "Sequence",    "📋", "Execute multiple actions in sequence"),
+        new ActionPaletteItem(ActionType.ProfileSwitch, "Profile",     "🔄", "Switch to another profile"),
+        new ActionPaletteItem(ActionType.Folder,        "Folder",      "📁", "Open a folder of sub-buttons"),
+        new ActionPaletteItem(ActionType.CustomHid,     "Custom HID",  "🔌", "Send custom HID report"),
+        new ActionPaletteItem(ActionType.None,          "None",        "⊘",  "No action assigned"),
     };
 
     public ProfileEditorViewModel(
@@ -706,6 +723,34 @@ public partial class ProfileEditorViewModel : ViewModelBase
         ConfiguredButtonConfig = buttonItem.Button;
         IsButtonConfigVisible = true;
         HasUnsavedChanges = true;
+    }
+
+    /// <summary>
+    /// Handle dropping a pre-configured action sub-item — applies the action directly without
+    /// opening the config editor (the action is fully specified, no further input needed).
+    /// </summary>
+    public async Task HandlePreConfiguredActionDrop(FlattenedButtonItem buttonItem, ActionConfig action)
+    {
+        if (buttonItem.IsFolderHeader || buttonItem.IsBackButton)
+            return;
+
+        _logger.LogInformation("⚡ Pre-configured {ActionType} dropped on button {ButtonId}",
+            action.ActionType, buttonItem.Button.ButtonId);
+
+        buttonItem.Button.Action = action;
+        HasUnsavedChanges = true;
+
+        if (SelectedProfile != null)
+        {
+            await _profileService.UpdateProfileAsync(SelectedProfile);
+            HasUnsavedChanges = false;
+            StatusMessage = $"Button {buttonItem.Button.ButtonId + 1}: {action.ActionType}";
+        }
+
+        BuildFlattenedButtons();
+
+        if (_ipcClient.IsConnected && SelectedProfile != null)
+            await SendButtonConfigToDeviceAsync(SelectedProfile.ProfileId, buttonItem.Button);
     }
 
     /// <summary>

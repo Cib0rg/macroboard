@@ -164,8 +164,11 @@ public partial class App : Application
             {
                 if (e.PropertyName == nameof(MainWindowViewModel.StatusText))
                 {
-                    statusItem.Header = $"Status: {viewModel.StatusText}";
-                    _trayIcon.ToolTipText = $"MacroKeyboard - {viewModel.StatusText}";
+                    Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+                    {
+                        statusItem.Header = $"Status: {viewModel.StatusText}";
+                        _trayIcon!.ToolTipText = $"MacroKeyboard - {viewModel.StatusText}";
+                    });
                 }
             };
         }

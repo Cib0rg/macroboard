@@ -215,39 +215,41 @@ public class ImageService
     
     /// <summary>
     /// Resize a source image to display size and return the result as a new image.
-    /// Small icons (< 64 px) are centered on a black canvas instead of stretched.
-    /// Large images are cropped to fill 160×160.
+    /// Square images (icons) are fit-and-centered on a black canvas with a small border.
+    /// Non-square images (photos) are cropped to fill 160×160.
     /// Caller owns the returned image and must dispose it.
     /// </summary>
     private static Image<Rgba32> PrepareForDisplay(Image<Rgba32> source)
     {
-        if (source.Width < 64 || source.Height < 64)
+        // Non-square images (photos, wallpapers): crop-fill to display size.
+        bool isSquarish = Math.Abs(source.Width - source.Height) <=
+                          Math.Max(source.Width, source.Height) * 0.1f;
+        if (!isSquarish)
         {
-            // Small icon: scale to at most 60 % of display, then center on black canvas.
-            // Avoids the ugly 5× upscale that ResizeMode.Crop would produce for a 32×32 icon.
-            const int MaxIconSize = (int)(DisplaySize * 0.6); // 96 px
-            float scale = Math.Min((float)MaxIconSize / source.Width, (float)MaxIconSize / source.Height);
-            int scaledW = Math.Max(1, (int)(source.Width  * scale));
-            int scaledH = Math.Max(1, (int)(source.Height * scale));
-
-            var canvas = new Image<Rgba32>(DisplaySize, DisplaySize);
-            canvas.Mutate(ctx => ctx.BackgroundColor(Color.Black));
-
-            using var scaled = source.Clone(ctx => ctx.Resize(scaledW, scaledH, KnownResamplers.Lanczos3));
-            int ox = (DisplaySize - scaledW) / 2;
-            int oy = (DisplaySize - scaledH) / 2;
-            canvas.Mutate(ctx => ctx.DrawImage(scaled, new Point(ox, oy), opacity: 1.0f));
-
-            return canvas;
+            return source.Clone(ctx => ctx.Resize(new ResizeOptions
+            {
+                Size = new Size(DisplaySize, DisplaySize),
+                Mode = ResizeMode.Crop,
+                Position = AnchorPositionMode.Center
+            }));
         }
 
-        // Regular image: crop-fill to 160×160.
-        return source.Clone(ctx => ctx.Resize(new ResizeOptions
-        {
-            Size = new Size(DisplaySize, DisplaySize),
-            Mode = ResizeMode.Crop,
-            Position = AnchorPositionMode.Center
-        }));
+        // Square image (app icon or similar): center on a black canvas.
+        // Scale to at most 87.5 % of display (140 px) so a thin black border is always visible.
+        // Very small icons (< 48 px) are capped at 3× upscale to avoid excessive blurring.
+        const int MaxFitSize = (int)(DisplaySize * 0.875); // 140 px
+        float scale = Math.Min((float)MaxFitSize / source.Width, (float)MaxFitSize / source.Height);
+        if (source.Width < 48 && scale > 3.0f) scale = 3.0f;
+
+        int scaledW = Math.Max(1, (int)(source.Width  * scale));
+        int scaledH = Math.Max(1, (int)(source.Height * scale));
+
+        var canvas = new Image<Rgba32>(DisplaySize, DisplaySize);
+        canvas.Mutate(ctx => ctx.BackgroundColor(Color.Black));
+        using var scaled = source.Clone(ctx => ctx.Resize(scaledW, scaledH, KnownResamplers.Lanczos3));
+        canvas.Mutate(ctx => ctx.DrawImage(scaled,
+            new Point((DisplaySize - scaledW) / 2, (DisplaySize - scaledH) / 2), opacity: 1.0f));
+        return canvas;
     }
 
     /// <summary>

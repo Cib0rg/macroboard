@@ -223,9 +223,9 @@ public class HidDeviceManager : IDisposable
                     1000); // 1 second timeout
             }
 
-            if (rc == UsbDeviceWrapper.ERROR_NO_DEVICE)
+            if (rc == UsbDeviceWrapper.ERROR_NO_DEVICE || rc == UsbDeviceWrapper.ERROR_IO)
             {
-                _logger.LogWarning("Device lost during write");
+                _logger.LogWarning("Device lost during write ({Error})", UsbDeviceWrapper.GetErrorString(rc));
                 _deviceLost = true;
                 return false;
             }
@@ -302,7 +302,7 @@ public class HidDeviceManager : IDisposable
     /// <summary>
     /// Read raw data from USB (used only by the monitor thread).
     /// Returns the data, or null on timeout/error.
-    /// Sets _deviceLost = true on ERROR_NO_DEVICE.
+    /// Sets _deviceLost = true on ERROR_NO_DEVICE or ERROR_IO (device physically gone/rebooted).
     /// </summary>
     private byte[]? ReadFromUsb(int timeout = 100)
     {
@@ -325,15 +325,14 @@ public class HidDeviceManager : IDisposable
                 return data;
             }
 
-            if (rc == UsbDeviceWrapper.ERROR_NO_DEVICE)
+            if (rc == UsbDeviceWrapper.ERROR_NO_DEVICE || rc == UsbDeviceWrapper.ERROR_IO)
             {
-                _logger.LogWarning("USB device lost (ERROR_NO_DEVICE)");
+                _logger.LogWarning("USB device lost ({Error})", UsbDeviceWrapper.GetErrorString(rc));
                 _deviceLost = true;
                 return null;
             }
 
-            // ERROR_TIMEOUT is normal — no data available
-            // Other errors are logged but not treated as disconnect (yet)
+            // ERROR_TIMEOUT is normal — no data available; anything else is unexpected but not fatal
             if (rc != UsbDeviceWrapper.SUCCESS && rc != UsbDeviceWrapper.ERROR_TIMEOUT)
             {
                 _logger.LogDebug("USB read returned: {Error}", UsbDeviceWrapper.GetErrorString(rc));

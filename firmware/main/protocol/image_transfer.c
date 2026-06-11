@@ -115,7 +115,18 @@ esp_err_t image_transfer_end(uint32_t* calculated_crc) {
     esp_err_t ret = image_storage_save(transfer_ctx.profile_id, transfer_ctx.button_id,
                                         transfer_ctx.buffer, transfer_ctx.total_size,
                                         *calculated_crc);
-    
+
+    if (ret == ESP_OK) {
+        // Mark button config as having an image so that profile_update_button_display
+        // loads from storage on subsequent display refreshes (e.g. after folder enter/exit).
+        // Without this, image_size stays 0 and the button falls back to text rendering
+        // even though the blob is persisted in content-addressed storage.
+        profile_t* prof = profile_get(transfer_ctx.profile_id);
+        if (prof != NULL && transfer_ctx.button_id < NUM_BUTTONS) {
+            prof->buttons[transfer_ctx.button_id].image_size = transfer_ctx.total_size;
+        }
+    }
+
     // If save succeeded and this is the current profile, decode and display immediately
     if (ret == ESP_OK && transfer_ctx.profile_id == profile_get_current_id()) {
         uint8_t* rgb565_buf = heap_caps_malloc(DISPLAY_BUFFER_SIZE, MALLOC_CAP_DMA | MALLOC_CAP_SPIRAM);
