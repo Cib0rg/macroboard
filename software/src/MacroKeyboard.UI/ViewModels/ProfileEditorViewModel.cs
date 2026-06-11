@@ -495,14 +495,37 @@ public partial class ProfileEditorViewModel : ViewModelBase
         if (SelectedProfile == null)
             return;
 
+        var name = SelectedProfile.Name;
+        var profileId = SelectedProfile.ProfileId;
+
         try
         {
-            var name = SelectedProfile.Name;
             _logger.LogInformation("Deleting profile: {ProfileName}", name);
-            await _profileService.DeleteProfileAsync(SelectedProfile.ProfileId);
+
+            if (_ipcClient.IsConnected)
+            {
+                // Backend handles both local JSON and device flash deletion
+                var message = new IpcMessage
+                {
+                    MessageType = IpcMessageTypes.ProfileDelete,
+                    Data = new { profileId }
+                };
+                var response = await _ipcClient.SendAndWaitAsync(message, TimeSpan.FromSeconds(10));
+                if (!response.Success)
+                {
+                    StatusMessage = $"❌ Failed to delete: {response.Error}";
+                    return;
+                }
+            }
+            else
+            {
+                // Backend offline — delete local file only
+                await _profileService.DeleteProfileAsync(profileId);
+            }
+
             Profiles.Remove(SelectedProfile);
             SelectedProfile = Profiles.FirstOrDefault();
-            _logger.LogInformation("Profile deleted successfully");
+            _logger.LogInformation("Profile deleted: {ProfileName}", name);
             StatusMessage = $"Deleted: {name}";
         }
         catch (Exception ex)

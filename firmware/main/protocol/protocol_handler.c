@@ -39,6 +39,7 @@ static esp_err_t handle_set_led_color(const uint8_t* payload, uint16_t length, u
 static esp_err_t handle_get_led_color(const uint8_t* payload, uint16_t length, uint8_t* response, uint16_t* response_len);
 static esp_err_t handle_set_backlight(const uint8_t* payload, uint16_t length, uint8_t* response, uint16_t* response_len);
 static esp_err_t handle_save_profile(const uint8_t* payload, uint16_t length, uint8_t* response, uint16_t* response_len);
+static esp_err_t handle_delete_profile(const uint8_t* payload, uint16_t length, uint8_t* response, uint16_t* response_len);
 
 // Command handler table
 typedef struct {
@@ -65,6 +66,7 @@ static const command_entry_t command_table[] = {
     {CMD_GET_LED_COLOR, handle_get_led_color},
     {CMD_SET_BACKLIGHT, handle_set_backlight},
     {CMD_SAVE_PROFILE, handle_save_profile},
+    {CMD_DELETE_PROFILE, handle_delete_profile},
 };
 
 esp_err_t protocol_handler_init(void) {
@@ -191,7 +193,12 @@ static esp_err_t handle_get_device_info(const uint8_t* payload, uint16_t length,
     
     // Device capabilities
     response[20] = NUM_BUTTONS;
-    response[21] = NUM_PROFILES;
+    // Count profiles actually saved to SPIFFS, not the compile-time maximum
+    uint8_t saved_profiles = 0;
+    for (uint8_t p = 0; p < NUM_PROFILES; p++) {
+        if (profile_storage_exists(p)) saved_profiles++;
+    }
+    response[21] = saved_profiles;
     response[22] = profile_get_current_id();
     
     // Free flash space from SPIFFS
@@ -477,6 +484,33 @@ static esp_err_t handle_save_profile(const uint8_t* payload, uint16_t length,
     memcpy(&response[1], &bytes_written, 4);
     
     *response_len = 5;
+    return ESP_OK;
+}
+
+static esp_err_t handle_delete_profile(const uint8_t* payload, uint16_t length,
+                                        uint8_t* response, uint16_t* response_len) {
+    if (length < 1) {
+        response[0] = STATUS_ERROR;
+        *response_len = 1;
+        return ESP_OK;
+    }
+
+    uint8_t profile_id = payload[0];
+    if (profile_id >= NUM_PROFILES) {
+        response[0] = STATUS_ERROR;
+        *response_len = 1;
+        return ESP_OK;
+    }
+
+    // If deleting the active profile, switch to profile 0 first (unless we're already there)
+    if (profile_id == profile_get_current_id() && profile_id != 0) {
+        profile_switch(0);
+    }
+
+    esp_err_t ret = profile_storage_delete(profile_id);
+    // ESP_FAIL means the file didn't exist — still treat as success (idempotent)
+    response[0] = (ret == ESP_OK || ret == ESP_FAIL) ? STATUS_OK : STATUS_ERROR;
+    *response_len = 1;
     return ESP_OK;
 }
 

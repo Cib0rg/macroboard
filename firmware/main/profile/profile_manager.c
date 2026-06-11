@@ -105,7 +105,13 @@ esp_err_t profile_switch(uint8_t profile_id) {
         led_set_color(i, btn->led_r, btn->led_g, btn->led_b, btn->led_brightness);
     }
     led_update();
-    
+
+    // Refresh all button displays so stale images from the previous profile
+    // don't remain on screen after a switch.
+    for (int i = 0; i < NUM_BUTTONS; i++) {
+        profile_update_button_display(i, &current_profile.buttons[i]);
+    }
+
     // Save to NVS
     nvs_set_current_profile(profile_id);
     
@@ -540,6 +546,12 @@ void profile_restore_leds(void) {
     }
     led_update();
     xSemaphoreGive(profile_mutex);
+}
+
+void profile_refresh_displays(void) {
+    for (int i = 0; i < NUM_BUTTONS; i++) {
+        profile_update_button_display(i, &current_profile.buttons[i]);
+    }
 }
 
 /**

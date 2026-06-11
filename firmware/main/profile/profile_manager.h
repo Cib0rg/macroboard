@@ -144,4 +144,11 @@ uint8_t profile_get_folder_depth(void);
  */
 void profile_restore_leds(void);
 
+/**
+ * @brief Refresh all button displays from the current profile's image/text data.
+ *        Call after any profile switch so stale images from the previous profile
+ *        are not left on screen.
+ */
+void profile_refresh_displays(void);
+
 #endif // PROFILE_MANAGER_H

@@ -143,10 +143,20 @@ public class IpcCommandHandler
         }
 
         var profileId = Convert.ToByte(data["profileId"]);
-        var success = await _profileService.DeleteProfileAsync(profileId);
-        
-        return success 
-            ? IpcResponse.Ok(message) 
+
+        // Delete from local storage
+        var localSuccess = await _profileService.DeleteProfileAsync(profileId);
+
+        // Best-effort delete from device (don't fail the whole operation if device is offline)
+        if (_deviceService.IsConnected)
+        {
+            var deviceSuccess = await _deviceService.DeleteProfileFromDeviceAsync(profileId);
+            if (!deviceSuccess)
+                _logger.LogWarning("Could not delete profile {ProfileId} from device flash; local copy removed", profileId);
+        }
+
+        return localSuccess
+            ? IpcResponse.Ok(message)
             : IpcResponse.Fail(message, $"Failed to delete profile {profileId}");
     }
 

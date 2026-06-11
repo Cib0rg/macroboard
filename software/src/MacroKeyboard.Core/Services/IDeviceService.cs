@@ -124,6 +124,11 @@ public interface IDeviceService
     /// Сохранить профиль в энергонезависимую память
     /// </summary>
     Task<bool> SaveProfileAsync(byte profileId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Удалить профиль из энергонезависимой памяти устройства
+    /// </summary>
+    Task<bool> DeleteProfileFromDeviceAsync(byte profileId, CancellationToken cancellationToken = default);
     
     /// <summary>
     /// Получить действие кнопки с устройства

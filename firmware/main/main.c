@@ -19,7 +19,6 @@
 #include "storage/profile_storage.h"
 #include "storage/image_storage.h"
 #include "profile/profile_manager.h"
-#include "utils/jpeg_decode_util.h"
 
 static const char* TAG = "MAIN";
 
@@ -206,36 +205,9 @@ void app_main(void) {
     led_update();
     ESP_LOGI(TAG, "✓ LEDs configured from profile");
     
-    // 5.3 Load and display images (if available)
-    ESP_LOGI(TAG, "Loading images for profile %d...", current_profile);
-    for (int i = 0; i < NUM_BUTTONS; i++) {
-        uint8_t* image_data = NULL;
-        size_t image_size = 0;
-        
-        ret = image_storage_load(current_profile, i, &image_data, &image_size);
-        if (ret == ESP_OK && image_data != NULL) {
-            // Decode JPEG → RGB565 → display
-            uint8_t* rgb565_buf = heap_caps_malloc(DISPLAY_BUFFER_SIZE, MALLOC_CAP_DMA | MALLOC_CAP_SPIRAM);
-            if (rgb565_buf != NULL) {
-                uint16_t w, h;
-                if (jpeg_decode_to_rgb565(image_data, image_size, rgb565_buf, DISPLAY_BUFFER_SIZE, &w, &h) == ESP_OK) {
-                    gc9a01_draw_image(i, rgb565_buf, w, h);
-                    ESP_LOGI(TAG, "✓ Image displayed for button %d (%dx%d)", i, w, h);
-                } else {
-                    ESP_LOGW(TAG, "JPEG decode failed for button %d", i);
-                    gc9a01_clear(i, COLOR_BLACK);
-                }
-                free(rgb565_buf);
-            } else {
-                ESP_LOGE(TAG, "Failed to allocate RGB565 buffer for button %d", i);
-                gc9a01_clear(i, COLOR_BLACK);
-            }
-            free(image_data);
-        } else {
-            // Show default color
-            gc9a01_clear(i, COLOR_BLACK);
-        }
-    }
+    // 5.3 Refresh all button displays (images or text labels) from current profile
+    ESP_LOGI(TAG, "Refreshing displays for profile %d...", current_profile);
+    profile_refresh_displays();
     
     // ============================================
     // PHASE 6: Task Creation

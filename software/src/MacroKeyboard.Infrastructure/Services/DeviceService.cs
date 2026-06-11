@@ -194,10 +194,21 @@ public class DeviceService : IDeviceService
             ProtocolConstants.CMD_SAVE_PROFILE,
             payload,
             cancellationToken: cancellationToken);
-        
+
         return response != null && response.Payload[0] == ProtocolConstants.STATUS_OK;
     }
-    
+
+    public async Task<bool> DeleteProfileFromDeviceAsync(byte profileId, CancellationToken cancellationToken = default)
+    {
+        var payload = new byte[] { profileId };
+        var response = await _protocol.SendCommandAsync(
+            ProtocolConstants.CMD_DELETE_PROFILE,
+            payload,
+            cancellationToken: cancellationToken);
+
+        return response != null && response.Payload[0] == ProtocolConstants.STATUS_OK;
+    }
+
     private void OnDeviceConnected(object? sender, EventArgs e)
     {
         _logger.LogInformation("Device connected event");
