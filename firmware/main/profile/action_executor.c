@@ -120,22 +120,18 @@ static esp_err_t execute_single_action(action_type_t type, const uint8_t* data, 
             break;
         }
         
-        case ACTION_TYPE_SHELL: {
-            // Shell action - send to PC for execution
-            uint8_t payload[PROTOCOL_PAYLOAD_SIZE];
-            payload[0] = button_id;
-            payload[1] = profile_get_current_id();
-            payload[2] = ACTION_TYPE_SHELL;
-            
-            // Copy shell command data (flags + command string)
-            uint16_t copy_len = (data_len < 50) ? data_len : 50;
-            memcpy(&payload[3], data, copy_len);
-            
-            ESP_LOGI(TAG, "Sending shell command to PC");
-            protocol_send_event(EVENT_BUTTON_PRESSED, payload, 3 + copy_len);
+        case ACTION_TYPE_SHELL:
+            // buttons.c already sent EVENT_BUTTON_PRESSED before calling action_execute();
+            // backend's ActionExecutorService handles this via profile lookup — nothing to do here.
+            ESP_LOGI(TAG, "Shell action forwarded to PC via generic button event");
             break;
-        }
-        
+
+        case ACTION_TYPE_LAUNCH_APP:
+            // buttons.c already sent EVENT_BUTTON_PRESSED before calling action_execute();
+            // backend's ActionExecutorService handles this via profile lookup — nothing to do here.
+            ESP_LOGI(TAG, "LaunchApp action forwarded to PC via generic button event");
+            break;
+
         default:
             ESP_LOGW(TAG, "Unknown action type: %d", type);
             return ESP_ERR_INVALID_ARG;

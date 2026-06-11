@@ -55,6 +55,7 @@ try
     builder.Services.AddSingleton<EventRouter>();
     builder.Services.AddSingleton<IpcCommandHandler>();
     builder.Services.AddSingleton<IShellCommandExecutor, ShellCommandExecutor>();
+    builder.Services.AddSingleton<ActionExecutorService>();
 
     // Register the main service
     builder.Services.AddHostedService<BackendService>();
