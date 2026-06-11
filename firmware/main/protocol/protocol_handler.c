@@ -477,12 +477,16 @@ static esp_err_t handle_save_profile(const uint8_t* payload, uint16_t length,
     uint8_t profile_id = payload[0];
     
     esp_err_t ret = profile_save_to_storage(profile_id);
-    
+
+    if (ret == ESP_OK) {
+        image_storage_gc();
+    }
+
     response[0] = (ret == ESP_OK) ? STATUS_OK : STATUS_ERROR;
     // Bytes written = size of profile_t structure
     uint32_t bytes_written = (ret == ESP_OK) ? sizeof(profile_t) : 0;
     memcpy(&response[1], &bytes_written, 4);
-    
+
     *response_len = 5;
     return ESP_OK;
 }
@@ -506,6 +510,10 @@ static esp_err_t handle_delete_profile(const uint8_t* payload, uint16_t length,
     if (profile_id == profile_get_current_id() && profile_id != 0) {
         profile_switch(0);
     }
+
+    // Release all images belonging to this profile before removing the profile file.
+    // Without this, the mapping table retains stale entries and the blobs are never freed.
+    image_storage_cleanup_profile(profile_id);
 
     esp_err_t ret = profile_storage_delete(profile_id);
     // ESP_FAIL means the file didn't exist — still treat as success (idempotent)

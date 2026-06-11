@@ -21,6 +21,7 @@
 
 #include "common.h"
 #include "image_storage.h"
+#include "profile_storage.h"
 #include "config.h"
 #include "utils/crc.h"
 #include <sys/stat.h>
@@ -351,6 +352,10 @@ esp_err_t image_storage_init(void) {
         migrate_legacy_images();
     }
 
+    // Always run GC on init to recover from any previous crash or missed cleanup
+    // (e.g. profile deleted while device was powered off mid-operation).
+    image_storage_gc();
+
     ESP_LOGI(TAG, "Image storage initialized: %d unique images, %d mappings",
              s_num_images, s_num_mappings);
     return ESP_OK;
@@ -561,4 +566,79 @@ void image_storage_get_stats(uint16_t* total_images, uint16_t* total_mappings,
 
 esp_err_t image_storage_flush(void) {
     return save_map_to_flash();
+}
+
+esp_err_t image_storage_cleanup_profile(uint8_t profile_id) {
+    if (profile_id >= NUM_PROFILES) return ESP_ERR_INVALID_ARG;
+
+    bool changed = false;
+    // Iterate backwards: remove_mapping() swaps-with-last, so going forward
+    // would skip the entry that gets moved into the deleted slot.
+    for (int i = (int)s_num_mappings - 1; i >= 0; i--) {
+        if (s_mappings[i].profile_id == profile_id) {
+            uint32_t crc = s_mappings[i].crc32;
+            remove_mapping(i);
+            release_image(crc);
+            changed = true;
+        }
+    }
+
+    if (changed) {
+        save_map_to_flash();
+        ESP_LOGI(TAG, "Cleaned up images for deleted profile %d", profile_id);
+    }
+    return ESP_OK;
+}
+
+esp_err_t image_storage_gc(void) {
+    bool changed = false;
+
+    // Pass 1: remove mappings whose profile file no longer exists
+    for (int i = (int)s_num_mappings - 1; i >= 0; i--) {
+        uint8_t pid = s_mappings[i].profile_id;
+        if (!profile_storage_exists(pid)) {
+            uint32_t crc = s_mappings[i].crc32;
+            remove_mapping(i);
+            release_image(crc);
+            changed = true;
+            ESP_LOGW(TAG, "GC: removed orphan mapping (profile=%d no longer exists)", pid);
+        }
+    }
+
+    // Pass 2: for each existing profile, remove mappings for buttons that no
+    // longer have an image (image_size == 0 in the saved profile binary).
+    // profile_t is ~27 KB — allocate from PSRAM, not stack.
+    profile_t* profile = heap_caps_malloc(sizeof(profile_t), MALLOC_CAP_SPIRAM);
+    if (profile == NULL) {
+        ESP_LOGE(TAG, "GC: failed to allocate profile buffer, skipping button-level check");
+        goto done;
+    }
+
+    for (uint8_t pid = 0; pid < NUM_PROFILES; pid++) {
+        if (!profile_storage_exists(pid)) continue;
+        if (profile_storage_load(pid, profile) != ESP_OK) continue;
+
+        for (int i = (int)s_num_mappings - 1; i >= 0; i--) {
+            if (s_mappings[i].profile_id != pid) continue;
+            uint8_t bid = s_mappings[i].button_id;
+            if (bid < NUM_BUTTONS && profile->buttons[bid].image_size == 0) {
+                uint32_t crc = s_mappings[i].crc32;
+                remove_mapping(i);
+                release_image(crc);
+                changed = true;
+                ESP_LOGI(TAG, "GC: removed stale mapping profile=%d button=%d", pid, bid);
+            }
+        }
+    }
+
+    free(profile);
+
+done:
+    if (changed) {
+        save_map_to_flash();
+        ESP_LOGI(TAG, "GC: map saved after removing orphaned entries");
+    } else {
+        ESP_LOGD(TAG, "GC: no orphaned images found");
+    }
+    return ESP_OK;
 }

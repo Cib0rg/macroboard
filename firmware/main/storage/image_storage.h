@@ -92,4 +92,27 @@ void image_storage_get_stats(uint16_t* total_images, uint16_t* total_mappings,
  */
 esp_err_t image_storage_flush(void);
 
+/**
+ * @brief Remove all image mappings for a deleted profile and release blobs.
+ *
+ * Call this before deleting a profile file so the images it referenced
+ * have their refcounts decremented and are removed from flash when no
+ * other profile still references them.
+ *
+ * @param profile_id Profile being deleted
+ * @return ESP_OK on success
+ */
+esp_err_t image_storage_cleanup_profile(uint8_t profile_id);
+
+/**
+ * @brief Scan the mapping table for entries whose profile no longer exists
+ *        and delete them (plus orphaned blobs).
+ *
+ * Called automatically during image_storage_init() to recover from any
+ * previous crash or missed cleanup. Safe to call at any time.
+ *
+ * @return ESP_OK on success
+ */
+esp_err_t image_storage_gc(void);
+
 #endif // IMAGE_STORAGE_H
