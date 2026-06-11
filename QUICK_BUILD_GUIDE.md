@@ -95,11 +95,17 @@ pip install esptool
 **Шаг 4 — прошить:**
 
 ```powershell
-# Заменить COM3 на свой порт
-esptool.py -p COM3 -b 460800 --before default_reset --after hard_reset write_flash "@build/flash_args"
+# Перейти в build/ — пути внутри flash_args относительные от этой папки
+cd build
+
+# Заменить COM3 на свой порт.
+# PowerShell не раскрывает @file как Unix-шелл, поэтому читаем файл вручную:
+$flashArgs = (Get-Content flash_args) -split '\s+'
+& esptool.exe -p COM3 -b 460800 --before default-reset --after hard-reset write-flash @flashArgs
 ```
 
-`build/flash_args` генерируется автоматически при сборке и содержит все нужные адреса и бинарники.
+`flash_args` генерируется автоматически при сборке и содержит все нужные адреса и бинарники.
+Важно запускать esptool именно из `build/`, иначе он не найдёт относительные пути к бинарникам.
 
 ---
 
