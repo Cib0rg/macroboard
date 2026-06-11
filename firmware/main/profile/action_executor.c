@@ -68,14 +68,6 @@ static esp_err_t execute_single_action(action_type_t type, const uint8_t* data, 
             break;
         }
         
-        case ACTION_TYPE_PROFILE_SWITCH: {
-            if (data_len >= 1) {
-                uint8_t target_profile = data[0];
-                profile_switch(target_profile);
-            }
-            break;
-        }
-        
         case ACTION_TYPE_FOLDER: {
             // Note: folder_id should be passed in data[0] for sequence steps
             uint8_t folder_id = (data_len >= 1) ? data[0] : 0;

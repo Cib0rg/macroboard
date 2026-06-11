@@ -126,46 +126,68 @@ public class ProfileService : IProfileService
                     btn.ButtonId, btn.Action?.ActionType, btn.ImagePath ?? "(null)");
             }
             
-            // 1. Установить профиль
-            var profileSet = await _deviceService.SetProfileAsync(profile.ProfileId, cancellationToken);
+            // 1. Установить профиль (device always uses slot 0)
+            var profileSet = await _deviceService.SetProfileAsync(0, cancellationToken);
             if (!profileSet)
             {
                 _logger.LogError("Failed to set profile");
                 return false;
             }
-            
+
             progress?.Report(10);
-            
+
+            // 2a. Resolve missing LaunchApp icons from cache (happens when profile JSON
+            //     was saved before icon extraction, e.g. after a profile reset)
+            foreach (var btn in profile.Buttons)
+            {
+                if (!string.IsNullOrEmpty(btn.ImagePath)) continue;
+                if (btn.Action is not MacroKeyboard.Core.Models.LaunchAppAction la) continue;
+                if (string.IsNullOrEmpty(la.ExecutablePath)) continue;
+
+                var iconDir = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                    "MacroKeyboard", "icons");
+                var iconPath = Path.Combine(iconDir,
+                    Path.GetFileNameWithoutExtension(la.ExecutablePath) + ".png");
+                if (File.Exists(iconPath))
+                {
+                    btn.ImagePath = iconPath;
+                    _logger.LogInformation(
+                        "Resolved missing icon for button {ButtonId} from cache: {Path}",
+                        btn.ButtonId, iconPath);
+                }
+            }
+
             // 2. Отправить конфигурацию каждой кнопки
             for (int i = 0; i < profile.Buttons.Count; i++)
             {
                 if (cancellationToken.IsCancellationRequested)
                     return false;
-                
+
                 var button = profile.Buttons[i];
-                
+
                 // Отправить изображение (обработать через ImageService → 160x160 JPEG)
                 if (!string.IsNullOrEmpty(button.ImagePath) && File.Exists(button.ImagePath))
                 {
                     _logger.LogInformation("Processing image for button {ButtonId}: {Path}",
                         button.ButtonId, button.ImagePath);
-                    
+
                     var processedImage = await _imageService.ProcessImageForButtonAsync(button.ImagePath);
                     if (processedImage != null && processedImage.Length > 0)
                     {
                         var imageProgress = new Progress<int>(p =>
                             progress?.Report(10 + (i * 70 / profile.Buttons.Count) + (p * 70 / profile.Buttons.Count / 100)));
-                        
+
                         _logger.LogInformation("Sending processed image for button {ButtonId}: {Size} bytes (JPEG)",
                             button.ButtonId, processedImage.Length);
-                        
+
                         var imageSent = await _deviceService.SendButtonImageAsync(
-                            profile.ProfileId,
+                            0,
                             button.ButtonId,
                             processedImage,
                             imageProgress,
                             cancellationToken);
-                        
+
                         if (!imageSent)
                         {
                             _logger.LogWarning("Failed to send image for button {ButtonId}", button.ButtonId);
@@ -182,35 +204,35 @@ public class ProfileService : IProfileService
                     _logger.LogWarning("Image file not found for button {ButtonId}: {Path}",
                         button.ButtonId, button.ImagePath);
                 }
-                
+
                 // Отправить действие (null → NoneAction чтобы очистить предыдущую конфигурацию на устройстве)
                 var actionToSend = button.Action ?? new NoneAction();
                 await _deviceService.SetButtonActionAsync(
-                    profile.ProfileId,
+                    0,
                     button.ButtonId,
                     actionToSend,
                     cancellationToken);
 
                 // Отправить имя кнопки (пустая строка — firmware сгенерирует имя из типа команды)
                 await _deviceService.SetButtonNameAsync(
-                    profile.ProfileId,
+                    0,
                     button.ButtonId,
                     button.Name ?? string.Empty,
                     cancellationToken);
 
                 // Отправить LED
                 await _deviceService.SetLedColorAsync(
-                    profile.ProfileId,
+                    0,
                     button.ButtonId,
                     button.Led,
                     cancellationToken);
-                
+
                 progress?.Report(10 + ((i + 1) * 70 / profile.Buttons.Count));
-                
+
                 // Small delay between buttons to let firmware process commands
                 await Task.Delay(50, cancellationToken);
             }
-            
+
             // 3. Отправить кнопки внутри папок
             foreach (var folder in profile.Folders)
             {
@@ -223,22 +245,29 @@ public class ProfileService : IProfileService
 
                     var folderAction = btn?.Action ?? new NoneAction();
                     await _deviceService.SetFolderButtonActionAsync(
-                        profile.ProfileId, folder.FolderId, btnId, folderAction, cancellationToken);
+                        0, folder.FolderId, btnId, folderAction, cancellationToken);
 
                     await _deviceService.SetFolderButtonNameAsync(
-                        profile.ProfileId, folder.FolderId, btnId,
+                        0, folder.FolderId, btnId,
                         btn?.Name ?? string.Empty, cancellationToken);
 
                     var led = btn?.Led ?? LedConfig.FromRgb(80, 80, 80);
                     await _deviceService.SetFolderButtonLedAsync(
-                        profile.ProfileId, folder.FolderId, btnId, led, cancellationToken);
+                        0, folder.FolderId, btnId, led, cancellationToken);
 
                     await Task.Delay(50, cancellationToken);
                 }
             }
 
-            // 4. Сохранить профиль на устройстве
-            var saved = await _deviceService.SaveProfileAsync(profile.ProfileId, cancellationToken);
+            // 4. Отправить конфигурацию энкодера
+            var enc = profile.Encoder;
+            await _deviceService.SetEncoderActionAsync(0, enc?.RotateCwAction, cancellationToken);
+            await _deviceService.SetEncoderActionAsync(1, enc?.RotateCcwAction, cancellationToken);
+            await _deviceService.SetEncoderActionAsync(2, enc?.PressAction, cancellationToken);
+            await _deviceService.SetEncoderActionAsync(3, enc?.LongPressAction, cancellationToken);
+
+            // 5. Сохранить профиль на устройстве
+            var saved = await _deviceService.SaveProfileAsync(0, cancellationToken);
             
             progress?.Report(100);
             

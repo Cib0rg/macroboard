@@ -121,6 +121,11 @@ public interface IDeviceService
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Установить действие для слота энкодера (0=CW, 1=CCW, 2=press, 3=long press)
+    /// </summary>
+    Task<bool> SetEncoderActionAsync(byte slot, ActionConfig? action, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Сохранить профиль в энергонезависимую память
     /// </summary>
     Task<bool> SaveProfileAsync(byte profileId, CancellationToken cancellationToken = default);

@@ -94,6 +94,17 @@ esp_err_t profile_set_led_color(uint8_t profile_id, uint8_t button_id,
                                  uint8_t brightness, uint8_t effect);
 
 /**
+ * @brief Set encoder action for a specific slot
+ * @param slot 0=CW, 1=CCW, 2=press short, 3=press long
+ * @param action_type Action type
+ * @param action_data Action data
+ * @param action_len Action data length
+ * @return ESP_OK on success
+ */
+esp_err_t profile_set_encoder_action(uint8_t slot, uint8_t action_type,
+                                      const uint8_t* action_data, uint16_t action_len);
+
+/**
  * @brief Save profile to storage
  * @param profile_id Profile ID
  * @return ESP_OK on success

@@ -177,7 +177,6 @@ public partial class ButtonConfigDialogViewModel : ViewModelBase
         ActionType.LaunchApp,
         ActionType.Shell,
         ActionType.Sequence,
-        ActionType.ProfileSwitch,
         ActionType.Folder,
         ActionType.NightMode,
         ActionType.CustomHid,
@@ -191,7 +190,6 @@ public partial class ButtonConfigDialogViewModel : ViewModelBase
         ActionType.Keyboard,
         ActionType.Shell,
         ActionType.CustomHid,
-        ActionType.ProfileSwitch,
         ActionType.Folder,
         ActionType.Delay,
     };

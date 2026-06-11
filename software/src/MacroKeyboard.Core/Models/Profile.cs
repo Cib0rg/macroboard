@@ -110,7 +110,12 @@ public class EncoderConfig
     public ActionConfig? RotateCcwAction { get; set; }
     
     /// <summary>
-    /// Действие при нажатии кнопки энкодера
+    /// Действие при коротком нажатии кнопки энкодера
     /// </summary>
     public ActionConfig? PressAction { get; set; }
+
+    /// <summary>
+    /// Действие при долгом нажатии кнопки энкодера
+    /// </summary>
+    public ActionConfig? LongPressAction { get; set; }
 }

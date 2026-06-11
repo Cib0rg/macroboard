@@ -114,9 +114,13 @@ typedef struct {
     uint16_t ccw_action_data_len;
     uint8_t ccw_action_data[ACTION_DATA_MAX_LEN];
     
-    action_type_t press_action_type;        // Action on button press
+    action_type_t press_action_type;        // Action on short press
     uint16_t press_action_data_len;
     uint8_t press_action_data[ACTION_DATA_MAX_LEN];
+
+    action_type_t long_press_action_type;   // Action on long press
+    uint16_t long_press_action_data_len;
+    uint8_t long_press_action_data[ACTION_DATA_MAX_LEN];
 } encoder_config_t;
 
 // ============================================

@@ -78,7 +78,7 @@
 // ============================================
 // Profile Configuration
 // ============================================
-#define NUM_PROFILES            5
+#define NUM_PROFILES            1
 #define PROFILE_NAME_MAX_LEN    32
 #define BUTTON_NAME_MAX_LEN     32
 #define ACTION_DATA_MAX_LEN     100

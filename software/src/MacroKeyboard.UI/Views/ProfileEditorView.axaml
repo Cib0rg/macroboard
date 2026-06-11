@@ -105,31 +105,35 @@
                     <StackPanel Spacing="8">
                         <TextBlock Text="🔄 ENCODER" FontSize="13" FontWeight="Bold" Foreground="#FFA500" />
                         
-                        <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto" RowSpacing="6" ColumnSpacing="10">
+                        <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto" RowSpacing="6" ColumnSpacing="10">
                             <!-- CW -->
                             <TextBlock Grid.Row="0" Grid.Column="0" Text="↻ Clockwise:" FontSize="11" Opacity="0.7" VerticalAlignment="Center" />
-                            <ComboBox Grid.Row="0" Grid.Column="1"
-                                      ItemsSource="{Binding EncoderActionTypes}"
-                                      SelectedItem="{Binding EncoderCwActionType}"
-                                      HorizontalAlignment="Stretch" />
-                            
+                            <Button Grid.Row="0" Grid.Column="1"
+                                    Content="{Binding EncoderCwActionDisplay}"
+                                    Command="{Binding ConfigureEncoderCwCommand}"
+                                    HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" />
+
                             <!-- CCW -->
                             <TextBlock Grid.Row="1" Grid.Column="0" Text="↺ Counter-CW:" FontSize="11" Opacity="0.7" VerticalAlignment="Center" />
-                            <ComboBox Grid.Row="1" Grid.Column="1"
-                                      ItemsSource="{Binding EncoderActionTypes}"
-                                      SelectedItem="{Binding EncoderCcwActionType}"
-                                      HorizontalAlignment="Stretch" />
-                            
-                            <!-- Press -->
+                            <Button Grid.Row="1" Grid.Column="1"
+                                    Content="{Binding EncoderCcwActionDisplay}"
+                                    Command="{Binding ConfigureEncoderCcwCommand}"
+                                    HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" />
+
+                            <!-- Press short -->
                             <TextBlock Grid.Row="2" Grid.Column="0" Text="⏎ Press:" FontSize="11" Opacity="0.7" VerticalAlignment="Center" />
-                            <ComboBox Grid.Row="2" Grid.Column="1"
-                                      ItemsSource="{Binding EncoderActionTypes}"
-                                      SelectedItem="{Binding EncoderPressActionType}"
-                                      HorizontalAlignment="Stretch" />
+                            <Button Grid.Row="2" Grid.Column="1"
+                                    Content="{Binding EncoderPressActionDisplay}"
+                                    Command="{Binding ConfigureEncoderPressCommand}"
+                                    HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" />
+
+                            <!-- Press long -->
+                            <TextBlock Grid.Row="3" Grid.Column="0" Text="⏎⏎ Long Press:" FontSize="11" Opacity="0.7" VerticalAlignment="Center" />
+                            <Button Grid.Row="3" Grid.Column="1"
+                                    Content="{Binding EncoderLongPressActionDisplay}"
+                                    Command="{Binding ConfigureEncoderLongPressCommand}"
+                                    HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" />
                         </Grid>
-                        
-                        <TextBlock Text="Default: CW/CCW = switch profile, Press = profile 0"
-                                   FontSize="9" Opacity="0.4" />
                     </StackPanel>
                 </Border>
                 

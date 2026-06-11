@@ -7,7 +7,6 @@
 #include "profile_manager.h"
 #include "storage/profile_storage.h"
 #include "storage/image_storage.h"
-#include "storage/nvs_manager.h"
 #include "hardware/leds.h"
 #include "hardware/gc9a01.h"
 #include "protocol/protocol_handler.h"
@@ -43,13 +42,6 @@ esp_err_t profile_manager_init(void) {
         return ESP_FAIL;
     }
     
-    // Load current profile ID from NVS
-    nvs_get_current_profile(&current_profile_id);
-    
-    if (current_profile_id >= NUM_PROFILES) {
-        current_profile_id = 0;
-    }
-    
     // Try to load profile from storage
     esp_err_t ret = profile_storage_load(current_profile_id, &current_profile);
     if (ret != ESP_OK) {
@@ -70,7 +62,6 @@ esp_err_t profile_switch(uint8_t profile_id) {
     }
     
     if (profile_id == current_profile_id) {
-        nvs_set_current_profile(profile_id);
         return ESP_OK;
     }
     
@@ -112,9 +103,6 @@ esp_err_t profile_switch(uint8_t profile_id) {
         profile_update_button_display(i, &current_profile.buttons[i]);
     }
 
-    // Save to NVS
-    nvs_set_current_profile(profile_id);
-    
     xSemaphoreGive(profile_mutex);
     
     ESP_LOGI(TAG, "Profile switched to %d", profile_id);
@@ -145,6 +133,40 @@ button_config_t* profile_get_button_config(uint8_t button_id) {
     
     // Otherwise return from root profile
     return &current_profile.buttons[button_id];
+}
+
+esp_err_t profile_set_encoder_action(uint8_t slot, uint8_t action_type,
+                                      const uint8_t* action_data, uint16_t action_len) {
+    if (slot > 3) return ESP_ERR_INVALID_ARG;
+    if (action_len > ACTION_DATA_MAX_LEN) action_len = ACTION_DATA_MAX_LEN;
+
+    xSemaphoreTake(profile_mutex, portMAX_DELAY);
+
+    switch (slot) {
+        case 0:
+            current_profile.encoder.cw_action_type = action_type;
+            current_profile.encoder.cw_action_data_len = action_len;
+            if (action_data && action_len > 0) memcpy(current_profile.encoder.cw_action_data, action_data, action_len);
+            break;
+        case 1:
+            current_profile.encoder.ccw_action_type = action_type;
+            current_profile.encoder.ccw_action_data_len = action_len;
+            if (action_data && action_len > 0) memcpy(current_profile.encoder.ccw_action_data, action_data, action_len);
+            break;
+        case 2:
+            current_profile.encoder.press_action_type = action_type;
+            current_profile.encoder.press_action_data_len = action_len;
+            if (action_data && action_len > 0) memcpy(current_profile.encoder.press_action_data, action_data, action_len);
+            break;
+        case 3:
+            current_profile.encoder.long_press_action_type = action_type;
+            current_profile.encoder.long_press_action_data_len = action_len;
+            if (action_data && action_len > 0) memcpy(current_profile.encoder.long_press_action_data, action_data, action_len);
+            break;
+    }
+
+    xSemaphoreGive(profile_mutex);
+    return ESP_OK;
 }
 
 esp_err_t profile_set_button_action(uint8_t profile_id, uint8_t button_id,

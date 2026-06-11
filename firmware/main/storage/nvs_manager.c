@@ -31,40 +31,6 @@ esp_err_t nvs_manager_init(void) {
     return ESP_OK;
 }
 
-esp_err_t nvs_get_current_profile(uint8_t* profile_id) {
-    nvs_handle_t nvs;
-    esp_err_t ret = nvs_open(NVS_NAMESPACE, NVS_READONLY, &nvs);
-    if (ret != ESP_OK) {
-        *profile_id = 0; // Default
-        return ret;
-    }
-    
-    ret = nvs_get_u8(nvs, "curr_profile", profile_id);
-    if (ret == ESP_ERR_NVS_NOT_FOUND) {
-        *profile_id = 0; // Default
-        ret = ESP_OK;
-    }
-    
-    nvs_close(nvs);
-    return ret;
-}
-
-esp_err_t nvs_set_current_profile(uint8_t profile_id) {
-    nvs_handle_t nvs;
-    esp_err_t ret = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs);
-    if (ret != ESP_OK) {
-        return ret;
-    }
-    
-    ret = nvs_set_u8(nvs, "curr_profile", profile_id);
-    if (ret == ESP_OK) {
-        ret = nvs_commit(nvs);
-    }
-    
-    nvs_close(nvs);
-    return ret;
-}
-
 esp_err_t nvs_get_wifi_credentials(char* ssid, char* password) {
     nvs_handle_t nvs;
     esp_err_t ret = nvs_open("wifi", NVS_READONLY, &nvs);

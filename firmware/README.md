@@ -5,10 +5,10 @@
 ## Возможности
 
 - 10 программируемых кнопок с дисплеями GC9A01 (160x160)
-- Rotary encoder для переключения профилей
+- Rotary encoder с настраиваемыми действиями (CW/CCW/нажатие/долгое нажатие)
 - RGB подсветка WS2812 под каждой кнопкой
 - USB Composite Device: HID Keyboard + Vendor Bulk interface
-- 5 профилей с сохранением в flash
+- Конфигурация с сохранением в flash (NVS)
 - WiFi OTA обновления
 - Протокол обмена с управляющим софтом
 
@@ -53,8 +53,7 @@ idf.py -p /dev/ttyUSB0 flash monitor
 Основные параметры в [`config.h`](main/config.h):
 
 - `NUM_BUTTONS` — количество кнопок (10)
-- `NUM_PROFILES` — количество профилей (5)
-- `NUM_FOLDERS` — количество папок на профиль (16)
+- `NUM_FOLDERS` — количество папок (16)
 - `FOLDER_STACK_DEPTH` — максимальная вложенность папок (4)
 - `DISPLAY_WIDTH/HEIGHT` — размер дисплеев (160×160)
 - GPIO пины для всех компонентов
@@ -101,8 +100,6 @@ Offset  Size  Description
 |----|---------|----------|
 | `0x01` | `CMD_PING` | Проверка связи |
 | `0x02` | `CMD_GET_DEVICE_INFO` | Информация об устройстве |
-| `0x10` | `CMD_SET_PROFILE` | Переключение профиля |
-| `0x11` | `CMD_GET_PROFILE_INFO` | Информация о профиле |
 | `0x20` | `CMD_START_IMAGE_TRANSFER` | Начало передачи изображения |
 | `0x21` | `CMD_IMAGE_DATA_CHUNK` | Фрагмент изображения |
 | `0x22` | `CMD_END_IMAGE_TRANSFER` | Завершение передачи |
@@ -110,7 +107,8 @@ Offset  Size  Description
 | `0x31` | `CMD_GET_BUTTON_ACTION` | Чтение действия кнопки |
 | `0x40` | `CMD_SET_LED_COLOR` | Настройка цвета LED |
 | `0x42` | `CMD_GET_LED_COLOR` | Чтение цвета LED |
-| `0x50` | `CMD_SAVE_PROFILE` | Сохранение профиля в NVS |
+| `0x35` | `CMD_SET_ENCODER_ACTION` | Настройка действий энкодера |
+| `0x50` | `CMD_SAVE_PROFILE` | Сохранение конфигурации в NVS |
 
 ### События (Device → PC)
 
@@ -118,7 +116,6 @@ Offset  Size  Description
 |----|---------|----------|
 | `0xF0` | `EVENT_BUTTON_PRESSED` | Кнопка нажата |
 | `0xF1` | `EVENT_ENCODER_ROTATED` | Энкодер повёрнут |
-| `0xF3` | `EVENT_PROFILE_CHANGED` | Профиль изменён |
 | `0xF4` | `EVENT_DEVICE_READY` | Устройство готово |
 | `0xF5` | `EVENT_FOLDER_ENTERED` | Вход в папку |
 | `0xF6` | `EVENT_FOLDER_EXITED` | Выход из папки |
@@ -132,14 +129,14 @@ Interface 1: Vendor Bulk (протокол обмена)
   EP 0x82 (IN)  — ответы и события от устройства к PC
 ```
 
-## Профили
+## Конфигурация
 
-Каждый профиль содержит:
-- Имя профиля
-- Конфигурацию 10 кнопок (действия, LED цвета)
-- Изображения для дисплеев (JPEG, хранятся отдельно)
+Устройство хранит одну конфигурацию, которая содержит:
+- Настройки 10 кнопок (действия, LED цвета)
+- Настройки энкодера (CW/CCW/нажатие/долгое нажатие)
+- Изображения для дисплеев (JPEG, хранятся в SPIFFS)
 
-Профили сохраняются в SPIFFS раздел (10 MB).
+Конфигурация сохраняется в NVS и SPIFFS раздел (10 MB).
 
 ## OTA обновления
 

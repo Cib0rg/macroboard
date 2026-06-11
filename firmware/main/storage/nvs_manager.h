@@ -16,20 +16,6 @@
 esp_err_t nvs_manager_init(void);
 
 /**
- * @brief Get current profile ID
- * @param profile_id Output profile ID
- * @return ESP_OK on success
- */
-esp_err_t nvs_get_current_profile(uint8_t* profile_id);
-
-/**
- * @brief Set current profile ID
- * @param profile_id Profile ID to set
- * @return ESP_OK on success
- */
-esp_err_t nvs_set_current_profile(uint8_t profile_id);
-
-/**
  * @brief Get WiFi credentials
  * @param ssid Output SSID buffer (min 32 bytes)
  * @param password Output password buffer (min 64 bytes)

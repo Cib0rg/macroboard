@@ -30,6 +30,7 @@ public class DeviceService : IDeviceService
     private readonly SetFolderButtonActionCommand _setFolderButtonActionCommand;
     private readonly SetFolderButtonNameCommand _setFolderButtonNameCommand;
     private readonly SetFolderButtonLedCommand _setFolderButtonLedCommand;
+    private readonly SetEncoderActionCommand _setEncoderActionCommand;
     
     public event EventHandler<DeviceEventArgs>? DeviceConnected;
     public event EventHandler<DeviceEventArgs>? DeviceDisconnected;
@@ -66,6 +67,7 @@ public class DeviceService : IDeviceService
         _setFolderButtonActionCommand = new SetFolderButtonActionCommand(_protocol, loggerFactory.CreateLogger<SetFolderButtonActionCommand>());
         _setFolderButtonNameCommand   = new SetFolderButtonNameCommand(_protocol, loggerFactory.CreateLogger<SetFolderButtonNameCommand>());
         _setFolderButtonLedCommand    = new SetFolderButtonLedCommand(_protocol, loggerFactory.CreateLogger<SetFolderButtonLedCommand>());
+        _setEncoderActionCommand      = new SetEncoderActionCommand(_protocol, loggerFactory.CreateLogger<SetEncoderActionCommand>());
         
         // Подписаться на события устройства
         _deviceManager.DeviceConnected += OnDeviceConnected;
@@ -198,15 +200,13 @@ public class DeviceService : IDeviceService
         return response != null && response.Payload[0] == ProtocolConstants.STATUS_OK;
     }
 
-    public async Task<bool> DeleteProfileFromDeviceAsync(byte profileId, CancellationToken cancellationToken = default)
-    {
-        var payload = new byte[] { profileId };
-        var response = await _protocol.SendCommandAsync(
-            ProtocolConstants.CMD_DELETE_PROFILE,
-            payload,
-            cancellationToken: cancellationToken);
+    public async Task<bool> SetEncoderActionAsync(byte slot, ActionConfig? action, CancellationToken cancellationToken = default)
+        => await _setEncoderActionCommand.ExecuteAsync(slot, action, cancellationToken);
 
-        return response != null && response.Payload[0] == ProtocolConstants.STATUS_OK;
+    public Task<bool> DeleteProfileFromDeviceAsync(byte profileId, CancellationToken cancellationToken = default)
+    {
+        // Device holds a single profile slot; deletion is handled locally only.
+        return Task.FromResult(true);
     }
 
     private void OnDeviceConnected(object? sender, EventArgs e)

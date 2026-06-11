@@ -8,18 +8,14 @@
 #include "esp_log.h"
 #include "driver/gpio.h"
 #include "esp_timer.h"
-#include "profile/profile_manager.h"
 #include "profile/action_executor.h"
+#include "profile/profile_manager.h"
 
 static const char* TAG = "ENCODER";
 
 QueueHandle_t encoder_event_queue = NULL;
 
-// Encoder state
-static volatile int8_t encoder_state = 0;
-static volatile uint64_t last_rotation_time = 0;
-static volatile uint64_t button_press_time = 0;
-static volatile bool button_pressed = false;
+static volatile uint32_t s_isr_fire_count = 0;  // incremented in ISR, logged in task
 
 // Encoder state machine lookup table
 static const int8_t encoder_table[16] = {
@@ -53,17 +49,19 @@ static void IRAM_ATTR encoder_rotation_isr(void* arg) {
     
     int8_t direction = encoder_table[combined];
     
+    s_isr_fire_count++;
+
     if (direction != 0) {
         BaseType_t xHigherPriorityTaskWoken = pdFALSE;
-        
+
         encoder_event_t event = {
             .type = ENCODER_ROTATED,
             .direction = (direction > 0) ? ENCODER_CW : ENCODER_CCW,
             .timestamp = esp_timer_get_time(),
         };
-        
+
         xQueueSendFromISR(encoder_event_queue, &event, &xHigherPriorityTaskWoken);
-        
+
         if (xHigherPriorityTaskWoken) {
             portYIELD_FROM_ISR();
         }
@@ -91,8 +89,8 @@ static void IRAM_ATTR encoder_button_isr(void* arg) {
 esp_err_t encoder_init(void) {
     ESP_LOGI(TAG, "Initializing encoder");
     
-    // Create event queue
-    encoder_event_queue = xQueueCreate(5, sizeof(encoder_event_t));
+    // Create event queue — 32 slots so burst-rotation during button hold doesn't overflow
+    encoder_event_queue = xQueueCreate(32, sizeof(encoder_event_t));
     if (encoder_event_queue == NULL) {
         ESP_LOGE(TAG, "Failed to create encoder event queue");
         return ESP_FAIL;
@@ -135,112 +133,89 @@ esp_err_t encoder_init(void) {
     return ESP_OK;
 }
 
-/**
- * @brief Default encoder behavior: switch to next/previous profile
- */
-static void encoder_default_profile_switch(bool clockwise) {
-    uint8_t current = profile_get_current_id();
-    uint8_t next;
-    
-    if (clockwise) {
-        next = (current + 1) % NUM_PROFILES;
-    } else {
-        next = (current == 0) ? (NUM_PROFILES - 1) : (current - 1);
-    }
-    
-    ESP_LOGI(TAG, "Default: switching profile %d -> %d", current, next);
-    profile_switch(next);
-}
-
-/**
- * @brief Execute encoder action from profile config, or fall back to default
- */
-static void encoder_execute_action(action_type_t type, const uint8_t* data, uint16_t data_len, bool is_rotation, bool clockwise) {
-    if (type == ACTION_TYPE_NONE) {
-        // No action configured — use default behavior
-        if (is_rotation) {
-            encoder_default_profile_switch(clockwise);
-        } else {
-            // Default button press: reset to profile 0
-            ESP_LOGI(TAG, "Default: encoder press -> profile 0");
-            profile_switch(0);
-        }
-    } else {
-        // Execute configured action
-        action_execute_raw(type, data, data_len);
-    }
-}
 
 void encoder_task(void* arg) {
     encoder_event_t event;
     int16_t step_accumulator = 0;
-    
-    ESP_LOGI(TAG, "Encoder task started");
-    
+    uint32_t last_logged_isr_count = 0;
+
+    ESP_LOGI(TAG, "Encoder task started (pins A=%d B=%d BTN=%d, threshold=%d)",
+             PIN_ENCODER_A, PIN_ENCODER_B, PIN_ENCODER_BTN, ENCODER_STEPS_PER_PROFILE);
+    ESP_LOGI(TAG, "Initial pin states: A=%d B=%d",
+             gpio_get_level(PIN_ENCODER_A), gpio_get_level(PIN_ENCODER_B));
+
     while (1) {
-        if (xQueueReceive(encoder_event_queue, &event, portMAX_DELAY)) {
-            
-            // Get current profile's encoder config
-            profile_t* current_profile = profile_get(profile_get_current_id());
+        if (xQueueReceive(encoder_event_queue, &event, pdMS_TO_TICKS(2000))) {
+
+            // Log ISR fire count whenever it changed — confirms interrupts are arriving
+            uint32_t cur = s_isr_fire_count;
+            if (cur != last_logged_isr_count) {
+                ESP_LOGI(TAG, "ISR fired %lu times total", (unsigned long)cur);
+                last_logged_isr_count = cur;
+            }
+
+            profile_t* current_profile = profile_get(0);
             encoder_config_t* enc_cfg = current_profile ? &current_profile->encoder : NULL;
-            
+
             if (event.type == ENCODER_ROTATED) {
-                // Accumulate steps
                 if (event.direction == ENCODER_CW) {
                     step_accumulator++;
                 } else {
                     step_accumulator--;
                 }
-                
-                ESP_LOGD(TAG, "Encoder steps: %d", step_accumulator);
-                
-                // Check if threshold reached
+
+                ESP_LOGI(TAG, "Rotation event: %s, accumulator=%d",
+                         event.direction == ENCODER_CW ? "CW" : "CCW", step_accumulator);
+
                 if (abs(step_accumulator) >= ENCODER_STEPS_PER_PROFILE) {
                     bool clockwise = step_accumulator > 0;
-                    
+                    ESP_LOGI(TAG, "Threshold reached → firing %s action", clockwise ? "CW" : "CCW");
+
                     if (enc_cfg != NULL && clockwise && enc_cfg->cw_action_type != ACTION_TYPE_NONE) {
-                        encoder_execute_action(enc_cfg->cw_action_type, enc_cfg->cw_action_data, enc_cfg->cw_action_data_len, true, true);
+                        action_execute_raw(enc_cfg->cw_action_type, enc_cfg->cw_action_data, enc_cfg->cw_action_data_len);
                     } else if (enc_cfg != NULL && !clockwise && enc_cfg->ccw_action_type != ACTION_TYPE_NONE) {
-                        encoder_execute_action(enc_cfg->ccw_action_type, enc_cfg->ccw_action_data, enc_cfg->ccw_action_data_len, true, false);
+                        action_execute_raw(enc_cfg->ccw_action_type, enc_cfg->ccw_action_data, enc_cfg->ccw_action_data_len);
                     } else {
-                        // Default: profile switching
-                        encoder_default_profile_switch(clockwise);
+                        ESP_LOGW(TAG, "No action configured for %s rotation", clockwise ? "CW" : "CCW");
                     }
-                    
+
                     step_accumulator = 0;
                 }
             }
             else if (event.type == ENCODER_BUTTON_PRESSED) {
-                // Debounce
-                vTaskDelay(pdMS_TO_TICKS(50));
-                
+                vTaskDelay(pdMS_TO_TICKS(50));  // debounce
+
                 int level = gpio_get_level(PIN_ENCODER_BTN);
                 if (level == 0) {
-                    // Button still pressed after debounce
                     uint64_t press_start = event.timestamp;
-                    
-                    // Wait for release or long press timeout
+
                     while (gpio_get_level(PIN_ENCODER_BTN) == 0) {
                         vTaskDelay(pdMS_TO_TICKS(10));
-                        
-                        uint64_t press_duration = esp_timer_get_time() - press_start;
-                        if (press_duration >= (BUTTON_LONG_PRESS_MS * 1000)) {
-                            ESP_LOGI(TAG, "Encoder button long press");
+                        if ((esp_timer_get_time() - press_start) >= (BUTTON_LONG_PRESS_MS * 1000ULL)) {
                             break;
                         }
                     }
-                    
+
                     uint64_t press_duration = esp_timer_get_time() - press_start;
-                    if (press_duration < (BUTTON_LONG_PRESS_MS * 1000)) {
+                    if (press_duration < (BUTTON_LONG_PRESS_MS * 1000ULL)) {
                         ESP_LOGI(TAG, "Encoder button short press");
-                        if (enc_cfg != NULL) {
-                            encoder_execute_action(enc_cfg->press_action_type, enc_cfg->press_action_data, enc_cfg->press_action_data_len, false, false);
-                        } else {
-                            // Default: reset to profile 0
-                            profile_switch(0);
+                        if (enc_cfg != NULL && enc_cfg->press_action_type != ACTION_TYPE_NONE) {
+                            action_execute_raw(enc_cfg->press_action_type, enc_cfg->press_action_data, enc_cfg->press_action_data_len);
+                        }
+                    } else {
+                        ESP_LOGI(TAG, "Encoder button long press");
+                        if (enc_cfg != NULL && enc_cfg->long_press_action_type != ACTION_TYPE_NONE) {
+                            action_execute_raw(enc_cfg->long_press_action_type, enc_cfg->long_press_action_data, enc_cfg->long_press_action_data_len);
                         }
                     }
                 }
+            }
+        } else {
+            // 2-second timeout — log ISR count to confirm ISR is (or isn't) firing
+            uint32_t cur = s_isr_fire_count;
+            if (cur != last_logged_isr_count) {
+                ESP_LOGI(TAG, "ISR fired %lu times total (idle flush)", (unsigned long)cur);
+                last_logged_isr_count = cur;
             }
         }
     }

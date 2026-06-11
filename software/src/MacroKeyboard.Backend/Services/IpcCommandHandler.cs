@@ -144,16 +144,8 @@ public class IpcCommandHandler
 
         var profileId = Convert.ToByte(data["profileId"]);
 
-        // Delete from local storage
+        // Delete from local storage only — device holds a single slot and is never deleted remotely
         var localSuccess = await _profileService.DeleteProfileAsync(profileId);
-
-        // Best-effort delete from device (don't fail the whole operation if device is offline)
-        if (_deviceService.IsConnected)
-        {
-            var deviceSuccess = await _deviceService.DeleteProfileFromDeviceAsync(profileId);
-            if (!deviceSuccess)
-                _logger.LogWarning("Could not delete profile {ProfileId} from device flash; local copy removed", profileId);
-        }
 
         return localSuccess
             ? IpcResponse.Ok(message)
@@ -201,21 +193,13 @@ public class IpcCommandHandler
             return IpcResponse.Fail(message, "Device not connected");
         }
 
-        var data = message.GetDataAsDictionary();
-        if (data == null || !data.ContainsKey("profileId"))
-        {
-            return IpcResponse.Fail(message, "Missing profileId");
-        }
+        _logger.LogInformation("Loading profile from device (slot 0)");
 
-        var profileId = Convert.ToByte(data["profileId"]);
-        
-        _logger.LogInformation("Loading profile {ProfileId} from device", profileId);
-        
-        var profile = await _profileService.LoadProfileFromDeviceAsync(profileId);
-        
-        return profile != null 
-            ? IpcResponse.Ok(message, profile) 
-            : IpcResponse.Fail(message, $"Failed to load profile {profileId} from device");
+        var profile = await _profileService.LoadProfileFromDeviceAsync(0);
+
+        return profile != null
+            ? IpcResponse.Ok(message, profile)
+            : IpcResponse.Fail(message, "Failed to load profile from device");
     }
 
     private async Task<IpcResponse> HandleProfileGetInfo(IpcMessage message)
@@ -225,19 +209,11 @@ public class IpcCommandHandler
             return IpcResponse.Fail(message, "Device not connected");
         }
 
-        var data = message.GetDataAsDictionary();
-        if (data == null || !data.ContainsKey("profileId"))
-        {
-            return IpcResponse.Fail(message, "Missing profileId");
-        }
+        var profileInfo = await _deviceService.GetProfileInfoAsync(0);
 
-        var profileId = Convert.ToByte(data["profileId"]);
-        
-        var profileInfo = await _deviceService.GetProfileInfoAsync(profileId);
-        
         return profileInfo != null
             ? IpcResponse.Ok(message, profileInfo)
-            : IpcResponse.Fail(message, $"Failed to get info for profile {profileId}");
+            : IpcResponse.Fail(message, "Failed to get profile info from device");
     }
 
     private async Task<IpcResponse> HandleSetButtonAction(IpcMessage message)

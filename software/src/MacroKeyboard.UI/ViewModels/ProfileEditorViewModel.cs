@@ -52,29 +52,45 @@ public partial class ProfileEditorViewModel : ViewModelBase
     // ============================================
     // Encoder configuration
     // ============================================
-    
-    [ObservableProperty]
-    private EncoderActionItem? _encoderCwActionType;
-    
-    [ObservableProperty]
-    private EncoderActionItem? _encoderCcwActionType;
-    
-    [ObservableProperty]
-    private EncoderActionItem? _encoderPressActionType;
-    
-    /// <summary>
-    /// Available encoder action types for ComboBox binding
-    /// </summary>
-    public ObservableCollection<EncoderActionItem> EncoderActionTypes { get; } = new()
+
+    private int _encoderEditingSlot = -1;
+    private readonly ButtonConfig _encoderCwConfig    = new() { ButtonId = 200 };
+    private readonly ButtonConfig _encoderCcwConfig   = new() { ButtonId = 201 };
+    private readonly ButtonConfig _encoderPressConfig = new() { ButtonId = 202 };
+    private readonly ButtonConfig _encoderLongConfig  = new() { ButtonId = 203 };
+
+    public string EncoderCwActionDisplay   => GetActionDisplayName(_encoderCwConfig.Action);
+    public string EncoderCcwActionDisplay  => GetActionDisplayName(_encoderCcwConfig.Action);
+    public string EncoderPressActionDisplay => GetActionDisplayName(_encoderPressConfig.Action);
+    public string EncoderLongPressActionDisplay => GetActionDisplayName(_encoderLongConfig.Action);
+
+    private static string GetActionDisplayName(ActionConfig? action) => action switch
     {
-        new EncoderActionItem("Default (profile switch)", null),
-        new EncoderActionItem("🔊 Volume Up", () => new MediaAction { Key = MediaKey.VolumeUp }),
-        new EncoderActionItem("🔉 Volume Down", () => new MediaAction { Key = MediaKey.VolumeDown }),
-        new EncoderActionItem("🔇 Mute/Unmute", () => new MediaAction { Key = MediaKey.Mute }),
-        new EncoderActionItem("⏯ Play/Pause", () => new MediaAction { Key = MediaKey.PlayPause }),
-        new EncoderActionItem("⏭ Next Track", () => new MediaAction { Key = MediaKey.NextTrack }),
-        new EncoderActionItem("⏮ Previous Track", () => new MediaAction { Key = MediaKey.PreviousTrack }),
+        null or NoneAction => "None",
+        KeyboardAction ka when ka.KeyCode != 0 => $"Key: 0x{ka.KeyCode:X2}",
+        KeyboardAction => "Type text",
+        MediaAction ma => $"Media: {ma.Key}",
+        ShellAction sa => $"Shell: {sa.Command?[..Math.Min(sa.Command?.Length ?? 0, 20)] ?? "..."}",
+        LaunchAppAction la => $"Launch: {System.IO.Path.GetFileNameWithoutExtension(la.ExecutablePath ?? "App")}",
+        FolderAction => "Folder",
+        SequenceAction => "Sequence",
+        CustomHidAction => "Custom HID",
+        NightModeAction => "Night Mode",
+        DelayAction da => $"Delay {da.DelayMs}ms",
+        _ => action.ActionType.ToString()
     };
+
+    [RelayCommand]
+    private void ConfigureEncoderCw() { _encoderEditingSlot = 0; OpenButtonConfigInline(_encoderCwConfig); }
+
+    [RelayCommand]
+    private void ConfigureEncoderCcw() { _encoderEditingSlot = 1; OpenButtonConfigInline(_encoderCcwConfig); }
+
+    [RelayCommand]
+    private void ConfigureEncoderPress() { _encoderEditingSlot = 2; OpenButtonConfigInline(_encoderPressConfig); }
+
+    [RelayCommand]
+    private void ConfigureEncoderLongPress() { _encoderEditingSlot = 3; OpenButtonConfigInline(_encoderLongConfig); }
 
     [ObservableProperty]
     private ButtonConfigDialogViewModel? _buttonConfigViewModel;
@@ -125,7 +141,6 @@ public partial class ProfileEditorViewModel : ViewModelBase
         new ActionPaletteItem(ActionType.LaunchApp,     "Launch App",  "🚀", "Launch an application with optional arguments"),
         new ActionPaletteItem(ActionType.Shell,         "Shell",       "💻", "Execute a shell command on the PC"),
         new ActionPaletteItem(ActionType.Sequence,      "Sequence",    "📋", "Execute multiple actions in sequence"),
-        new ActionPaletteItem(ActionType.ProfileSwitch, "Profile",     "🔄", "Switch to another profile"),
         new ActionPaletteItem(ActionType.Folder,        "Folder",      "📁", "Open a folder of sub-buttons"),
         new ActionPaletteItem(ActionType.CustomHid,     "Custom HID",  "🔌", "Send custom HID report"),
         new ActionPaletteItem(ActionType.None,          "None",        "⊘",  "No action assigned"),
@@ -153,74 +168,16 @@ public partial class ProfileEditorViewModel : ViewModelBase
         HasUnsavedChanges = false;
     }
 
-    /// <summary>
-    /// Sync encoder UI from the selected profile's EncoderConfig
-    /// </summary>
     private void SyncEncoderFromProfile()
     {
-        var defaultItem = EncoderActionTypes[0]; // "Default (profile switch)"
-        
-        if (SelectedProfile?.Encoder == null)
-        {
-            EncoderCwActionType = defaultItem;
-            EncoderCcwActionType = defaultItem;
-            EncoderPressActionType = defaultItem;
-            return;
-        }
-        
-        EncoderCwActionType = FindEncoderActionItem(SelectedProfile.Encoder.RotateCwAction) ?? defaultItem;
-        EncoderCcwActionType = FindEncoderActionItem(SelectedProfile.Encoder.RotateCcwAction) ?? defaultItem;
-        EncoderPressActionType = FindEncoderActionItem(SelectedProfile.Encoder.PressAction) ?? defaultItem;
-    }
-
-    private EncoderActionItem? FindEncoderActionItem(ActionConfig? action)
-    {
-        if (action == null) return null;
-        
-        if (action is MediaAction ma)
-        {
-            return EncoderActionTypes.FirstOrDefault(e =>
-            {
-                var created = e.CreateAction?.Invoke();
-                return created is MediaAction cma && cma.Key == ma.Key;
-            });
-        }
-        
-        // For other action types, return null (will fall back to default)
-        return null;
-    }
-
-    partial void OnEncoderCwActionTypeChanged(EncoderActionItem? value)
-    {
-        if (SelectedProfile != null)
-        {
-            SelectedProfile.Encoder ??= new EncoderConfig();
-            SelectedProfile.Encoder.RotateCwAction = value?.CreateAction?.Invoke();
-            SelectedProfile.Touch();
-            HasUnsavedChanges = true;
-        }
-    }
-
-    partial void OnEncoderCcwActionTypeChanged(EncoderActionItem? value)
-    {
-        if (SelectedProfile != null)
-        {
-            SelectedProfile.Encoder ??= new EncoderConfig();
-            SelectedProfile.Encoder.RotateCcwAction = value?.CreateAction?.Invoke();
-            SelectedProfile.Touch();
-            HasUnsavedChanges = true;
-        }
-    }
-
-    partial void OnEncoderPressActionTypeChanged(EncoderActionItem? value)
-    {
-        if (SelectedProfile != null)
-        {
-            SelectedProfile.Encoder ??= new EncoderConfig();
-            SelectedProfile.Encoder.PressAction = value?.CreateAction?.Invoke();
-            SelectedProfile.Touch();
-            HasUnsavedChanges = true;
-        }
+        _encoderCwConfig.Action    = SelectedProfile?.Encoder?.RotateCwAction;
+        _encoderCcwConfig.Action   = SelectedProfile?.Encoder?.RotateCcwAction;
+        _encoderPressConfig.Action = SelectedProfile?.Encoder?.PressAction;
+        _encoderLongConfig.Action  = SelectedProfile?.Encoder?.LongPressAction;
+        OnPropertyChanged(nameof(EncoderCwActionDisplay));
+        OnPropertyChanged(nameof(EncoderCcwActionDisplay));
+        OnPropertyChanged(nameof(EncoderPressActionDisplay));
+        OnPropertyChanged(nameof(EncoderLongPressActionDisplay));
     }
 
     /// <summary>
@@ -835,12 +792,34 @@ public partial class ProfileEditorViewModel : ViewModelBase
             // Ensure LaunchApp icon is extracted even when path was typed manually
             await ButtonConfigViewModel.EnsureIconExtractedAsync();
 
-            // The ButtonConfigDialogViewModel already modifies the ButtonConfig directly
-            // via its Save logic, so we just need to persist
             ButtonConfigViewModel.SaveToButtonConfig();
-            
+
             var button = ButtonConfigViewModel.ButtonConfig;
-            
+
+            // Encoder slot editing — save action back to EncoderConfig and return early
+            if (_encoderEditingSlot >= 0 && SelectedProfile != null)
+            {
+                SelectedProfile.Encoder ??= new EncoderConfig();
+                switch (_encoderEditingSlot)
+                {
+                    case 0: SelectedProfile.Encoder.RotateCwAction  = button.Action; break;
+                    case 1: SelectedProfile.Encoder.RotateCcwAction = button.Action; break;
+                    case 2: SelectedProfile.Encoder.PressAction     = button.Action; break;
+                    case 3: SelectedProfile.Encoder.LongPressAction = button.Action; break;
+                }
+                _encoderEditingSlot = -1;
+                SyncEncoderFromProfile();
+                await _profileService.UpdateProfileAsync(SelectedProfile);
+                HasUnsavedChanges = false;
+                StatusMessage = "Encoder action configured";
+                IsButtonConfigVisible = false;
+                ButtonConfigViewModel = null;
+                ConfiguredButtonConfig = null;
+                if (_ipcClient.IsConnected)
+                    await SendFullProfileToDeviceAsync();
+                return;
+            }
+
             // Handle Folder action: find or create folder by name, assign ID
             if (button.Action is FolderAction && SelectedProfile != null)
             {
@@ -942,6 +921,7 @@ public partial class ProfileEditorViewModel : ViewModelBase
     [RelayCommand]
     private void CloseButtonConfig()
     {
+        _encoderEditingSlot = -1;
         IsButtonConfigVisible = false;
         ButtonConfigViewModel = null;
         ConfiguredButtonConfig = null;
@@ -1051,19 +1031,3 @@ public partial class ProfileEditorViewModel : ViewModelBase
     }
 }
 
-/// <summary>
-/// Represents an encoder action option for ComboBox display
-/// </summary>
-public class EncoderActionItem
-{
-    public string DisplayName { get; }
-    public Func<ActionConfig?>? CreateAction { get; }
-    
-    public EncoderActionItem(string displayName, Func<ActionConfig?>? createAction)
-    {
-        DisplayName = displayName;
-        CreateAction = createAction;
-    }
-    
-    public override string ToString() => DisplayName;
-}

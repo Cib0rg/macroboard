@@ -28,6 +28,7 @@
 #define CMD_SET_BUTTON_NAME             0x32
 #define CMD_SET_FOLDER_BUTTON_ACTION    0x33
 #define CMD_SET_FOLDER_BUTTON_NAME      0x34
+#define CMD_SET_ENCODER_ACTION          0x35
 #define CMD_SET_LED_COLOR               0x40
 #define CMD_GET_LED_COLOR               0x42
 #define CMD_SET_FOLDER_BUTTON_LED       0x43
