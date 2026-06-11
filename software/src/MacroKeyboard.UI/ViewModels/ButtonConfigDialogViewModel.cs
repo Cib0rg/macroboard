@@ -933,6 +933,35 @@ public partial class ButtonConfigDialogViewModel : ViewModelBase
 
     partial void OnSelectedActionTypeChanged(ActionType value)
     {
+        // Clear all action-specific fields so data from the previous action type
+        // doesn't bleed into the newly selected one.
+        KeySequence = string.Empty;
+        TextToType = string.Empty;
+        CapturedKeyCode = 0;
+        CapturedModifiers = KeyModifiers.None;
+        IsCapturingKeys = false;
+        _capturedKeys.Clear();
+
+        TargetProfileId = 0;
+        SelectedTargetProfile = null;
+
+        FolderId = 0;
+        FolderName = string.Empty;
+        SelectedTargetFolder = null;
+
+        ShellCommand = string.Empty;
+        ShellWorkingDirectory = null;
+        ShellWaitForExit = true;
+
+        SelectedMediaKey = MediaKey.Mute;
+
+        LaunchAppPath = string.Empty;
+        LaunchAppArguments = null;
+        LaunchAppWorkingDirectory = null;
+        LaunchAppIconPath = null;
+
+        SequenceSteps.Clear();
+
         // Notify UI to show/hide action-specific fields
         OnPropertyChanged(nameof(IsKeyboardAction));
         OnPropertyChanged(nameof(IsProfileSwitchAction));
@@ -944,6 +973,8 @@ public partial class ButtonConfigDialogViewModel : ViewModelBase
         OnPropertyChanged(nameof(CanAddMoreSteps));
         OnPropertyChanged(nameof(CurrentActionIcon));
         OnPropertyChanged(nameof(CurrentActionDisplayName));
+        OnPropertyChanged(nameof(KeySequenceDisplay));
+        OnPropertyChanged(nameof(HasCapturedKeys));
     }
 
     /// <summary>
