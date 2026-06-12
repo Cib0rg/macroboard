@@ -1,16 +1,16 @@
 <Style xmlns="https://github.com/avaloniaui"
        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-    
+
     <!-- ============================================ -->
     <!-- TRON THEME - Global Styles                   -->
     <!-- ============================================ -->
-    
+
     <!-- Tron Color Palette -->
     <!-- Primary: #00FFFF (Cyan) -->
     <!-- Accent: #FFA500 (Orange) -->
     <!-- Background: #000000, #0C0C18, #1A1A2E -->
     <!-- Panel: #0D1117, #161B22 -->
-    
+
     <!-- Panel Border (legacy, updated for Tron) -->
     <Style Selector="Border.PanelBorder">
         <Setter Property="Background" Value="#0D1117" />
@@ -22,7 +22,7 @@
     <!-- ============================================ -->
     <!-- WINDOW STYLES                                -->
     <!-- ============================================ -->
-    
+
     <!-- Базовые настройки окна с классом Tron -->
     <Style Selector="Window.Tron">
         <Setter Property="Background" Value="#000000"/>
@@ -37,27 +37,16 @@
                         <Border Grid.Row="0"
                                 BorderBrush="#00FFFF"
                                 BorderThickness="0,0,0,2"
-                                Height="30">
-                            <Border.Effect>
-                                <DropShadowDirectionEffect BlurRadius="12" ShadowDepth="0" Direction="0" Color="#00FFFF" Opacity="0.9"/>
-                            </Border.Effect>
-                        </Border>
+                                Height="30"/>
                         <!-- Основное содержимое окна + рамка по краям -->
                         <Border Grid.Row="1"
                                 BorderBrush="#00FFFF"
                                 BorderThickness="2"
                                 Margin="10">
-                            <Border.Effect>
-                                <DropShadowDirectionEffect BlurRadius="15" ShadowDepth="2" Direction="315" Color="#00FFFF" Opacity="0.7"/>
-                            </Border.Effect>
                             <Panel>
                                 <Border BorderBrush="#00FFFF"
                                         BorderThickness="1"
-                                        Margin="3">
-                                    <Border.Effect>
-                                        <DropShadowDirectionEffect BlurRadius="8" ShadowDepth="0" Direction="0" Color="#00FFFF" Opacity="0.8"/>
-                                    </Border.Effect>
-                                </Border>
+                                        Margin="3"/>
                                 <ContentPresenter Content="{TemplateBinding Content}"
                                                   Margin="15"/>
                             </Panel>
@@ -67,31 +56,31 @@
             </Setter.Value>
         </Setter>
     </Style>
-    
+
     <!-- ============================================ -->
     <!-- GLOBAL ELEMENT STYLES (auto-applied)        -->
     <!-- ============================================ -->
-    
+
     <!-- Global Window Background -->
     <Style Selector="Window">
         <Setter Property="Background" Value="#000000"/>
         <Setter Property="FontFamily" Value="Consolas, monospace"/>
         <Setter Property="Foreground" Value="#00FFFF"/>
     </Style>
-    
+
     <!-- Global UserControl Background -->
     <Style Selector="UserControl">
         <Setter Property="Background" Value="Transparent"/>
         <Setter Property="FontFamily" Value="Consolas, monospace"/>
         <Setter Property="Foreground" Value="#00FFFF"/>
     </Style>
-    
+
     <!-- Global TextBlock -->
     <Style Selector="TextBlock">
         <Setter Property="Foreground" Value="#00FFFF"/>
         <Setter Property="FontFamily" Value="Consolas, monospace"/>
     </Style>
-    
+
     <!-- Global Button -->
     <Style Selector="Button">
         <Setter Property="Background" Value="#0C0C18"/>
@@ -102,19 +91,19 @@
         <Setter Property="Padding" Value="12,6"/>
         <Setter Property="CornerRadius" Value="4"/>
     </Style>
-    
+
     <Style Selector="Button:pointerover">
         <Setter Property="Background" Value="#1A1A2E"/>
         <Setter Property="BorderBrush" Value="#FFA500"/>
         <Setter Property="Foreground" Value="#FFA500"/>
     </Style>
-    
+
     <Style Selector="Button:pressed">
         <Setter Property="Background" Value="#2A2A4E"/>
         <Setter Property="BorderBrush" Value="#FFD700"/>
         <Setter Property="Foreground" Value="#FFD700"/>
     </Style>
-    
+
     <!-- Global TextBox -->
     <Style Selector="TextBox">
         <Setter Property="Background" Value="#0C0C18"/>
@@ -128,11 +117,11 @@
         <Setter Property="Padding" Value="8,6"/>
         <Setter Property="CornerRadius" Value="4"/>
     </Style>
-    
+
     <Style Selector="TextBox:focus">
         <Setter Property="BorderBrush" Value="#FFA500"/>
     </Style>
-    
+
     <!-- Global ComboBox -->
     <Style Selector="ComboBox">
         <Setter Property="Background" Value="#0C0C18"/>
@@ -142,17 +131,17 @@
         <Setter Property="FontFamily" Value="Consolas, monospace"/>
         <Setter Property="CornerRadius" Value="4"/>
     </Style>
-    
+
     <Style Selector="ComboBox:pointerover">
         <Setter Property="BorderBrush" Value="#FFA500"/>
     </Style>
-    
+
     <!-- Global CheckBox -->
     <Style Selector="CheckBox">
         <Setter Property="Foreground" Value="#00FFFF"/>
         <Setter Property="FontFamily" Value="Consolas, monospace"/>
     </Style>
-    
+
     <!-- Global NumericUpDown -->
     <Style Selector="NumericUpDown">
         <Setter Property="Background" Value="#0C0C18"/>
@@ -161,7 +150,7 @@
         <Setter Property="Foreground" Value="#00FFFF"/>
         <Setter Property="FontFamily" Value="Consolas, monospace"/>
     </Style>
-    
+
     <!-- Global ListBox -->
     <Style Selector="ListBox">
         <Setter Property="Background" Value="#0C0C18"/>
@@ -171,21 +160,21 @@
         <Setter Property="FontFamily" Value="Consolas, monospace"/>
         <Setter Property="CornerRadius" Value="4"/>
     </Style>
-    
+
     <Style Selector="ListBoxItem">
         <Setter Property="Foreground" Value="#00FFFF"/>
         <Setter Property="FontFamily" Value="Consolas, monospace"/>
     </Style>
-    
+
     <Style Selector="ListBoxItem:selected">
         <Setter Property="Background" Value="#1A1A2E"/>
         <Setter Property="Foreground" Value="#FFA500"/>
     </Style>
-    
+
     <Style Selector="ListBoxItem:pointerover">
         <Setter Property="Background" Value="#0D1117"/>
     </Style>
-    
+
     <!-- Global Separator -->
     <Style Selector="Separator">
         <Setter Property="Background" Value="#00FFFF"/>
@@ -193,7 +182,7 @@
         <Setter Property="Margin" Value="0,8"/>
         <Setter Property="Opacity" Value="0.5"/>
     </Style>
-    
+
     <!-- Global ProgressBar -->
     <Style Selector="ProgressBar">
         <Setter Property="Background" Value="#0C0C18"/>
@@ -201,12 +190,12 @@
         <Setter Property="BorderBrush" Value="#00FFFF"/>
         <Setter Property="BorderThickness" Value="1"/>
     </Style>
-    
+
     <!-- Global ScrollViewer -->
     <Style Selector="ScrollViewer">
         <Setter Property="Background" Value="Transparent"/>
     </Style>
-    
+
     <!-- Global Border (panels) -->
     <Style Selector="Border.TronPanel">
         <Setter Property="Background" Value="#0D1117"/>
@@ -231,9 +220,6 @@
                     <Grid>
                         <Border BorderBrush="{TemplateBinding BorderBrush}"
                                 BorderThickness="{TemplateBinding BorderThickness}">
-                            <Border.Effect>
-                                <DropShadowDirectionEffect BlurRadius="12" ShadowDepth="0" Direction="0" Color="#00FFFF" Opacity="0.9"/>
-                            </Border.Effect>
                             <Border Background="#0C0C18" Margin="1"/>
                         </Border>
                         <ContentPresenter HorizontalAlignment="Center"
@@ -272,11 +258,6 @@
         <Setter Property="BorderBrush" Value="#00FFFF"/>
         <Setter Property="BorderThickness" Value="0 0 0 2"/>
         <Setter Property="Margin" Value="5 0"/>
-        <Setter Property="Effect">
-            <Setter.Value>
-                <DropShadowDirectionEffect BlurRadius="10" ShadowDepth="0" Direction="0" Color="#00FFFF" Opacity="0.8"/>
-            </Setter.Value>
-        </Setter>
     </Style>
 
     <!-- Текстовое поле Tron -->
@@ -290,11 +271,6 @@
         <Setter Property="SelectionBrush" Value="#00FFFF"/>
         <Setter Property="SelectionForegroundBrush" Value="#000000"/>
         <Setter Property="PlaceholderText" Value="..."/>
-        <Setter Property="Effect">
-            <Setter.Value>
-                <DropShadowDirectionEffect BlurRadius="8" ShadowDepth="0" Direction="0" Color="#00FFFF" Opacity="0.8"/>
-            </Setter.Value>
-        </Setter>
     </Style>
 
     <!-- Радиокнопка Tron -->
