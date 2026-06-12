@@ -24,6 +24,12 @@ public class ButtonConfig
     /// Действие при долгом нажатии
     /// </summary>
     public ActionConfig? LongPressAction { get; set; }
+
+    /// <summary>
+    /// Custom label shown in the long-press section of the split display.
+    /// Null or empty → firmware auto-generates from action type.
+    /// </summary>
+    public string? LongPressName { get; set; }
     
     /// <summary>
     /// Путь к изображению кнопки

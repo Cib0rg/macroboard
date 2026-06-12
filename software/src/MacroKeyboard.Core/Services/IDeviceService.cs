@@ -125,6 +125,8 @@ public interface IDeviceService
     /// </summary>
     Task<bool> SetEncoderActionAsync(byte slot, ActionConfig? action, CancellationToken cancellationToken = default);
     Task<bool> SetButtonLongPressActionAsync(byte buttonId, ActionConfig? action, CancellationToken cancellationToken = default);
+    Task<bool> SetButtonLongPressNameAsync(byte buttonId, string? name, CancellationToken cancellationToken = default);
+    Task<bool> RefreshDisplaysAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Сохранить профиль в энергонезависимую память

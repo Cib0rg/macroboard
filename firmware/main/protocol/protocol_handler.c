@@ -33,6 +33,7 @@ static esp_err_t handle_set_button_action(const uint8_t* payload, uint16_t lengt
 static esp_err_t handle_get_button_action(const uint8_t* payload, uint16_t length, uint8_t* response, uint16_t* response_len);
 static esp_err_t handle_set_encoder_action(const uint8_t* payload, uint16_t length, uint8_t* response, uint16_t* response_len);
 static esp_err_t handle_set_button_long_press_action(const uint8_t* payload, uint16_t length, uint8_t* response, uint16_t* response_len);
+static esp_err_t handle_set_button_long_press_name(const uint8_t* payload, uint16_t length, uint8_t* response, uint16_t* response_len);
 static esp_err_t handle_set_button_name(const uint8_t* payload, uint16_t length, uint8_t* response, uint16_t* response_len);
 static esp_err_t handle_set_folder_button_action(const uint8_t* payload, uint16_t length, uint8_t* response, uint16_t* response_len);
 static esp_err_t handle_set_folder_button_name(const uint8_t* payload, uint16_t length, uint8_t* response, uint16_t* response_len);
@@ -42,6 +43,7 @@ static esp_err_t handle_get_led_color(const uint8_t* payload, uint16_t length, u
 static esp_err_t handle_set_backlight(const uint8_t* payload, uint16_t length, uint8_t* response, uint16_t* response_len);
 static esp_err_t handle_save_profile(const uint8_t* payload, uint16_t length, uint8_t* response, uint16_t* response_len);
 static esp_err_t handle_delete_profile(const uint8_t* payload, uint16_t length, uint8_t* response, uint16_t* response_len);
+static esp_err_t handle_refresh_displays(const uint8_t* payload, uint16_t length, uint8_t* response, uint16_t* response_len);
 
 // Command handler table
 typedef struct {
@@ -61,6 +63,7 @@ static const command_entry_t command_table[] = {
     {CMD_SET_BUTTON_ACTION, handle_set_button_action},
     {CMD_SET_ENCODER_ACTION, handle_set_encoder_action},
     {CMD_SET_BUTTON_LONG_PRESS_ACTION, handle_set_button_long_press_action},
+    {CMD_SET_BUTTON_LONG_PRESS_NAME,  handle_set_button_long_press_name},
     {CMD_GET_BUTTON_ACTION, handle_get_button_action},
     {CMD_SET_BUTTON_NAME,            handle_set_button_name},
     {CMD_SET_FOLDER_BUTTON_ACTION,   handle_set_folder_button_action},
@@ -71,6 +74,7 @@ static const command_entry_t command_table[] = {
     {CMD_SET_BACKLIGHT, handle_set_backlight},
     {CMD_SAVE_PROFILE, handle_save_profile},
     {CMD_DELETE_PROFILE, handle_delete_profile},
+    {CMD_REFRESH_DISPLAYS, handle_refresh_displays},
 };
 
 esp_err_t protocol_handler_init(void) {
@@ -385,6 +389,30 @@ static esp_err_t handle_set_button_long_press_action(const uint8_t* payload, uin
     return ESP_OK;
 }
 
+static esp_err_t handle_set_button_long_press_name(const uint8_t* payload, uint16_t length,
+                                                     uint8_t* response, uint16_t* response_len) {
+    // Payload: [button_id (1)] [name (UTF-8, max BUTTON_NAME_MAX_LEN-1 bytes, no null needed)]
+    if (length < 1) {
+        response[0] = STATUS_ERROR;
+        *response_len = 1;
+        return ESP_OK;
+    }
+
+    uint8_t button_id = payload[0];
+
+    char name[BUTTON_NAME_MAX_LEN];
+    memset(name, 0, sizeof(name));
+
+    uint16_t name_len = length - 1;
+    if (name_len >= BUTTON_NAME_MAX_LEN) name_len = BUTTON_NAME_MAX_LEN - 1;
+    if (name_len > 0) memcpy(name, &payload[1], name_len);
+
+    esp_err_t ret = profile_set_button_long_press_name(button_id, name);
+    response[0] = (ret == ESP_OK) ? STATUS_OK : STATUS_ERROR;
+    *response_len = 1;
+    return ESP_OK;
+}
+
 static esp_err_t handle_set_button_name(const uint8_t* payload, uint16_t length,
                                          uint8_t* response, uint16_t* response_len) {
     // payload: [profile_id][button_id][name (UTF-8, null-terminated, max 32 bytes)]
@@ -532,6 +560,14 @@ static esp_err_t handle_save_profile(const uint8_t* payload, uint16_t length,
 static esp_err_t handle_delete_profile(const uint8_t* payload, uint16_t length,
                                         uint8_t* response, uint16_t* response_len) {
     // Device holds only one profile (slot 0) — deletion is a no-op.
+    response[0] = STATUS_OK;
+    *response_len = 1;
+    return ESP_OK;
+}
+
+static esp_err_t handle_refresh_displays(const uint8_t* payload, uint16_t length,
+                                          uint8_t* response, uint16_t* response_len) {
+    profile_refresh_displays();
     response[0] = STATUS_OK;
     *response_len = 1;
     return ESP_OK;

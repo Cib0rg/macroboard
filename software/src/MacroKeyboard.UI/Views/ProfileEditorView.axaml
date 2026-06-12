@@ -534,8 +534,8 @@
                                                 </Border>
                                             </StackPanel>
 
-                                            <!-- LED Color -->
-                                            <StackPanel Spacing="4">
+                                            <!-- LED Color (hidden for long press — LED belongs to the button, not the action) -->
+                                            <StackPanel Spacing="4" IsVisible="{Binding !IsLongPress}">
                                                 <TextBlock Text="LED COLOR:" FontSize="11" Opacity="0.7" />
                                                 <Grid ColumnDefinitions="Auto,*,Auto">
                                                     <Border Grid.Column="0" Width="28" Height="28"

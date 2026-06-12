@@ -669,12 +669,14 @@ public partial class ProfileEditorViewModel : ViewModelBase
         var synthetic = new ButtonConfig
         {
             ButtonId = (byte)(item.Button.ButtonId + 100),
-            Action = item.Button.LongPressAction
+            Action = item.Button.LongPressAction,
+            Name = item.Button.LongPressName
         };
 
         var profileItems = GetAvailableProfileItems();
         var folderItems = GetAvailableFolderItems();
         ButtonConfigViewModel = new ButtonConfigDialogViewModel(_dialogLogger, synthetic, profileItems, folderItems);
+        ButtonConfigViewModel.IsLongPress = true;
         if (_storageProvider != null)
             ButtonConfigViewModel.SetStorageProvider(_storageProvider);
         ConfiguredButtonConfig = item.Button;   // panel appears under the real row
@@ -832,6 +834,7 @@ public partial class ProfileEditorViewModel : ViewModelBase
                 if (actualButton != null)
                 {
                     actualButton.LongPressAction = button.Action;
+                    actualButton.LongPressName = string.IsNullOrWhiteSpace(button.Name) ? null : button.Name.Trim();
                     await _profileService.UpdateProfileAsync(SelectedProfile);
                     HasUnsavedChanges = false;
                     StatusMessage = $"Button {actualId + 1} long press configured";

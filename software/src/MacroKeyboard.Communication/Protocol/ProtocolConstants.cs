@@ -37,6 +37,7 @@ public static class ProtocolConstants
     public const byte CMD_SET_FOLDER_BUTTON_NAME    = 0x34;
     public const byte CMD_SET_ENCODER_ACTION        = 0x35;
     public const byte CMD_SET_BUTTON_LONG_PRESS_ACTION = 0x36;
+    public const byte CMD_SET_BUTTON_LONG_PRESS_NAME   = 0x37;
     public const byte CMD_SET_LED_COLOR             = 0x40;
     public const byte CMD_SET_BACKLIGHT             = 0x41;
     public const byte CMD_GET_LED_COLOR             = 0x42;
@@ -44,6 +45,7 @@ public static class ProtocolConstants
     public const byte CMD_SAVE_PROFILE = 0x50;
     public const byte CMD_LOAD_PROFILE = 0x51;
     public const byte CMD_DELETE_PROFILE = 0x52;
+    public const byte CMD_REFRESH_DISPLAYS = 0x53;
     public const byte CMD_START_OTA_UPDATE = 0x60;
     public const byte CMD_GET_OTA_STATUS = 0x61;
     public const byte CMD_SET_WIFI_CREDENTIALS = 0x70;

@@ -96,6 +96,13 @@ public partial class ButtonConfigDialogViewModel : ViewModelBase
     private bool _isColorPickerVisible = false;
 
     /// <summary>
+    /// True when this dialog is editing a long press action — LED section is hidden
+    /// because LED color belongs to the button, not the action.
+    /// </summary>
+    [ObservableProperty]
+    private bool _isLongPress = false;
+
+    /// <summary>
     /// Color property for binding to ColorPicker control.
     /// Syncs with ColorR/ColorG/ColorB.
     /// </summary>

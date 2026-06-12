@@ -417,8 +417,63 @@ esp_err_t gc9a01_draw_image(uint8_t display_id, const uint8_t* image_data,
     // Send NOP to exit RAMWR mode — prevents this display from interpreting
     // SPI traffic for other displays as pixel data (shared SPI bus)
     gc9a01_send_command(0x00);
-    
+
     xSemaphoreGive(spi_mutex);
-    
+
+    return ESP_OK;
+}
+
+esp_err_t gc9a01_draw_image_in_region(uint8_t display_id, const uint8_t* image_data,
+                                       uint16_t img_w, uint16_t img_h,
+                                       uint16_t dst_y, uint16_t region_h) {
+    if (display_id >= NUM_DISPLAYS || image_data == NULL) return ESP_ERR_INVALID_ARG;
+    if (img_w > DISPLAY_WIDTH || (uint32_t)dst_y + region_h > DISPLAY_HEIGHT) return ESP_ERR_INVALID_SIZE;
+    if (region_h == 0) return ESP_OK;
+
+    // Center-crop vertically when image is taller than the region
+    uint16_t src_y  = 0;
+    uint16_t draw_h = img_h;
+    if (img_h > region_h) {
+        src_y  = (img_h - region_h) / 2;
+        draw_h = region_h;
+    }
+
+    // Center image vertically inside the region if it is shorter
+    uint16_t disp_y = dst_y + (region_h - draw_h) / 2;
+    uint16_t x0     = (DISPLAY_WIDTH - img_w) / 2;
+
+    xSemaphoreTake(spi_mutex, portMAX_DELAY);
+    display_mux_select(display_id);
+    gc9a01_set_window(x0, disp_y, x0 + img_w - 1, disp_y + draw_h - 1);
+
+    size_t row_bytes = img_w * 2;
+    for (uint16_t row = 0; row < draw_h; row++)
+        gc9a01_write_data(image_data + ((src_y + row) * row_bytes), row_bytes);
+
+    gc9a01_send_command(0x00);
+    xSemaphoreGive(spi_mutex);
+    return ESP_OK;
+}
+
+esp_err_t gc9a01_fill_band(uint8_t display_id, uint16_t y0, uint16_t h, uint16_t color) {
+    if (display_id >= NUM_DISPLAYS) return ESP_ERR_INVALID_ARG;
+    if ((uint32_t)y0 + h > DISPLAY_HEIGHT) return ESP_ERR_INVALID_SIZE;
+    if (h == 0) return ESP_OK;
+
+    uint16_t* row_buf = heap_caps_malloc(DISPLAY_WIDTH * sizeof(uint16_t), MALLOC_CAP_DMA);
+    if (!row_buf) return ESP_ERR_NO_MEM;
+
+    uint16_t swapped = __builtin_bswap16(color);
+    for (int i = 0; i < DISPLAY_WIDTH; i++) row_buf[i] = swapped;
+
+    xSemaphoreTake(spi_mutex, portMAX_DELAY);
+    display_mux_select(display_id);
+    gc9a01_set_window(0, y0, DISPLAY_WIDTH - 1, y0 + h - 1);
+    for (uint16_t row = 0; row < h; row++)
+        gc9a01_write_data((uint8_t*)row_buf, DISPLAY_WIDTH * 2);
+    gc9a01_send_command(0x00);
+    xSemaphoreGive(spi_mutex);
+
+    free(row_buf);
     return ESP_OK;
 }

@@ -30,6 +30,7 @@
 #define CMD_SET_FOLDER_BUTTON_NAME      0x34
 #define CMD_SET_ENCODER_ACTION          0x35
 #define CMD_SET_BUTTON_LONG_PRESS_ACTION 0x36
+#define CMD_SET_BUTTON_LONG_PRESS_NAME   0x37
 #define CMD_SET_LED_COLOR               0x40
 #define CMD_GET_LED_COLOR               0x42
 #define CMD_SET_FOLDER_BUTTON_LED       0x43
@@ -37,6 +38,7 @@
 #define CMD_SAVE_PROFILE            0x50
 #define CMD_LOAD_PROFILE            0x51
 #define CMD_DELETE_PROFILE          0x52
+#define CMD_REFRESH_DISPLAYS        0x53
 #define CMD_START_OTA_UPDATE        0x60
 #define CMD_GET_OTA_STATUS          0x61
 #define CMD_SET_WIFI_CREDENTIALS    0x70

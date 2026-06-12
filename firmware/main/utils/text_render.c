@@ -127,14 +127,16 @@ static const uint8_t font8x8[FONT_GLYPHS][FONT_H] = {
 // Internal helpers
 // ============================================================
 
-static inline void put_pixel(uint8_t* buf, int x, int y, uint16_t color) {
-    int idx = (y * DISPLAY_WIDTH + x) * 2;
+// Write one RGB565 pixel into an arbitrary-stride buffer (big-endian, for SPI)
+static inline void put_pixel(uint8_t* buf, int x, int y, int stride, uint16_t color) {
+    int idx = (y * stride + x) * 2;
     buf[idx]     = color >> 8;
     buf[idx + 1] = color & 0xFF;
 }
 
+// Draw one character into a buffer with explicit dimensions
 static void draw_char_scaled(uint8_t* buf, int x, int y, char c, int scale,
-                              uint16_t fg, uint16_t bg) {
+                              uint16_t fg, uint16_t bg, int buf_w, int buf_h) {
     if (c < FONT_FIRST || c > FONT_LAST) c = '?';
     const uint8_t* glyph = font8x8[(uint8_t)c - FONT_FIRST];
 
@@ -144,11 +146,11 @@ static void draw_char_scaled(uint8_t* buf, int x, int y, char c, int scale,
             uint16_t color = (bits & (0x80 >> col)) ? fg : bg;
             for (int sy = 0; sy < scale; sy++) {
                 int py = y + row * scale + sy;
-                if (py < 0 || py >= DISPLAY_HEIGHT) continue;
+                if (py < 0 || py >= buf_h) continue;
                 for (int sx = 0; sx < scale; sx++) {
                     int px = x + (FONT_W - 1 - col) * scale + sx;
-                    if (px < 0 || px >= DISPLAY_WIDTH) continue;
-                    put_pixel(buf, px, py, color);
+                    if (px < 0 || px >= buf_w) continue;
+                    put_pixel(buf, px, py, buf_w, color);
                 }
             }
         }
@@ -223,6 +225,40 @@ static int split_lines(const char* text, int cpl,
     return n;
 }
 
+// Render text centered in a buf_w × buf_h pixel buffer (RGB565, big-endian)
+static void render_text_to_buf(uint8_t* buf, int buf_w, int buf_h,
+                                const char* text, uint16_t fg, uint16_t bg) {
+    uint8_t bg_hi = bg >> 8, bg_lo = bg & 0xFF;
+    for (int i = 0; i < buf_w * buf_h * 2; i += 2) {
+        buf[i] = bg_hi; buf[i + 1] = bg_lo;
+    }
+
+    int scale    = (buf_h >= FONT_H * 2) ? 2 : 1;
+    int char_h   = FONT_H * scale;
+    int char_w   = FONT_W * scale;
+    int cpl      = buf_w / char_w;
+    int max_rows = buf_h / char_h;
+    if (max_rows > MAX_LINES) max_rows = MAX_LINES;
+
+    char lines[MAX_LINES][21];
+    int nlines = split_lines(text, cpl, lines, max_rows);
+    if (nlines > max_rows) nlines = max_rows;
+
+    int block_h = nlines * char_h;
+    int y_start = (buf_h - block_h) / 2;
+
+    for (int li = 0; li < nlines; li++) {
+        int line_len = (int)strlen(lines[li]);
+        int line_w   = line_len * char_w;
+        int x_start  = (buf_w - line_w) / 2;
+        int y        = y_start + li * char_h;
+        for (int ci = 0; ci < line_len; ci++) {
+            draw_char_scaled(buf, x_start + ci * char_w, y,
+                             lines[li][ci], scale, fg, bg, buf_w, buf_h);
+        }
+    }
+}
+
 // ============================================================
 // Public API
 // ============================================================
@@ -231,16 +267,6 @@ esp_err_t text_render_to_display(uint8_t display_id, const char* text,
                                   uint16_t fg_color, uint16_t bg_color) {
     if (!text || !text[0]) return ESP_ERR_INVALID_ARG;
 
-    // Always use scale=2 (16x16px per char, 10 chars/row, 10 rows max).
-    // Text is cropped if it doesn't fit — better readable than tiny.
-    char lines[MAX_LINES][21];
-    const int scale = 2;
-    const int cpl = DISPLAY_WIDTH / (FONT_W * scale);       // 10
-    const int max_rows = DISPLAY_HEIGHT / (FONT_H * scale); // 10
-    int nlines = split_lines(text, cpl, lines, max_rows);
-    if (nlines > max_rows) nlines = max_rows;
-
-    // Allocate buffer (full display, PSRAM+DMA)
     size_t buf_size = DISPLAY_BUFFER_SIZE;  // 160*160*2 = 51200 bytes
     uint8_t* buf = heap_caps_malloc(buf_size, MALLOC_CAP_DMA | MALLOC_CAP_SPIRAM);
     if (!buf) {
@@ -248,34 +274,47 @@ esp_err_t text_render_to_display(uint8_t display_id, const char* text,
         return ESP_ERR_NO_MEM;
     }
 
-    // Fill background (big-endian RGB565)
-    uint8_t bg_hi = bg_color >> 8;
-    uint8_t bg_lo = bg_color & 0xFF;
-    for (size_t i = 0; i < buf_size; i += 2) {
-        buf[i]     = bg_hi;
-        buf[i + 1] = bg_lo;
-    }
-
-    // Render text block centered vertically
-    int char_h = FONT_H * scale;
-    int char_w = FONT_W * scale;
-    int block_h = nlines * char_h;
-    int y_start = (DISPLAY_HEIGHT - block_h) / 2;
-
-    for (int li = 0; li < nlines; li++) {
-        int line_len = (int)strlen(lines[li]);
-        int line_w = line_len * char_w;
-        int x_start = (DISPLAY_WIDTH - line_w) / 2;
-        int y = y_start + li * char_h;
-
-        for (int ci = 0; ci < line_len; ci++) {
-            draw_char_scaled(buf, x_start + ci * char_w, y,
-                             lines[li][ci], scale, fg_color, bg_color);
-        }
-    }
-
+    render_text_to_buf(buf, DISPLAY_WIDTH, DISPLAY_HEIGHT, text, fg_color, bg_color);
     esp_err_t ret = gc9a01_draw_image(display_id, buf, DISPLAY_WIDTH, DISPLAY_HEIGHT);
 
     free(buf);
     return ret;
+}
+
+esp_err_t text_render_to_region(uint8_t display_id, const char* text,
+                                 uint16_t fg_color, uint16_t bg_color,
+                                 uint16_t y_offset, uint16_t region_h) {
+    if (region_h == 0) return ESP_OK;
+
+    size_t buf_size = (size_t)DISPLAY_WIDTH * region_h * 2;
+    uint8_t* buf = heap_caps_malloc(buf_size, MALLOC_CAP_DMA | MALLOC_CAP_SPIRAM);
+    if (!buf) {
+        ESP_LOGE(TAG, "Failed to allocate region text render buffer");
+        return ESP_ERR_NO_MEM;
+    }
+
+    if (text && text[0]) {
+        render_text_to_buf(buf, DISPLAY_WIDTH, region_h, text, fg_color, bg_color);
+    } else {
+        // No text — just fill with background color
+        uint8_t bg_hi = bg_color >> 8, bg_lo = bg_color & 0xFF;
+        for (size_t i = 0; i < buf_size; i += 2) {
+            buf[i] = bg_hi; buf[i + 1] = bg_lo;
+        }
+    }
+
+    // buf is exactly DISPLAY_WIDTH × region_h — draw it at the target y offset
+    esp_err_t ret = gc9a01_draw_image_in_region(display_id, buf,
+                                                 DISPLAY_WIDTH, region_h,
+                                                 y_offset, region_h);
+    free(buf);
+    return ret;
+}
+
+void text_render_fill_region(uint8_t* frame_buf, int frame_w,
+                              int region_y, int region_h,
+                              const char* text, uint16_t fg, uint16_t bg) {
+    if (!frame_buf || region_h <= 0 || frame_w <= 0) return;
+    uint8_t* region_ptr = frame_buf + (size_t)frame_w * region_y * 2;
+    render_text_to_buf(region_ptr, frame_w, region_h, text ? text : "", fg, bg);
 }

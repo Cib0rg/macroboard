@@ -61,8 +61,8 @@
 #define PIN_BUTTON_9            39
 
 // Rotary encoder
-#define PIN_ENCODER_A           40
-#define PIN_ENCODER_B           41
+#define PIN_ENCODER_A           41
+#define PIN_ENCODER_B           40
 #define PIN_ENCODER_BTN         42
 
 // WS2812 RGB LEDs

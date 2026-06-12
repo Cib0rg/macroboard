@@ -32,6 +32,7 @@ public class DeviceService : IDeviceService
     private readonly SetFolderButtonLedCommand _setFolderButtonLedCommand;
     private readonly SetEncoderActionCommand _setEncoderActionCommand;
     private readonly SetButtonLongPressActionCommand _setButtonLongPressActionCommand;
+    private readonly SetButtonLongPressNameCommand _setButtonLongPressNameCommand;
 
     public event EventHandler<DeviceEventArgs>? DeviceConnected;
     public event EventHandler<DeviceEventArgs>? DeviceDisconnected;
@@ -70,6 +71,7 @@ public class DeviceService : IDeviceService
         _setFolderButtonLedCommand    = new SetFolderButtonLedCommand(_protocol, loggerFactory.CreateLogger<SetFolderButtonLedCommand>());
         _setEncoderActionCommand           = new SetEncoderActionCommand(_protocol, loggerFactory.CreateLogger<SetEncoderActionCommand>());
         _setButtonLongPressActionCommand   = new SetButtonLongPressActionCommand(_protocol, loggerFactory.CreateLogger<SetButtonLongPressActionCommand>());
+        _setButtonLongPressNameCommand     = new SetButtonLongPressNameCommand(_protocol, loggerFactory.CreateLogger<SetButtonLongPressNameCommand>());
         
         // Подписаться на события устройства
         _deviceManager.DeviceConnected += OnDeviceConnected;
@@ -207,6 +209,21 @@ public class DeviceService : IDeviceService
 
     public async Task<bool> SetButtonLongPressActionAsync(byte buttonId, ActionConfig? action, CancellationToken cancellationToken = default)
         => await _setButtonLongPressActionCommand.ExecuteAsync(buttonId, action, cancellationToken);
+
+    public async Task<bool> SetButtonLongPressNameAsync(byte buttonId, string? name, CancellationToken cancellationToken = default)
+        => await _setButtonLongPressNameCommand.ExecuteAsync(buttonId, name, cancellationToken);
+
+    public async Task<bool> RefreshDisplaysAsync(CancellationToken cancellationToken = default)
+    {
+        // Refreshing all 10 displays can take a few seconds (JPEG decode + SPI per button)
+        var response = await _protocol.SendCommandAsync(
+            ProtocolConstants.CMD_REFRESH_DISPLAYS,
+            Array.Empty<byte>(),
+            timeoutMs: 15000,
+            cancellationToken: cancellationToken);
+
+        return response != null && response.Payload[0] == ProtocolConstants.STATUS_OK;
+    }
 
     public Task<bool> DeleteProfileFromDeviceAsync(byte profileId, CancellationToken cancellationToken = default)
     {

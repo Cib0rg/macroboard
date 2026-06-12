@@ -57,15 +57,41 @@ esp_err_t gc9a01_init_display(uint8_t display_id);
 esp_err_t gc9a01_clear(uint8_t display_id, uint16_t color);
 
 /**
- * @brief Draw image on display
+ * @brief Draw image on display (centered)
  * @param display_id Display ID
  * @param image_data RGB565 image data (big-endian byte order for SPI)
  * @param width Image width
  * @param height Image height
  * @return ESP_OK on success
  */
-esp_err_t gc9a01_draw_image(uint8_t display_id, const uint8_t* image_data, 
+esp_err_t gc9a01_draw_image(uint8_t display_id, const uint8_t* image_data,
                              uint16_t width, uint16_t height);
+
+/**
+ * @brief Draw image centered within a horizontal band of the display.
+ *        If image is taller than region_h, it is center-cropped.
+ *        Does NOT fill background pixels outside the image.
+ * @param display_id  Display ID
+ * @param image_data  RGB565 image data (big-endian)
+ * @param img_w       Image width (must be <= DISPLAY_WIDTH)
+ * @param img_h       Image height
+ * @param dst_y       Top pixel of the destination region on the display
+ * @param region_h    Height of the destination region in pixels
+ * @return ESP_OK on success
+ */
+esp_err_t gc9a01_draw_image_in_region(uint8_t display_id, const uint8_t* image_data,
+                                       uint16_t img_w, uint16_t img_h,
+                                       uint16_t dst_y, uint16_t region_h);
+
+/**
+ * @brief Fill a horizontal band with a solid color.
+ * @param display_id Display ID
+ * @param y0         First row to fill
+ * @param h          Number of rows to fill
+ * @param color      RGB565 color (native byte order, same as COLOR_* constants)
+ * @return ESP_OK on success
+ */
+esp_err_t gc9a01_fill_band(uint8_t display_id, uint16_t y0, uint16_t h, uint16_t color);
 
 /**
  * @brief Set display address window for pixel writes

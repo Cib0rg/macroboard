@@ -62,6 +62,15 @@ esp_err_t profile_set_button_long_press_action(uint8_t button_id,
                                                 uint16_t action_len);
 
 /**
+ * @brief Set the label shown in the long-press section of the split display.
+ *        Empty string → firmware auto-generates the label from the action type.
+ * @param button_id Button ID (0-9)
+ * @param name      Null-terminated UTF-8 string (max BUTTON_NAME_MAX_LEN-1 chars)
+ * @return ESP_OK on success
+ */
+esp_err_t profile_set_button_long_press_name(uint8_t button_id, const char* name);
+
+/**
  * @brief Set display name for a button (shown when no image is assigned)
  * @param profile_id Profile ID
  * @param button_id  Button ID

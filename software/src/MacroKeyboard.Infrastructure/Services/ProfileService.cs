@@ -233,6 +233,12 @@ public class ProfileService : IProfileService
                     button.LongPressAction,
                     cancellationToken);
 
+                // Отправить имя long press (пустая строка — firmware сгенерирует из типа действия)
+                await _deviceService.SetButtonLongPressNameAsync(
+                    button.ButtonId,
+                    button.LongPressName ?? string.Empty,
+                    cancellationToken);
+
                 progress?.Report(10 + ((i + 1) * 70 / profile.Buttons.Count));
 
                 // Small delay between buttons to let firmware process commands
@@ -274,11 +280,15 @@ public class ProfileService : IProfileService
 
             // 5. Сохранить профиль на устройстве
             var saved = await _deviceService.SaveProfileAsync(0, cancellationToken);
-            
+
+            // 6. Обновить дисплеи — теперь все данные (включая long press) актуальны,
+            //    и кнопки с картинками тоже получат правильный split-layout
+            await _deviceService.RefreshDisplaysAsync(cancellationToken);
+
             progress?.Report(100);
-            
+
             _logger.LogInformation("Profile {ProfileId} sent successfully", profile.ProfileId);
-            
+
             return saved;
         }
         catch (Exception ex)

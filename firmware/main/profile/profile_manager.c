@@ -9,6 +9,7 @@
 #include "storage/image_storage.h"
 #include "hardware/leds.h"
 #include "hardware/gc9a01.h"
+#include "hardware/night_mode.h"
 #include "protocol/protocol_handler.h"
 #include "protocol/protocol_types.h"
 #include "utils/crc.h"
@@ -214,6 +215,29 @@ esp_err_t profile_set_button_long_press_action(uint8_t button_id,
         memcpy(btn->long_press_action_data, action_data, action_len);
     }
     xSemaphoreGive(profile_mutex);
+
+    ESP_LOGD(TAG, "Button %d long press stored: type=0x%02X len=%d",
+             button_id, action_type, action_len);
+
+    // Display is refreshed by CMD_REFRESH_DISPLAYS after the full save sequence,
+    // once both the action and long-press data are fully committed.
+
+    return ESP_OK;
+}
+
+esp_err_t profile_set_button_long_press_name(uint8_t button_id, const char* name) {
+    if (button_id >= NUM_BUTTONS || name == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    xSemaphoreTake(profile_mutex, portMAX_DELAY);
+
+    button_config_t* btn = &current_profile.buttons[button_id];
+    memset(btn->long_press_name, 0, BUTTON_NAME_MAX_LEN);
+    strncpy(btn->long_press_name, name, BUTTON_NAME_MAX_LEN - 1);
+
+    xSemaphoreGive(profile_mutex);
+
     return ESP_OK;
 }
 
@@ -279,12 +303,15 @@ esp_err_t profile_set_button_name(uint8_t profile_id, uint8_t button_id, const c
     memset(btn->name, 0, BUTTON_NAME_MAX_LEN);
     strncpy(btn->name, name, BUTTON_NAME_MAX_LEN - 1);
 
-    // Refresh display immediately if this button is currently visible and has no image
-    if (profile_id == current_profile_id && btn->image_size == 0) {
-        profile_update_button_display(button_id, btn);
-    }
+    bool should_refresh = (profile_id == current_profile_id && btn->image_size == 0);
 
     xSemaphoreGive(profile_mutex);
+
+    // Refresh display after releasing the mutex so SPI operations don't run under profile_mutex.
+    if (should_refresh) {
+        profile_update_button_display(button_id, &current_profile.buttons[button_id]);
+    }
+
     return ESP_OK;
 }
 
@@ -304,8 +331,9 @@ esp_err_t profile_set_led_color(uint8_t profile_id, uint8_t button_id,
     btn->led_brightness = brightness;
     btn->led_effect = effect;
     
-    // Update LED immediately if current profile
-    if (profile_id == current_profile_id) {
+    // Update LED immediately if current profile, but not while night mode is active
+    // (night mode exit will call profile_restore_leds() to pick up the new color)
+    if (profile_id == current_profile_id && !night_mode_is_active()) {
         led_set_color(button_id, r, g, b, brightness);
         led_update();
     }
@@ -455,6 +483,12 @@ static const char* media_key_name(uint16_t usage) {
     }
 }
 
+// Split-display layout constants (160px total height)
+#define SPLIT_SHORT_H    96  // 60% — short press region (top)
+#define SPLIT_LONG_H     64  // 40% — long press region (bottom)
+#define COLOR_GRAY_LP   0x528A  // RGB(80,80,80) — visible gray for long press area
+#define COLOR_DIVIDER_LP 0xFFFF // white 2-px separator between the two regions
+
 // Build a text label from the button's action when no name is set.
 // Uses '\n' as line separator for the text renderer.
 static void generate_action_label(const button_config_t* btn, char* label, size_t label_size) {
@@ -577,6 +611,104 @@ static void generate_action_label(const button_config_t* btn, char* label, size_
     }
 }
 
+// Build a short display label for the long press action.
+static void generate_long_press_label(const button_config_t* btn, char* label, size_t label_size) {
+    label[0] = '\0';
+    switch (btn->long_press_action_type) {
+        case ACTION_TYPE_NONE:
+            break;  // no label — caller handles empty string
+
+        case ACTION_TYPE_KEYBOARD:
+            if (btn->long_press_action_data_len >= 2) {
+                uint8_t mod = btn->long_press_action_data[0];
+                uint8_t key = btn->long_press_action_data[1];
+                if (key != 0) {
+                    char mod_str[16] = {0};
+                    if (mod & 0x01) strncat(mod_str, "Ctrl+", sizeof(mod_str) - strlen(mod_str) - 1);
+                    if (mod & 0x02) strncat(mod_str, "Sft+",  sizeof(mod_str) - strlen(mod_str) - 1);
+                    if (mod & 0x04) strncat(mod_str, "Alt+",  sizeof(mod_str) - strlen(mod_str) - 1);
+                    if (mod & 0x08) strncat(mod_str, "GUI+",  sizeof(mod_str) - strlen(mod_str) - 1);
+                    if (mod_str[0])
+                        snprintf(label, label_size, "%s\n%s", mod_str, hid_keycode_name(key));
+                    else
+                        snprintf(label, label_size, "%s", hid_keycode_name(key));
+                } else if (btn->long_press_action_data_len > 7) {
+                    int show = btn->long_press_action_data_len - 7;
+                    if (show > 10) show = 10;
+                    char preview[11];
+                    memcpy(preview, btn->long_press_action_data + 7, show);
+                    preview[show] = '\0';
+                    snprintf(label, label_size, "Type\n%s", preview);
+                } else {
+                    snprintf(label, label_size, "Key");
+                }
+            } else {
+                snprintf(label, label_size, "Key");
+            }
+            break;
+
+        case ACTION_TYPE_MEDIA:
+            if (btn->long_press_action_data_len >= 2) {
+                uint16_t usage = (uint16_t)btn->long_press_action_data[0]
+                               | ((uint16_t)btn->long_press_action_data[1] << 8);
+                snprintf(label, label_size, "%s", media_key_name(usage));
+            } else {
+                snprintf(label, label_size, "Media");
+            }
+            break;
+
+        case ACTION_TYPE_SHELL: {
+            const char* cmd = (btn->long_press_action_data_len > 1)
+                              ? (const char*)(btn->long_press_action_data + 1)
+                              : (const char*)btn->long_press_action_data;
+            int show = 0;
+            while (show < 12 && cmd[show]) show++;
+            char preview[13];
+            memcpy(preview, cmd, show);
+            preview[show] = '\0';
+            snprintf(label, label_size, "$\n%s", preview);
+            break;
+        }
+
+        case ACTION_TYPE_LAUNCH_APP: {
+            const char* path = (const char*)btn->long_press_action_data;
+            const char* base = path;
+            for (const char* p = path; *p; p++)
+                if (*p == '/' || *p == '\\') base = p + 1;
+            int show = 0;
+            while (show < 12 && base[show]) show++;
+            char preview[13];
+            memcpy(preview, base, show);
+            preview[show] = '\0';
+            snprintf(label, label_size, "App\n%s", preview);
+            break;
+        }
+
+        case ACTION_TYPE_SEQUENCE:
+            if (btn->long_press_action_data_len >= 1)
+                snprintf(label, label_size, "Seq\n%d", btn->long_press_action_data[0]);
+            else
+                snprintf(label, label_size, "Seq");
+            break;
+
+        case ACTION_TYPE_FOLDER:
+            snprintf(label, label_size, "Folder");
+            break;
+
+        case ACTION_TYPE_NIGHT_MODE:
+            snprintf(label, label_size, "Night");
+            break;
+
+        case ACTION_TYPE_CUSTOM_HID:
+            snprintf(label, label_size, "HID");
+            break;
+
+        default:
+            snprintf(label, label_size, "Hold");
+            break;
+    }
+}
+
 void profile_restore_leds(void) {
     xSemaphoreTake(profile_mutex, portMAX_DELAY);
     for (int i = 0; i < NUM_BUTTONS; i++) {
@@ -590,6 +722,9 @@ void profile_restore_leds(void) {
 void profile_refresh_displays(void) {
     for (int i = 0; i < NUM_BUTTONS; i++) {
         profile_update_button_display(i, &current_profile.buttons[i]);
+        // Yield between buttons so the USB task and watchdog feed can run.
+        // Without this, rendering 10 displays in a tight loop can starve other tasks.
+        vTaskDelay(pdMS_TO_TICKS(10));
     }
 }
 
@@ -611,14 +746,79 @@ static void profile_update_button_display(uint8_t button_id, button_config_t* bt
         return;
     }
 
+    bool has_long_press = (btn->long_press_action_type != ACTION_TYPE_NONE);
+
+    if (has_long_press) {
+        ESP_LOGD(TAG, "Split display btn %d: img=%lu lp_type=0x%02X name='%s'",
+                 button_id, (unsigned long)btn->image_size,
+                 btn->long_press_action_type, btn->name);
+
+        char lp_label[64] = {0};
+        if (btn->long_press_name[0] != '\0')
+            strncpy(lp_label, btn->long_press_name, sizeof(lp_label) - 1);
+        else
+            generate_long_press_label(btn, lp_label, sizeof(lp_label));
+        ESP_LOGD(TAG, "  lp_label='%s'", lp_label);
+
+        // Compose the split frame in a single DISPLAY_BUFFER_SIZE buffer, then draw
+        // once via gc9a01_draw_image.  GC9D01 partial-window writes (CASET/RASET on a
+        // sub-region) are unreliable on this panel; a full 160x160 write always works.
+        uint8_t* frame = heap_caps_malloc(DISPLAY_BUFFER_SIZE, MALLOC_CAP_DMA | MALLOC_CAP_SPIRAM);
+        if (!frame) {
+            gc9a01_clear(button_id, COLOR_BLACK);
+            return;
+        }
+
+        // ── Top SPLIT_SHORT_H px: short press content ──────────────────────
+        if (btn->image_size > 0) {
+            uint8_t* image_data = NULL;
+            size_t image_size = 0;
+            if (image_storage_load(current_profile_id, button_id, &image_data, &image_size) == ESP_OK &&
+                image_data) {
+                uint16_t w, h;
+                if (jpeg_decode_to_rgb565(image_data, image_size, frame, DISPLAY_BUFFER_SIZE, &w, &h) != ESP_OK)
+                    text_render_fill_region(frame, DISPLAY_WIDTH, 0, SPLIT_SHORT_H, NULL, COLOR_WHITE, COLOR_BLACK);
+                // On success: frame rows 0..SPLIT_SHORT_H-1 hold the top of the image
+                free(image_data);
+            } else {
+                text_render_fill_region(frame, DISPLAY_WIDTH, 0, SPLIT_SHORT_H, NULL, COLOR_WHITE, COLOR_BLACK);
+            }
+        } else {
+            char label[64] = {0};
+            if (btn->name[0] != '\0')
+                strncpy(label, btn->name, sizeof(label) - 1);
+            else if (btn->action_type != ACTION_TYPE_NONE)
+                generate_action_label(btn, label, sizeof(label));
+            text_render_fill_region(frame, DISPLAY_WIDTH, 0, SPLIT_SHORT_H,
+                                    label[0] ? label : NULL, COLOR_WHITE, COLOR_BLACK);
+        }
+
+        // ── Bottom SPLIT_LONG_H px: long press content (gray background) ───
+        text_render_fill_region(frame, DISPLAY_WIDTH, SPLIT_SHORT_H, SPLIT_LONG_H,
+                                lp_label, COLOR_WHITE, COLOR_GRAY_LP);
+
+        // ── 2-px white divider at rows SPLIT_SHORT_H-2 .. SPLIT_SHORT_H-1 ─
+        {
+            uint8_t div_hi = COLOR_DIVIDER_LP >> 8, div_lo = COLOR_DIVIDER_LP & 0xFF;
+            uint8_t* div_ptr = frame + (size_t)DISPLAY_WIDTH * (SPLIT_SHORT_H - 2) * 2;
+            for (size_t i = 0; i < (size_t)DISPLAY_WIDTH * 2 * 2; i += 2) {
+                div_ptr[i]     = div_hi;
+                div_ptr[i + 1] = div_lo;
+            }
+        }
+
+        gc9a01_draw_image(button_id, frame, DISPLAY_WIDTH, DISPLAY_HEIGHT);
+        free(frame);
+        return;
+    }
+
+    // ── Full-screen (no long press assigned) ──────────────────────────────
     if (btn->image_size > 0) {
-        // Image exists in config — try to load from storage
         uint8_t* image_data = NULL;
         size_t image_size = 0;
 
         esp_err_t ret = image_storage_load(current_profile_id, button_id, &image_data, &image_size);
         if (ret == ESP_OK && image_data != NULL) {
-            // Decode JPEG → RGB565 → display
             uint8_t* rgb565_buf = heap_caps_malloc(DISPLAY_BUFFER_SIZE, MALLOC_CAP_DMA | MALLOC_CAP_SPIRAM);
             if (rgb565_buf != NULL) {
                 uint16_t w, h;
@@ -645,18 +845,15 @@ static void profile_update_button_display(uint8_t button_id, button_config_t* bt
     char label[64] = {0};
 
     if (btn->name[0] != '\0') {
-        // Button has an explicit name
         strncpy(label, btn->name, sizeof(label) - 1);
     } else if (btn->action_type != ACTION_TYPE_NONE) {
-        // Derive label from action type and data
         generate_action_label(btn, label, sizeof(label));
     }
 
     if (label[0] != '\0') {
         ESP_LOGD(TAG, "Rendering text label for button %d: '%s'", button_id, label);
-        if (text_render_to_display(button_id, label, COLOR_WHITE, COLOR_BLACK) != ESP_OK) {
+        if (text_render_to_display(button_id, label, COLOR_WHITE, COLOR_BLACK) != ESP_OK)
             gc9a01_clear(button_id, COLOR_BLACK);
-        }
     } else {
         gc9a01_clear(button_id, COLOR_BLACK);
     }

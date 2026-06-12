@@ -94,6 +94,9 @@ typedef struct {
 
     // Display name shown when no image is set (empty = derive from action)
     char name[BUTTON_NAME_MAX_LEN];
+
+    // Custom label for the long-press section of the split display (empty = auto-generate)
+    char long_press_name[BUTTON_NAME_MAX_LEN];
 } button_config_t;
 
 // ============================================
