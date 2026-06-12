@@ -36,6 +36,9 @@ DOCKER_IMAGE="espressif/idf:v5.3"
 CLEAN_BUILD=false
 VERBOSE=false
 
+# Число параллельных jobs: Windows (NUMBER_OF_PROCESSORS) → nproc → 4
+CPU_COUNT="${NUMBER_OF_PROCESSORS:-$(nproc 2>/dev/null || echo 4)}"
+
 # Функции для вывода
 print_info() {
     echo -e "${BLUE}ℹ️  $1${NC}"
@@ -207,11 +210,12 @@ build_project() {
     print_info "Проект: $PROJECT_DIR"
     print_info "Docker образ: $DOCKER_IMAGE"
     print_info "Целевая платформа: esp32s3"
+    print_info "Параллельных jobs: $CPU_COUNT"
     echo ""
-    
+
     # Подготовка команды
-    BUILD_CMD="idf.py build"
-    
+    BUILD_CMD="idf.py -j $CPU_COUNT build"
+
     if [ "$VERBOSE" = true ]; then
         BUILD_CMD="$BUILD_CMD -v"
     fi
@@ -224,11 +228,13 @@ build_project() {
     
     # Запуск Docker контейнера для сборки
     if docker run --rm \
+        --cpus "$CPU_COUNT" \
         -v "$PROJECT_DIR:/project" \
         -v "elgato-ccache:/root/.ccache" \
         -v "elgato-esp-config:/root/.espressif" \
         -w /project \
         -e "IDF_TARGET=esp32s3" \
+        -e "IDF_CCACHE_ENABLE=1" \
         -e "CCACHE_DIR=/root/.ccache" \
         -e "CCACHE_MAXSIZE=2G" \
         "$DOCKER_IMAGE" \
