@@ -79,10 +79,23 @@ esp_err_t profile_storage_load(uint8_t profile_id, profile_t* profile) {
         ESP_LOGW(TAG, "Profile %d not found", profile_id);
         return ESP_ERR_NOT_FOUND;
     }
-    
+
+    // Check file size matches current struct layout; stale files from older firmware
+    // have a different size and must be discarded rather than partially read.
+    fseek(f, 0, SEEK_END);
+    long file_size = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    if (file_size != (long)sizeof(profile_t)) {
+        fclose(f);
+        unlink(path);
+        ESP_LOGW(TAG, "Profile %d stale (file=%ld, expected=%zu) — deleted",
+                 profile_id, file_size, sizeof(profile_t));
+        return ESP_ERR_NOT_FOUND;
+    }
+
     size_t read = fread(profile, 1, sizeof(profile_t), f);
     fclose(f);
-    
+
     if (read != sizeof(profile_t)) {
         ESP_LOGE(TAG, "Failed to read profile");
         return ESP_FAIL;
