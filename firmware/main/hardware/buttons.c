@@ -123,52 +123,42 @@ void button_task(void* arg) {
             }
             
             if (level == 0) {
-                // Button pressed (active low)
+                // Button pressed (active low) — record time, send PC event, don't execute yet
                 if (!button_states[btn_id].is_pressed) {
                     button_states[btn_id].is_pressed = true;
                     button_states[btn_id].press_time = event.timestamp;
                     button_states[btn_id].long_press_sent = false;
-                    
+
                     ESP_LOGI(TAG, "Button %d pressed", btn_id);
-                    
-                    // Diagnostic: log stack before action execution
-                    ESP_LOGI(TAG, "Stack before action: %u bytes free",
-                             (unsigned int)(uxTaskGetStackHighWaterMark(NULL) * sizeof(StackType_t)));
-                    
-                    // Send button press event to PC
-                    ESP_LOGD(TAG, "Sending button press event to PC...");
-                    {
-                        uint8_t evt_payload[3];
-                        evt_payload[0] = btn_id;
-                        evt_payload[1] = profile_get_current_id();
-                        button_config_t* btn_cfg = profile_get_button_config(btn_id);
-                        evt_payload[2] = btn_cfg ? btn_cfg->action_type : 0;
-                        protocol_send_event(EVENT_BUTTON_PRESSED, evt_payload, 3);
-                    }
-                    ESP_LOGD(TAG, "Event sent, executing action...");
-                    
-                    // Execute button action
-                    action_execute(btn_id);
-                    
-                    // Diagnostic: log stack after action execution
-                    ESP_LOGI(TAG, "Stack after action: %u bytes free",
-                             (unsigned int)(uxTaskGetStackHighWaterMark(NULL) * sizeof(StackType_t)));
+
+                    // Notify PC immediately so UI can show visual feedback
+                    uint8_t evt_payload[3];
+                    evt_payload[0] = btn_id;
+                    evt_payload[1] = 0; // profile slot always 0
+                    button_config_t* btn_cfg = profile_get_button_config(btn_id);
+                    evt_payload[2] = btn_cfg ? btn_cfg->action_type : 0;
+                    protocol_send_event(EVENT_BUTTON_PRESSED, evt_payload, 3);
                 }
             } else {
-                // Button released
+                // Button released — now determine short vs long press and execute
                 if (button_states[btn_id].is_pressed) {
                     uint64_t press_duration = event.timestamp - button_states[btn_id].press_time;
                     button_states[btn_id].is_pressed = false;
-                    
-                    ESP_LOGI(TAG, "Button %d released (duration: %llu us)", 
-                             btn_id, press_duration);
-                    
-                    // Check for long press
-                    if (press_duration >= (BUTTON_LONG_PRESS_MS * 1000) && 
-                        !button_states[btn_id].long_press_sent) {
-                        ESP_LOGI(TAG, "Button %d long press detected", btn_id);
-                        // Could trigger different action for long press
+
+                    ESP_LOGI(TAG, "Button %d released (duration: %llu us)", btn_id, press_duration);
+                    ESP_LOGI(TAG, "Stack before action: %u bytes free",
+                             (unsigned int)(uxTaskGetStackHighWaterMark(NULL) * sizeof(StackType_t)));
+
+                    if (press_duration >= (BUTTON_LONG_PRESS_MS * 1000ULL)) {
+                        ESP_LOGI(TAG, "Button %d long press", btn_id);
+                        action_execute_long_press(btn_id);
+                    } else {
+                        ESP_LOGI(TAG, "Button %d short press", btn_id);
+                        action_execute(btn_id);
                     }
+
+                    ESP_LOGI(TAG, "Stack after action: %u bytes free",
+                             (unsigned int)(uxTaskGetStackHighWaterMark(NULL) * sizeof(StackType_t)));
                 }
             }
         }

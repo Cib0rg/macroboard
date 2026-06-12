@@ -32,6 +32,7 @@ static esp_err_t handle_get_button_image(const uint8_t* payload, uint16_t length
 static esp_err_t handle_set_button_action(const uint8_t* payload, uint16_t length, uint8_t* response, uint16_t* response_len);
 static esp_err_t handle_get_button_action(const uint8_t* payload, uint16_t length, uint8_t* response, uint16_t* response_len);
 static esp_err_t handle_set_encoder_action(const uint8_t* payload, uint16_t length, uint8_t* response, uint16_t* response_len);
+static esp_err_t handle_set_button_long_press_action(const uint8_t* payload, uint16_t length, uint8_t* response, uint16_t* response_len);
 static esp_err_t handle_set_button_name(const uint8_t* payload, uint16_t length, uint8_t* response, uint16_t* response_len);
 static esp_err_t handle_set_folder_button_action(const uint8_t* payload, uint16_t length, uint8_t* response, uint16_t* response_len);
 static esp_err_t handle_set_folder_button_name(const uint8_t* payload, uint16_t length, uint8_t* response, uint16_t* response_len);
@@ -59,6 +60,7 @@ static const command_entry_t command_table[] = {
     {CMD_GET_BUTTON_IMAGE, handle_get_button_image},
     {CMD_SET_BUTTON_ACTION, handle_set_button_action},
     {CMD_SET_ENCODER_ACTION, handle_set_encoder_action},
+    {CMD_SET_BUTTON_LONG_PRESS_ACTION, handle_set_button_long_press_action},
     {CMD_GET_BUTTON_ACTION, handle_get_button_action},
     {CMD_SET_BUTTON_NAME,            handle_set_button_name},
     {CMD_SET_FOLDER_BUTTON_ACTION,   handle_set_folder_button_action},
@@ -358,6 +360,26 @@ static esp_err_t handle_set_encoder_action(const uint8_t* payload, uint16_t leng
 
     esp_err_t ret = profile_set_encoder_action(slot, action_type,
                                                length > 4 ? &payload[4] : NULL, action_len);
+    response[0] = (ret == ESP_OK) ? STATUS_OK : STATUS_ERROR;
+    *response_len = 1;
+    return ESP_OK;
+}
+
+static esp_err_t handle_set_button_long_press_action(const uint8_t* payload, uint16_t length,
+                                                      uint8_t* response, uint16_t* response_len) {
+    // Payload: [button_id (1)] [action_type (1)] [action_data_len (2 LE)] [action_data ...]
+    if (length < 4) {
+        response[0] = STATUS_ERROR;
+        *response_len = 1;
+        return ESP_OK;
+    }
+    uint8_t button_id = payload[0];
+    uint8_t action_type = payload[1];
+    uint16_t action_len;
+    memcpy(&action_len, &payload[2], 2);
+    if (action_len > PROTOCOL_PAYLOAD_SIZE - 4) action_len = PROTOCOL_PAYLOAD_SIZE - 4;
+    esp_err_t ret = profile_set_button_long_press_action(button_id, action_type,
+                                                          length > 4 ? &payload[4] : NULL, action_len);
     response[0] = (ret == ESP_OK) ? STATUS_OK : STATUS_ERROR;
     *response_len = 1;
     return ESP_OK;

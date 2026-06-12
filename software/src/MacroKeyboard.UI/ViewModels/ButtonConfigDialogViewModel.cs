@@ -276,6 +276,7 @@ public partial class ButtonConfigDialogViewModel : ViewModelBase
         ActionType.ProfileSwitch => "🔄",
         ActionType.Folder => "📁",
         ActionType.CustomHid => "🔌",
+        ActionType.NightMode => "🌙",
         _ => "⊘"
     };
 
@@ -292,6 +293,7 @@ public partial class ButtonConfigDialogViewModel : ViewModelBase
         ActionType.ProfileSwitch => "Profile Switch",
         ActionType.Folder => "Folder",
         ActionType.CustomHid => "Custom HID",
+        ActionType.NightMode => "Night Mode",
         ActionType.None => "None",
         _ => "Not Set"
     };
@@ -1467,6 +1469,17 @@ public partial class ButtonConfigDialogViewModel : ViewModelBase
                 {
                     Key = SelectedMediaKey
                 },
+                ActionType.Shell => new ShellAction
+                {
+                    Command = ShellCommand ?? string.Empty,
+                    WorkingDirectory = string.IsNullOrWhiteSpace(ShellWorkingDirectory) ? null : ShellWorkingDirectory,
+                    WaitForExit = ShellWaitForExit
+                },
+                ActionType.Sequence => new SequenceAction
+                {
+                    Steps = SequenceSteps.Select(s => s.ToModel()).ToList()
+                },
+                ActionType.NightMode => new NightModeAction(),
                 ActionType.None => null,
                 _ => null
             };

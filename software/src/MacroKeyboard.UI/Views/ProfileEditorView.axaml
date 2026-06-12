@@ -159,7 +159,7 @@
                                             Classes.back-slot="{Binding IsBackButton}"
                                             DragDrop.AllowDrop="{Binding !IsBackButton}"
                                             Tag="{Binding}">
-                                        <Grid ColumnDefinitions="Auto,*,Auto">
+                                        <Grid ColumnDefinitions="Auto,*,*,Auto">
                                             <!-- Thumbnail preview -->
                                             <Image Grid.Column="0"
                                                    Source="{Binding Thumbnail}"
@@ -172,6 +172,7 @@
                                                     <RectangleGeometry Rect="0,0,28,28" />
                                                 </Image.Clip>
                                             </Image>
+                                            <!-- Short press -->
                                             <Button Grid.Column="1"
                                                     Background="Transparent"
                                                     BorderThickness="0"
@@ -185,7 +186,28 @@
                                                            VerticalAlignment="Center"
                                                            FontSize="12" />
                                             </Button>
-                                            <TextBlock Grid.Column="2"
+                                            <!-- Long press -->
+                                            <Border Grid.Column="2"
+                                                    Background="#001400"
+                                                    BorderBrush="#00FF41"
+                                                    BorderThickness="1"
+                                                    CornerRadius="3"
+                                                    Margin="4,2,2,2"
+                                                    IsVisible="{Binding !IsBackButton}">
+                                                <Button Background="Transparent"
+                                                        BorderThickness="0"
+                                                        Padding="6,0"
+                                                        HorizontalAlignment="Stretch"
+                                                        HorizontalContentAlignment="Left"
+                                                        Command="{Binding #ProfileEditorRoot.DataContext.ConfigureButtonLongPressCommand}"
+                                                        CommandParameter="{Binding}">
+                                                    <TextBlock Text="{Binding LongPressLabel}"
+                                                               Foreground="#00FF41"
+                                                               VerticalAlignment="Center"
+                                                               FontSize="11" />
+                                                </Button>
+                                            </Border>
+                                            <TextBlock Grid.Column="3"
                                                        Text="📁"
                                                        IsVisible="{Binding IsFolderHeader}"
                                                        VerticalAlignment="Center"

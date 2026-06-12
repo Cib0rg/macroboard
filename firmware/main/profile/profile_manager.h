@@ -57,6 +57,10 @@ esp_err_t profile_set_button_action(uint8_t profile_id, uint8_t button_id,
                                      uint8_t action_type, const uint8_t* action_data,
                                      uint16_t action_len);
 
+esp_err_t profile_set_button_long_press_action(uint8_t button_id,
+                                                uint8_t action_type, const uint8_t* action_data,
+                                                uint16_t action_len);
+
 /**
  * @brief Set display name for a button (shown when no image is assigned)
  * @param profile_id Profile ID

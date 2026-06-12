@@ -227,6 +227,12 @@ public class ProfileService : IProfileService
                     button.Led,
                     cancellationToken);
 
+                // Отправить действие long press
+                await _deviceService.SetButtonLongPressActionAsync(
+                    button.ButtonId,
+                    button.LongPressAction,
+                    cancellationToken);
+
                 progress?.Report(10 + ((i + 1) * 70 / profile.Buttons.Count));
 
                 // Small delay between buttons to let firmware process commands

@@ -18,6 +18,13 @@
 esp_err_t action_execute(uint8_t button_id);
 
 /**
+ * @brief Execute button long press action (looks up from current profile)
+ * @param button_id Button ID
+ * @return ESP_OK on success
+ */
+esp_err_t action_execute_long_press(uint8_t button_id);
+
+/**
  * @brief Execute a raw action by type and data (used by encoder, sequences, etc.)
  * @param type Action type
  * @param data Action data

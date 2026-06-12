@@ -200,6 +200,23 @@ esp_err_t profile_set_button_action(uint8_t profile_id, uint8_t button_id,
     return ESP_OK;
 }
 
+esp_err_t profile_set_button_long_press_action(uint8_t button_id,
+                                                uint8_t action_type, const uint8_t* action_data,
+                                                uint16_t action_len) {
+    if (button_id >= NUM_BUTTONS) return ESP_ERR_INVALID_ARG;
+    if (action_len > ACTION_DATA_MAX_LEN) action_len = ACTION_DATA_MAX_LEN;
+
+    xSemaphoreTake(profile_mutex, portMAX_DELAY);
+    button_config_t* btn = &current_profile.buttons[button_id];
+    btn->long_press_action_type = action_type;
+    btn->long_press_action_data_len = action_len;
+    if (action_data != NULL && action_len > 0) {
+        memcpy(btn->long_press_action_data, action_data, action_len);
+    }
+    xSemaphoreGive(profile_mutex);
+    return ESP_OK;
+}
+
 // ---- Folder button setters -----------------------------------------------
 
 esp_err_t profile_set_folder_button_action(uint8_t profile_id, uint8_t folder_id,

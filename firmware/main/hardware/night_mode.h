@@ -8,13 +8,16 @@
 #define NIGHT_MODE_H
 
 #include <stdbool.h>
+#include <stdint.h>
 
 /**
  * @brief Toggle night mode.
- *        First call: saves current display brightness, turns off all LEDs, sets brightness to 0.
+ *        First call: saves current display brightness, turns off all LEDs except the trigger
+ *        button (lit at 10% as indicator), sets display brightness to 0.
  *        Second call: restores saved brightness and re-applies LED colors from the current profile.
+ * @param button_id  Button that triggered the toggle (kept lit as indicator during night mode).
  */
-void night_mode_toggle(void);
+void night_mode_toggle(uint8_t button_id);
 
 /**
  * @brief Return whether night mode is currently active.

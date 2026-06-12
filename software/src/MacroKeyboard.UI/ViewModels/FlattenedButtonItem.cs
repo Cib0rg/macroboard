@@ -94,6 +94,26 @@ public class FlattenedButtonItem
     }
 
     /// <summary>
+    /// Short display text for the long press action (shown in the right sub-column)
+    /// </summary>
+    public string LongPressLabel => ActionText(Button.LongPressAction);
+
+    private static string ActionText(ActionConfig? action) => action switch
+    {
+        null => "—",
+        NoneAction => "—",
+        KeyboardAction ka when ka.KeyCode != 0 => $"Key: {HidKeyName(ka.KeyCode)}",
+        KeyboardAction ka when !string.IsNullOrEmpty(ka.Text) => $"\"{ka.Text}\"",
+        KeyboardAction => "Key: (not set)",
+        MediaAction ma => $"🔊 {ma.Key}",
+        LaunchAppAction la when !string.IsNullOrEmpty(la.ExecutablePath)
+            => $"🚀 {System.IO.Path.GetFileNameWithoutExtension(la.ExecutablePath)}",
+        ShellAction sh => $"💻 {(sh.Command.Length > 18 ? sh.Command[..18] + "…" : sh.Command)}",
+        FolderAction => "📁 Folder",
+        _ => action.ActionType.ToString()
+    };
+
+    /// <summary>
     /// Display name for the folder (if this button opens a folder)
     /// </summary>
     public string FolderDisplayName { get; set; } = "Folder";

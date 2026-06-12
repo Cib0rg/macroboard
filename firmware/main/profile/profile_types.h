@@ -72,6 +72,11 @@ typedef struct {
     uint16_t action_data_len;
     uint8_t action_data[ACTION_DATA_MAX_LEN];
 
+    // Long press action
+    action_type_t long_press_action_type;
+    uint16_t long_press_action_data_len;
+    uint8_t long_press_action_data[ACTION_DATA_MAX_LEN];
+
     // Folder configuration (for ACTION_TYPE_FOLDER)
     uint8_t folder_id;  // ID of the folder (0-255)
 

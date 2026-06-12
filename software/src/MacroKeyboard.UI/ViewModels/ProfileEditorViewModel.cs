@@ -143,6 +143,7 @@ public partial class ProfileEditorViewModel : ViewModelBase
         new ActionPaletteItem(ActionType.Sequence,      "Sequence",    "📋", "Execute multiple actions in sequence"),
         new ActionPaletteItem(ActionType.Folder,        "Folder",      "📁", "Open a folder of sub-buttons"),
         new ActionPaletteItem(ActionType.CustomHid,     "Custom HID",  "🔌", "Send custom HID report"),
+        new ActionPaletteItem(ActionType.NightMode,     "Night Mode",  "🌙", "Toggle all LEDs and display brightness off; press again to restore"),
         new ActionPaletteItem(ActionType.None,          "None",        "⊘",  "No action assigned"),
     };
 
@@ -655,6 +656,33 @@ public partial class ProfileEditorViewModel : ViewModelBase
     }
 
     /// <summary>
+    /// Configure the long press action for a button.
+    /// Uses a synthetic ButtonConfig with ButtonId = actual + 100 so SaveButtonConfig
+    /// can detect the long press path, while ConfiguredButtonConfig stays as the real
+    /// button so the inline panel opens in the correct row.
+    /// </summary>
+    [RelayCommand]
+    private void ConfigureButtonLongPress(FlattenedButtonItem? item)
+    {
+        if (item == null || item.IsBackButton) return;
+
+        var synthetic = new ButtonConfig
+        {
+            ButtonId = (byte)(item.Button.ButtonId + 100),
+            Action = item.Button.LongPressAction
+        };
+
+        var profileItems = GetAvailableProfileItems();
+        var folderItems = GetAvailableFolderItems();
+        ButtonConfigViewModel = new ButtonConfigDialogViewModel(_dialogLogger, synthetic, profileItems, folderItems);
+        if (_storageProvider != null)
+            ButtonConfigViewModel.SetStorageProvider(_storageProvider);
+        ConfiguredButtonConfig = item.Button;   // panel appears under the real row
+        IsButtonConfigVisible = true;
+        HasUnsavedChanges = true;
+    }
+
+    /// <summary>
     /// Open the inline button configuration panel
     /// </summary>
     private void OpenButtonConfigInline(ButtonConfig button)
@@ -795,6 +823,27 @@ public partial class ProfileEditorViewModel : ViewModelBase
             ButtonConfigViewModel.SaveToButtonConfig();
 
             var button = ButtonConfigViewModel.ButtonConfig;
+
+            // Button long press editing (synthetic ButtonId = actual + 100) — save to LongPressAction
+            if (button.ButtonId >= 100 && button.ButtonId < 200 && SelectedProfile != null)
+            {
+                var actualId = (byte)(button.ButtonId - 100);
+                var actualButton = SelectedProfile.Buttons.FirstOrDefault(b => b.ButtonId == actualId);
+                if (actualButton != null)
+                {
+                    actualButton.LongPressAction = button.Action;
+                    await _profileService.UpdateProfileAsync(SelectedProfile);
+                    HasUnsavedChanges = false;
+                    StatusMessage = $"Button {actualId + 1} long press configured";
+                    BuildFlattenedButtons();
+                    if (_ipcClient.IsConnected)
+                        await SendFullProfileToDeviceAsync();
+                }
+                IsButtonConfigVisible = false;
+                ButtonConfigViewModel = null;
+                ConfiguredButtonConfig = null;
+                return;
+            }
 
             // Encoder slot editing — save action back to EncoderConfig and return early
             if (_encoderEditingSlot >= 0 && SelectedProfile != null)

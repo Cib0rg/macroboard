@@ -16,9 +16,14 @@ public class ButtonConfig
     public string? Name { get; set; }
     
     /// <summary>
-    /// Конфигурация действия
+    /// Конфигурация действия (short press)
     /// </summary>
     public ActionConfig? Action { get; set; }
+
+    /// <summary>
+    /// Действие при долгом нажатии
+    /// </summary>
+    public ActionConfig? LongPressAction { get; set; }
     
     /// <summary>
     /// Путь к изображению кнопки

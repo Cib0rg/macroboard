@@ -97,7 +97,7 @@ static esp_err_t execute_single_action(action_type_t type, const uint8_t* data, 
         }
         
         case ACTION_TYPE_NIGHT_MODE:
-            night_mode_toggle();
+            night_mode_toggle(button_id);
             break;
 
         case ACTION_TYPE_MEDIA: {
@@ -219,6 +219,26 @@ static esp_err_t execute_sequence_action(button_config_t* btn, uint8_t button_id
     }
 
     return execute_sequence(&seq, button_id);
+}
+
+esp_err_t action_execute_long_press(uint8_t button_id) {
+    if (button_id >= NUM_BUTTONS) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    button_config_t* btn = profile_get_button_config(button_id);
+    if (btn == NULL) {
+        return ESP_FAIL;
+    }
+
+    if (btn->long_press_action_type == ACTION_TYPE_NONE) {
+        ESP_LOGD(TAG, "No long press action for button %d", button_id);
+        return ESP_OK;
+    }
+
+    ESP_LOGI(TAG, "Executing long press for button %d, type=%d", button_id, btn->long_press_action_type);
+    return execute_single_action(btn->long_press_action_type, btn->long_press_action_data,
+                                 btn->long_press_action_data_len, button_id);
 }
 
 esp_err_t action_execute(uint8_t button_id) {

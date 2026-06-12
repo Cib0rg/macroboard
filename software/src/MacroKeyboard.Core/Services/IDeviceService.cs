@@ -124,6 +124,7 @@ public interface IDeviceService
     /// Установить действие для слота энкодера (0=CW, 1=CCW, 2=press, 3=long press)
     /// </summary>
     Task<bool> SetEncoderActionAsync(byte slot, ActionConfig? action, CancellationToken cancellationToken = default);
+    Task<bool> SetButtonLongPressActionAsync(byte buttonId, ActionConfig? action, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Сохранить профиль в энергонезависимую память
