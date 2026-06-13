@@ -1,5 +1,10 @@
 # Plugin System — Plan
 
+> **Sequencing note:** Implement this plan before `ui_refactor.md`. The UI refactor's
+> Config Panel (Phase 3) and Action Picker (Phase 2) explicitly depend on the plugin
+> data structures and IPC API defined here. Running plugins first means the UI refactor
+> is a clean port of known, working code rather than speculative scaffolding.
+
 ## Текущее состояние
 
 Скелет написан, но ни в чём не подключён:
@@ -30,6 +35,12 @@
 ### UI: откуда берётся список plugin actions
 
 Backend держит список загруженных манифестов. UI запрашивает его через IPC при открытии редактора. Actions из манифестов добавляются в палитру (правая колонка) после стандартных actions.
+
+> **Совместимость с ui_refactor.md:** Фаза 6 ниже использует текущую `ActionPaletteItems`
+> инфраструктуру (drag-and-drop палитра). После выполнения `ui_refactor.md` Phase 2
+> палитра заменяется Action Picker'ом, и `PluginActionInfo` объекты становятся входными
+> данными для `ActionTypeRegistry.RegisterPlugin()`. Переход требует только изменений в
+> Phase 6 UI-кода — Core/Backend части (Фазы 1–5) остаются без изменений.
 
 ---
 
@@ -150,7 +161,7 @@ Backend держит список загруженных манифестов. U
    ```csharp
    public IEnumerable<(string PluginId, string PluginName, PluginAction Action)> GetLoadedActions()
    ```
-   Нужен для UI — формирует список доступных plugin actions для палитры.
+   Нужен для UI — формирует список доступных plugin actions для палитры/пикера.
 
 ---
 
@@ -223,6 +234,11 @@ Backend держит список загруженных манифестов. U
 - `MacroKeyboard.UI/ViewModels/ProfileEditorViewModel.cs`
 - `MacroKeyboard.UI/ViewModels/ButtonConfigDialogViewModel.cs`
 - `MacroKeyboard.UI/Views/ProfileEditorView.axaml`
+
+> **Временная реализация:** этот UI-слой использует текущую drag-and-drop палитру.
+> После выполнения `ui_refactor.md` Phase 2 он будет заменён на Action Picker —
+> `PluginActionInfo` объекты станут источником данных для `ActionTypeRegistry.RegisterPlugin()`.
+> Core/Backend код (Фазы 1–5) при этом не меняется.
 
 **Задачи:**
 
