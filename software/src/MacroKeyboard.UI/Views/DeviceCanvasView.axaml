@@ -1,0 +1,88 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:MacroKeyboard.UI.ViewModels"
+             x:Class="MacroKeyboard.UI.Views.DeviceCanvasView"
+             x:DataType="vm:DeviceCanvasViewModel">
+
+    <UserControl.Styles>
+        <Style Selector="Border.tile">
+            <Setter Property="Background" Value="#161B22" />
+            <Setter Property="BorderBrush" Value="#2A3A4A" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="Cursor" Value="Hand" />
+        </Style>
+        <Style Selector="Border.tile:pointerover">
+            <Setter Property="BorderBrush" Value="#4A6A8A" />
+        </Style>
+        <Style Selector="Border.tile.selected">
+            <Setter Property="BorderBrush" Value="#00FFFF" />
+            <Setter Property="BorderThickness" Value="2" />
+        </Style>
+        <Style Selector="Border.tile.back-slot">
+            <Setter Property="Background" Value="#0A0A0A" />
+            <Setter Property="Cursor" Value="Arrow" />
+            <Setter Property="Opacity" Value="0.45" />
+        </Style>
+        <Style Selector="Border.tile.folder">
+            <Setter Property="BorderBrush" Value="#FFA500" />
+        </Style>
+    </UserControl.Styles>
+
+    <ItemsControl ItemsSource="{Binding CurrentTiles}">
+        <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate>
+                <UniformGrid Rows="2" />
+            </ItemsPanelTemplate>
+        </ItemsControl.ItemsPanel>
+        <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="vm:ButtonTileViewModel">
+                <Border Width="84" Height="84" Margin="4"
+                        Classes="tile"
+                        Classes.selected="{Binding IsSelected}"
+                        Classes.back-slot="{Binding IsBackButton}"
+                        Classes.folder="{Binding IsFolder}"
+                        Tag="{Binding}"
+                        PointerPressed="OnTilePointerPressed"
+                        DoubleTapped="OnTileDoubleTapped"
+                        ToolTip.Tip="{Binding DisplayName}">
+                    <Grid ClipToBounds="True">
+                        <!-- Background image -->
+                        <Image Source="{Binding TileImage}"
+                               IsVisible="{Binding HasImage}"
+                               Stretch="UniformToFill"
+                               Opacity="0.85" />
+
+                        <!-- No image: large action icon -->
+                        <TextBlock Text="{Binding ActionIcon}"
+                                   IsVisible="{Binding !HasImage}"
+                                   FontSize="30"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center"
+                                   Opacity="0.7" />
+
+                        <!-- Name overlay at bottom -->
+                        <Border VerticalAlignment="Bottom"
+                                Background="#BB000000"
+                                Padding="4,2"
+                                CornerRadius="0,0,6,6">
+                            <TextBlock Text="{Binding DisplayName}"
+                                       FontSize="9"
+                                       TextTrimming="CharacterEllipsis"
+                                       HorizontalAlignment="Center"
+                                       Foreground="White" />
+                        </Border>
+
+                        <!-- Long-press dot (top-right) -->
+                        <Ellipse Width="7" Height="7"
+                                 HorizontalAlignment="Right"
+                                 VerticalAlignment="Top"
+                                 Margin="0,5,5,0"
+                                 Fill="#00FF41"
+                                 IsVisible="{Binding HasLongPress}" />
+                    </Grid>
+                </Border>
+            </DataTemplate>
+        </ItemsControl.ItemTemplate>
+    </ItemsControl>
+</UserControl>
