@@ -190,13 +190,11 @@ public partial class ProfileEditorView : UserControl
         if (e.DataTransfer.Contains(PaletteItemFormat))
         {
             var target = FindButtonDropTarget(e.Source as Interactive);
-            if (target != null)
-            {
-                e.DragEffects = DragDropEffects.Copy;
-                return;
-            }
+            if (target != null) { e.DragEffects = DragDropEffects.Copy; return; }
 
-            if (DataContext is ProfileEditorViewModel vm && vm.IsButtonConfigVisible)
+            if (FindEncoderSlotTarget(e.Source as Interactive) >= 0) { e.DragEffects = DragDropEffects.Copy; return; }
+
+            if (DataContext is ProfileEditorViewModel vm && (vm.IsButtonConfigVisible || vm.IsEncoderConfigVisible))
             {
                 e.DragEffects = DragDropEffects.Copy;
                 return;
@@ -226,8 +224,19 @@ public partial class ProfileEditorView : UserControl
             return;
         }
 
+        // Drop directly on an encoder slot button → open encoder config for that slot
+        var encoderSlot = FindEncoderSlotTarget(e.Source as Interactive);
+        if (encoderSlot >= 0)
+        {
+            vm.HandleActionDropOnEncoder(encoderSlot, paletteItem.ActionType);
+            if (paletteItem.PreConfiguredAction is MediaAction slotMedia)
+                vm.ButtonConfigViewModel!.SelectedMediaKey = slotMedia.Key;
+            e.Handled = true;
+            return;
+        }
+
         // Drop on the open config panel → change action type (and pre-fill key if applicable)
-        if (vm.ButtonConfigViewModel != null && vm.IsButtonConfigVisible)
+        if (vm.ButtonConfigViewModel != null && (vm.IsButtonConfigVisible || vm.IsEncoderConfigVisible))
         {
             vm.ButtonConfigViewModel.SelectedActionType = paletteItem.ActionType;
             if (paletteItem.PreConfiguredAction is MediaAction mediaAction)
@@ -245,11 +254,25 @@ public partial class ProfileEditorView : UserControl
         while (current != null)
         {
             if (current is Border border && border.Tag is FlattenedButtonItem item)
-            {
                 return item;
-            }
             current = current.GetVisualParent();
         }
         return null;
+    }
+
+    /// <summary>
+    /// Walk up the visual tree looking for a Tag="encoder:N" element; returns slot 0-3 or -1.
+    /// </summary>
+    private static int FindEncoderSlotTarget(Interactive? source)
+    {
+        var current = source as Visual;
+        while (current != null)
+        {
+            if (current is Control el && el.Tag is string tag && tag.StartsWith("encoder:") &&
+                int.TryParse(tag["encoder:".Length..], out int slot) && slot is >= 0 and <= 3)
+                return slot;
+            current = current.GetVisualParent();
+        }
+        return -1;
     }
 }

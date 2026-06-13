@@ -80,17 +80,43 @@ public partial class ProfileEditorViewModel : ViewModelBase
         _ => action.ActionType.ToString()
     };
 
-    [RelayCommand]
-    private void ConfigureEncoderCw() { _encoderEditingSlot = 0; OpenButtonConfigInline(_encoderCwConfig); }
+    [ObservableProperty]
+    private bool _isEncoderConfigVisible;
 
     [RelayCommand]
-    private void ConfigureEncoderCcw() { _encoderEditingSlot = 1; OpenButtonConfigInline(_encoderCcwConfig); }
+    private void ConfigureEncoderCw() => OpenEncoderConfigInline(_encoderCwConfig, 0);
 
     [RelayCommand]
-    private void ConfigureEncoderPress() { _encoderEditingSlot = 2; OpenButtonConfigInline(_encoderPressConfig); }
+    private void ConfigureEncoderCcw() => OpenEncoderConfigInline(_encoderCcwConfig, 1);
 
     [RelayCommand]
-    private void ConfigureEncoderLongPress() { _encoderEditingSlot = 3; OpenButtonConfigInline(_encoderLongConfig); }
+    private void ConfigureEncoderPress() => OpenEncoderConfigInline(_encoderPressConfig, 2);
+
+    [RelayCommand]
+    private void ConfigureEncoderLongPress() => OpenEncoderConfigInline(_encoderLongConfig, 3);
+
+    private void OpenEncoderConfigInline(ButtonConfig config, int slot)
+    {
+        _encoderEditingSlot = slot;
+        // Close any open button config panel
+        ConfiguredButtonConfig = null;
+        IsButtonConfigVisible = false;
+        var profileItems = GetAvailableProfileItems();
+        var folderItems = GetAvailableFolderItems();
+        ButtonConfigViewModel = new ButtonConfigDialogViewModel(_dialogLogger, config, profileItems, folderItems);
+        if (_storageProvider != null)
+            ButtonConfigViewModel.SetStorageProvider(_storageProvider);
+        ButtonConfigViewModel.IsLongPress = true; // hides LED — encoders have no LED
+        IsEncoderConfigVisible = true;
+        HasUnsavedChanges = true;
+    }
+
+    public void HandleActionDropOnEncoder(int slot, ActionType actionType)
+    {
+        var config = slot switch { 0 => _encoderCwConfig, 1 => _encoderCcwConfig, 2 => _encoderPressConfig, _ => _encoderLongConfig };
+        OpenEncoderConfigInline(config, slot);
+        ButtonConfigViewModel!.SelectedActionType = actionType;
+    }
 
     [ObservableProperty]
     private ButtonConfigDialogViewModel? _buttonConfigViewModel;
@@ -690,7 +716,11 @@ public partial class ProfileEditorViewModel : ViewModelBase
     private void OpenButtonConfigInline(ButtonConfig button)
     {
         _logger.LogInformation("🔘 Configuring button {ButtonId} inline", button.ButtonId);
-        
+
+        // Close encoder config panel if open
+        IsEncoderConfigVisible = false;
+        _encoderEditingSlot = -1;
+
         // Close any previously open config panel (without saving)
         if (ConfiguredButtonConfig != null && !ReferenceEquals(ConfiguredButtonConfig, button))
         {
@@ -864,6 +894,7 @@ public partial class ProfileEditorViewModel : ViewModelBase
                 await _profileService.UpdateProfileAsync(SelectedProfile);
                 HasUnsavedChanges = false;
                 StatusMessage = "Encoder action configured";
+                IsEncoderConfigVisible = false;
                 IsButtonConfigVisible = false;
                 ButtonConfigViewModel = null;
                 ConfiguredButtonConfig = null;
@@ -975,6 +1006,7 @@ public partial class ProfileEditorViewModel : ViewModelBase
     {
         _encoderEditingSlot = -1;
         IsButtonConfigVisible = false;
+        IsEncoderConfigVisible = false;
         ButtonConfigViewModel = null;
         ConfiguredButtonConfig = null;
         HasUnsavedChanges = false;
