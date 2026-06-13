@@ -56,15 +56,9 @@ static esp_err_t execute_single_action(action_type_t type, const uint8_t* data, 
         }
         
         case ACTION_TYPE_CUSTOM_HID: {
-            uint8_t payload[PROTOCOL_PAYLOAD_SIZE];
-            payload[0] = button_id;
-            payload[1] = profile_get_current_id();
-            payload[2] = type;
-            
-            uint16_t copy_len = (data_len < 50) ? data_len : 50;
-            memcpy(&payload[3], data, copy_len);
-            
-            protocol_send_event(EVENT_BUTTON_PRESSED, payload, 3 + copy_len);
+            // Send raw HID report directly — PC is not involved
+            if (data_len > 0)
+                usb_hid_send_raw_report(data, data_len);
             break;
         }
         
@@ -122,6 +116,12 @@ static esp_err_t execute_single_action(action_type_t type, const uint8_t* data, 
             // buttons.c already sent EVENT_BUTTON_PRESSED before calling action_execute();
             // backend's ActionExecutorService handles this via profile lookup — nothing to do here.
             ESP_LOGI(TAG, "LaunchApp action forwarded to PC via generic button event");
+            break;
+
+        case ACTION_TYPE_PLUGIN:
+            // Entirely PC-side: backend reads profile and dispatches to PluginManager.
+            // EVENT_BUTTON_PRESSED is already sent by the caller — nothing else needed here.
+            ESP_LOGD(TAG, "Plugin action forwarded to PC via generic button event");
             break;
 
         default:

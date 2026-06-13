@@ -1,4 +1,5 @@
 using MacroKeyboard.Backend;
+using MacroKeyboard.Backend.Plugin;
 using MacroKeyboard.Backend.Services;
 using MacroKeyboard.Communication.HidDevice;
 using MacroKeyboard.Communication.Protocol;
@@ -56,6 +57,14 @@ try
     builder.Services.AddSingleton<IpcCommandHandler>();
     builder.Services.AddSingleton<IShellCommandExecutor, ShellCommandExecutor>();
     builder.Services.AddSingleton<ActionExecutorService>();
+
+    // Register Plugin services
+    builder.Services.AddSingleton<WebSocketServer>();
+    builder.Services.AddSingleton<PluginManager>(sp => new PluginManager(
+        sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<PluginManager>>(),
+        sp.GetRequiredService<MacroKeyboard.Core.Services.IDeviceService>(),
+        sp.GetRequiredService<WebSocketServer>(),
+        Path.Combine(AppContext.BaseDirectory, "plugins")));
 
     // Register the main service
     builder.Services.AddHostedService<BackendService>();

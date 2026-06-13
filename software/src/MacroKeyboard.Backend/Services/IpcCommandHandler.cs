@@ -1,6 +1,8 @@
+using MacroKeyboard.Backend.Plugin;
 using MacroKeyboard.Core.Models;
 using MacroKeyboard.Core.Services;
 using MacroKeyboard.Shared.IPC;
+using MacroKeyboard.Shared.Plugin;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
@@ -16,17 +18,20 @@ public class IpcCommandHandler
     private readonly IDeviceService _deviceService;
     private readonly IProfileService _profileService;
     private readonly IIpcServer _ipcServer;
+    private readonly PluginManager _pluginManager;
     private readonly ILogger<IpcCommandHandler> _logger;
 
     public IpcCommandHandler(
         IDeviceService deviceService,
         IProfileService profileService,
         IIpcServer ipcServer,
+        PluginManager pluginManager,
         ILogger<IpcCommandHandler> logger)
     {
         _deviceService = deviceService;
         _profileService = profileService;
         _ipcServer = ipcServer;
+        _pluginManager = pluginManager;
         _logger = logger;
 
         // Subscribe to incoming IPC messages
@@ -56,6 +61,7 @@ public class IpcCommandHandler
                 IpcMessageTypes.SetLedColor => await HandleSetLedColor(message),
                 IpcMessageTypes.GetLedColor => await HandleGetLedColor(message),
                 IpcMessageTypes.SetDisplayBrightness => await HandleSetDisplayBrightness(message),
+                IpcMessageTypes.PluginList => HandlePluginList(message),
                 _ => HandleUnknownCommand(message)
             };
 
@@ -249,6 +255,7 @@ public class IpcCommandHandler
                 ActionType.Media => actionObj.ToObject<MediaAction>(),
                 ActionType.LaunchApp => actionObj.ToObject<LaunchAppAction>(),
                 ActionType.NightMode => new NightModeAction(),
+                ActionType.Plugin => actionObj.ToObject<PluginActionConfig>(),
                 _ => null
             };
         }
@@ -380,6 +387,23 @@ public class IpcCommandHandler
         return actualBrightness.HasValue
             ? IpcResponse.Ok(message, new { Brightness = actualBrightness.Value })
             : IpcResponse.Fail(message, "Failed to set display brightness");
+    }
+
+    private IpcResponse HandlePluginList(IpcMessage message)
+    {
+        var actions = _pluginManager.GetLoadedActions()
+            .Select(x => new PluginActionInfo
+            {
+                PluginId = x.PluginId,
+                PluginName = x.PluginName,
+                ActionId = x.Action.Id,
+                ActionName = x.Action.Name,
+                Icon = x.Action.Icon,
+                Tooltip = x.Action.Tooltip
+            })
+            .ToList();
+
+        return IpcResponse.Ok(message, actions);
     }
 
     private IpcResponse HandleUnknownCommand(IpcMessage message)

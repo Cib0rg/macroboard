@@ -58,5 +58,13 @@ esp_err_t usb_hid_consumer_press(uint16_t usage_code);
  */
 esp_err_t usb_hid_consumer_release(void);
 
+/**
+ * @brief Send a raw HID report (Custom HID action — Report ID 3)
+ * @param data Report payload bytes
+ * @param len  Number of bytes (capped at USB_HID_REPORT_SIZE - 1)
+ * @return ESP_OK on success
+ */
+esp_err_t usb_hid_send_raw_report(const uint8_t* data, uint16_t len);
+
 
 #endif // USB_HID_KEYBOARD_H

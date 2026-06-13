@@ -78,6 +78,21 @@ esp_err_t usb_hid_consumer_release(void) {
     return tud_hid_report(2, &zero, sizeof(zero)) ? ESP_OK : ESP_FAIL;
 }
 
+esp_err_t usb_hid_send_raw_report(const uint8_t* data, uint16_t len) {
+    if (!tud_mounted()) {
+        ESP_LOGW(TAG, "USB not mounted");
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    uint8_t buf[USB_HID_REPORT_SIZE - 1];
+    uint16_t copy_len = len < sizeof(buf) ? len : sizeof(buf);
+    memcpy(buf, data, copy_len);
+    if (copy_len < sizeof(buf))
+        memset(buf + copy_len, 0, sizeof(buf) - copy_len);
+
+    return tud_hid_report(3, buf, sizeof(buf)) ? ESP_OK : ESP_FAIL;
+}
+
 esp_err_t usb_hid_keyboard_type_text(const char* text) {
     if (text == NULL) {
         return ESP_ERR_INVALID_ARG;

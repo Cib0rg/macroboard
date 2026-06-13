@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using MacroKeyboard.Backend.Plugin;
 using MacroKeyboard.Core.Models;
 using MacroKeyboard.Core.Services;
 using Microsoft.Extensions.Logging;
@@ -6,7 +7,7 @@ using Microsoft.Extensions.Logging;
 namespace MacroKeyboard.Backend.Services;
 
 /// <summary>
-/// Executes PC-side actions (LaunchApp, Shell) triggered by device button presses.
+/// Executes PC-side actions (LaunchApp, Shell, Plugin) triggered by device button presses.
 /// Subscribes directly to IDeviceService.ButtonPressed so it receives ActionType and ProfileId.
 /// </summary>
 public class ActionExecutorService
@@ -14,17 +15,20 @@ public class ActionExecutorService
     private readonly IDeviceService _deviceService;
     private readonly IProfileService _profileService;
     private readonly IShellCommandExecutor _shellExecutor;
+    private readonly PluginManager _pluginManager;
     private readonly ILogger<ActionExecutorService> _logger;
 
     public ActionExecutorService(
         IDeviceService deviceService,
         IProfileService profileService,
         IShellCommandExecutor shellExecutor,
+        PluginManager pluginManager,
         ILogger<ActionExecutorService> logger)
     {
         _deviceService = deviceService;
         _profileService = profileService;
         _shellExecutor = shellExecutor;
+        _pluginManager = pluginManager;
         _logger = logger;
 
         _deviceService.ButtonPressed += OnButtonPressed;
@@ -41,6 +45,9 @@ public class ActionExecutorService
                     break;
                 case ActionType.Shell:
                     await ExecuteShellAsync(e.ProfileId, e.ButtonId);
+                    break;
+                case ActionType.Plugin:
+                    await ExecutePluginActionAsync(e.ProfileId, e.ButtonId);
                     break;
             }
         }
@@ -88,5 +95,21 @@ public class ActionExecutorService
 
         _logger.LogInformation("Executing shell command: {Command}", action.Command);
         await _shellExecutor.ExecuteAsync(action);
+    }
+
+    private async Task ExecutePluginActionAsync(byte profileId, byte buttonId)
+    {
+        var profile = await _profileService.GetProfileAsync(profileId);
+        var button = profile?.Buttons.FirstOrDefault(b => b.ButtonId == buttonId);
+
+        if (button?.Action is not PluginActionConfig action)
+        {
+            _logger.LogWarning("Plugin: no valid action for button {ButtonId} in profile {ProfileId}",
+                buttonId, profileId);
+            return;
+        }
+
+        await _pluginManager.DispatchButtonPressAsync(
+            action.PluginId, action.ActionId, action.Settings, buttonId);
     }
 }

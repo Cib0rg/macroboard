@@ -88,7 +88,11 @@ public class FlattenedButtonItem
                 var cmd = sh.Command.Length > 20 ? sh.Command[..20] + "..." : sh.Command;
                 actionText = $"💻 {cmd}";
             }
-            
+            else if (Button.Action is PluginActionConfig pa)
+            {
+                actionText = $"🔌 {pa.ActionId}";
+            }
+
             return $"{prefix}Button {Button.ButtonId + 1}: {actionText}";
         }
     }
@@ -110,6 +114,7 @@ public class FlattenedButtonItem
             => $"🚀 {System.IO.Path.GetFileNameWithoutExtension(la.ExecutablePath)}",
         ShellAction sh => $"💻 {(sh.Command.Length > 18 ? sh.Command[..18] + "…" : sh.Command)}",
         FolderAction => "📁 Folder",
+        PluginActionConfig pa => $"🔌 {pa.ActionId}",
         _ => action.ActionType.ToString()
     };
 

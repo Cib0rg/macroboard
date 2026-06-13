@@ -25,6 +25,7 @@ typedef enum {
     ACTION_TYPE_LAUNCH_APP = 0x08,   // Запуск приложения (выполняется на PC через Backend)
     ACTION_TYPE_MEDIA = 0x09,        // Медиа-клавиши (Consumer Control: громкость, mute и т.д.)
     ACTION_TYPE_NIGHT_MODE = 0x0A,   // Ночной режим (toggle: LEDs off + brightness 0 / restore)
+    ACTION_TYPE_PLUGIN = 0x0B,       // Plugin action — PC-side dispatch via PluginManager
 } action_type_t;
 
 // ============================================

@@ -4,6 +4,7 @@ using Avalonia.Platform.Storage;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using MacroKeyboard.Core.Models;
+using MacroKeyboard.Shared.Plugin;
 using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
@@ -121,9 +122,29 @@ public partial class ButtonConfigDialogViewModel : ViewModelBase
     private string _folderName = string.Empty;
 
     // ============================================
+    // Custom HID action properties (Phase 7)
+    // ============================================
+
+    [ObservableProperty]
+    private string _customHidData = string.Empty;
+
+    // ============================================
+    // Plugin action properties
+    // ============================================
+
+    [ObservableProperty]
+    private string _pluginId = string.Empty;
+
+    [ObservableProperty]
+    private string _pluginActionId = string.Empty;
+
+    [ObservableProperty]
+    private string _pluginSettings = string.Empty;
+
+    // ============================================
     // Shell action properties
     // ============================================
-    
+
     [ObservableProperty]
     private string _shellCommand = string.Empty;
     
@@ -246,6 +267,11 @@ public partial class ButtonConfigDialogViewModel : ViewModelBase
     public bool IsCustomHidAction => SelectedActionType == ActionType.CustomHid;
 
     /// <summary>
+    /// Show plugin action fields
+    /// </summary>
+    public bool IsPluginAction => SelectedActionType == ActionType.Plugin;
+
+    /// <summary>
     /// Show shell command fields
     /// </summary>
     public bool IsShellAction => SelectedActionType == ActionType.Shell;
@@ -282,8 +308,9 @@ public partial class ButtonConfigDialogViewModel : ViewModelBase
         ActionType.Sequence => "📋",
         ActionType.ProfileSwitch => "🔄",
         ActionType.Folder => "📁",
-        ActionType.CustomHid => "🔌",
+        ActionType.CustomHid => "🎛",
         ActionType.NightMode => "🌙",
+        ActionType.Plugin => "🔌",
         _ => "⊘"
     };
 
@@ -302,6 +329,7 @@ public partial class ButtonConfigDialogViewModel : ViewModelBase
         ActionType.CustomHid => "Custom HID",
         ActionType.NightMode => "Night Mode",
         ActionType.None => "None",
+        ActionType.Plugin => string.IsNullOrEmpty(PluginActionId) ? "Plugin" : $"Plugin: {PluginActionId}",
         _ => "Not Set"
     };
 
@@ -446,6 +474,16 @@ public partial class ButtonConfigDialogViewModel : ViewModelBase
             else if (buttonConfig.Action is MediaAction mediaAction)
             {
                 SelectedMediaKey = mediaAction.Key;
+            }
+            else if (buttonConfig.Action is PluginActionConfig pluginAction)
+            {
+                PluginId = pluginAction.PluginId;
+                PluginActionId = pluginAction.ActionId;
+                PluginSettings = pluginAction.Settings ?? string.Empty;
+            }
+            else if (buttonConfig.Action is CustomHidAction customHidAction)
+            {
+                CustomHidData = FormatBytesAsHex(customHidAction.Data);
             }
         }
 
@@ -969,6 +1007,11 @@ public partial class ButtonConfigDialogViewModel : ViewModelBase
 
         SequenceSteps.Clear();
 
+        PluginId = string.Empty;
+        PluginActionId = string.Empty;
+        PluginSettings = string.Empty;
+        CustomHidData = string.Empty;
+
         // Notify UI to show/hide action-specific fields
         OnPropertyChanged(nameof(IsKeyboardAction));
         OnPropertyChanged(nameof(IsProfileSwitchAction));
@@ -977,12 +1020,35 @@ public partial class ButtonConfigDialogViewModel : ViewModelBase
         OnPropertyChanged(nameof(IsShellAction));
         OnPropertyChanged(nameof(IsLaunchAppAction));
         OnPropertyChanged(nameof(IsSequenceAction));
+        OnPropertyChanged(nameof(IsPluginAction));
         OnPropertyChanged(nameof(CanAddMoreSteps));
         OnPropertyChanged(nameof(CurrentActionIcon));
         OnPropertyChanged(nameof(CurrentActionDisplayName));
         OnPropertyChanged(nameof(KeySequenceDisplay));
         OnPropertyChanged(nameof(HasCapturedKeys));
     }
+
+    /// <summary>
+    /// Parse a hex string like "FF 00 A0" or "FF00A0" into bytes.
+    /// Returns empty array on invalid input.
+    /// </summary>
+    private static byte[] ParseHexString(string hex)
+    {
+        if (string.IsNullOrWhiteSpace(hex))
+            return Array.Empty<byte>();
+
+        var tokens = hex.Replace(",", " ").Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        var result = new List<byte>();
+        foreach (var token in tokens)
+        {
+            if (byte.TryParse(token, System.Globalization.NumberStyles.HexNumber, null, out var b))
+                result.Add(b);
+        }
+        return result.ToArray();
+    }
+
+    private static string FormatBytesAsHex(byte[] data) =>
+        data.Length == 0 ? string.Empty : string.Join(" ", data.Select(b => b.ToString("X2")));
 
     /// <summary>
     /// Create a KeyboardAction from captured keys or text input.
@@ -1456,14 +1522,11 @@ public partial class ButtonConfigDialogViewModel : ViewModelBase
                 },
                 ActionType.Folder => new ProfileSwitchAction
                 {
-                    // Folder uses a special "marker" action — ActionType.Folder
-                    // but we store it as a ProfileSwitchAction-like object for serialization.
-                    // The actual folder navigation is handled by the firmware.
                     TargetProfileId = 0
                 },
                 ActionType.CustomHid => new CustomHidAction
                 {
-                    Data = Array.Empty<byte>()
+                    Data = ParseHexString(CustomHidData)
                 },
                 ActionType.LaunchApp => new LaunchAppAction
                 {
@@ -1487,6 +1550,12 @@ public partial class ButtonConfigDialogViewModel : ViewModelBase
                     Steps = SequenceSteps.Select(s => s.ToModel()).ToList()
                 },
                 ActionType.NightMode => new NightModeAction(),
+                ActionType.Plugin => new PluginActionConfig
+                {
+                    PluginId = PluginId,
+                    ActionId = PluginActionId,
+                    Settings = string.IsNullOrWhiteSpace(PluginSettings) ? null : PluginSettings
+                },
                 ActionType.None => null,
                 _ => null
             };

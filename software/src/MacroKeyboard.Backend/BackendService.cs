@@ -1,3 +1,4 @@
+using MacroKeyboard.Backend.Plugin;
 using MacroKeyboard.Backend.Services;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -15,6 +16,8 @@ public class BackendService : BackgroundService
     private readonly EventRouter _eventRouter;
     private readonly IpcCommandHandler _commandHandler;
     private readonly ActionExecutorService _actionExecutor;
+    private readonly WebSocketServer _webSocketServer;
+    private readonly PluginManager _pluginManager;
 
     public BackendService(
         ILogger<BackendService> logger,
@@ -22,14 +25,18 @@ public class BackendService : BackgroundService
         IpcServer ipcServer,
         EventRouter eventRouter,
         IpcCommandHandler commandHandler,
-        ActionExecutorService actionExecutor)
+        ActionExecutorService actionExecutor,
+        WebSocketServer webSocketServer,
+        PluginManager pluginManager)
     {
         _logger = logger;
         _deviceManager = deviceManager;
         _ipcServer = ipcServer;
         _eventRouter = eventRouter;
-        _commandHandler = commandHandler; // Resolved to activate event subscriptions
-        _actionExecutor = actionExecutor; // Resolved to activate event subscriptions
+        _commandHandler = commandHandler;
+        _actionExecutor = actionExecutor;
+        _webSocketServer = webSocketServer;
+        _pluginManager = pluginManager;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -40,6 +47,23 @@ public class BackendService : BackgroundService
         {
             // Start IPC server
             await _ipcServer.StartAsync(stoppingToken);
+
+            // Start WebSocket server for plugins
+            await _webSocketServer.StartAsync(stoppingToken);
+
+            // Load and start all plugins
+            await _pluginManager.LoadPluginsAsync(stoppingToken);
+            foreach (var manifest in _pluginManager.GetPlugins())
+            {
+                try
+                {
+                    await _pluginManager.StartPluginAsync(manifest.Id, stoppingToken);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Failed to start plugin {PluginId}", manifest.Id);
+                }
+            }
 
             // Start device manager
             await _deviceManager.StartAsync(stoppingToken);
@@ -64,6 +88,13 @@ public class BackendService : BackgroundService
     {
         _logger.LogInformation("MacroKeyboard Backend Service stopping...");
 
+        foreach (var manifest in _pluginManager.GetPlugins())
+        {
+            try { await _pluginManager.StopPluginAsync(manifest.Id, cancellationToken); }
+            catch (Exception ex) { _logger.LogError(ex, "Failed to stop plugin {PluginId}", manifest.Id); }
+        }
+
+        await _webSocketServer.StopAsync(cancellationToken);
         await _deviceManager.StopAsync(cancellationToken);
         await _ipcServer.StopAsync(cancellationToken);
 

@@ -6,6 +6,7 @@ using Avalonia.Interactivity;
 using Avalonia.VisualTree;
 using MacroKeyboard.Core.Models;
 using MacroKeyboard.UI.ViewModels;
+// PluginActionConfig is in MacroKeyboard.Core.Models
 
 namespace MacroKeyboard.UI.Views;
 
@@ -231,6 +232,8 @@ public partial class ProfileEditorView : UserControl
             vm.HandleActionDropOnEncoder(encoderSlot, paletteItem.ActionType);
             if (paletteItem.PreConfiguredAction is MediaAction slotMedia)
                 vm.ButtonConfigViewModel!.SelectedMediaKey = slotMedia.Key;
+            else if (paletteItem.PreConfiguredAction is PluginActionConfig slotPlugin)
+                ApplyPluginAction(vm.ButtonConfigViewModel!, slotPlugin);
             e.Handled = true;
             return;
         }
@@ -241,8 +244,17 @@ public partial class ProfileEditorView : UserControl
             vm.ButtonConfigViewModel.SelectedActionType = paletteItem.ActionType;
             if (paletteItem.PreConfiguredAction is MediaAction mediaAction)
                 vm.ButtonConfigViewModel.SelectedMediaKey = mediaAction.Key;
+            else if (paletteItem.PreConfiguredAction is PluginActionConfig pluginAction)
+                ApplyPluginAction(vm.ButtonConfigViewModel, pluginAction);
             e.Handled = true;
         }
+    }
+
+    private static void ApplyPluginAction(ButtonConfigDialogViewModel vm, PluginActionConfig plugin)
+    {
+        vm.PluginId = plugin.PluginId;
+        vm.PluginActionId = plugin.ActionId;
+        vm.PluginSettings = plugin.Settings ?? string.Empty;
     }
 
     /// <summary>

@@ -6,6 +6,7 @@ using CommunityToolkit.Mvvm.Input;
 using MacroKeyboard.Core.Models;
 using MacroKeyboard.Core.Services;
 using MacroKeyboard.Shared.IPC;
+using MacroKeyboard.Shared.Plugin;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using System;
@@ -77,6 +78,7 @@ public partial class ProfileEditorViewModel : ViewModelBase
         CustomHidAction => "Custom HID",
         NightModeAction => "Night Mode",
         DelayAction da => $"Delay {da.DelayMs}ms",
+        PluginActionConfig pa => $"Plugin: {pa.ActionId}",
         _ => action.ActionType.ToString()
     };
 
@@ -292,6 +294,9 @@ public partial class ProfileEditorViewModel : ViewModelBase
 
             _logger.LogInformation("Loaded {Count} profiles", Profiles.Count);
             StatusMessage = $"Loaded {Profiles.Count} profiles";
+
+            // Load plugin actions into the palette (non-blocking — silently skip if backend not connected)
+            await LoadPluginActionsAsync();
         }
         catch (Exception ex)
         {
@@ -301,6 +306,57 @@ public partial class ProfileEditorViewModel : ViewModelBase
         finally
         {
             IsLoading = false;
+        }
+    }
+
+    private async Task LoadPluginActionsAsync()
+    {
+        if (!_ipcClient.IsConnected)
+            return;
+
+        try
+        {
+            var message = new IpcMessage { MessageType = IpcMessageTypes.PluginList };
+            var response = await _ipcClient.SendAndWaitAsync(message, TimeSpan.FromSeconds(5));
+            if (!response.Success)
+                return;
+
+            var pluginActions = response.GetData<List<PluginActionInfo>>();
+            if (pluginActions == null || pluginActions.Count == 0)
+                return;
+
+            // Remove previously loaded plugin items (keep built-in palette items)
+            var existing = ActionPaletteItems.Where(i => i.ActionType == ActionType.Plugin).ToList();
+            foreach (var item in existing)
+                ActionPaletteItems.Remove(item);
+
+            string? lastPluginId = null;
+            foreach (var pa in pluginActions)
+            {
+                // Group header for each new plugin
+                if (pa.PluginId != lastPluginId)
+                {
+                    ActionPaletteItems.Add(new ActionPaletteItem(ActionType.Plugin, pa.PluginName, "🔌", pa.PluginName));
+                    lastPluginId = pa.PluginId;
+                }
+
+                ActionPaletteItems.Add(new ActionPaletteItem(ActionType.Plugin, pa.ActionName,
+                    string.IsNullOrEmpty(pa.Icon) ? "🔌" : pa.Icon, pa.Tooltip)
+                {
+                    IndentLevel = 1,
+                    PreConfiguredAction = new PluginActionConfig
+                    {
+                        PluginId = pa.PluginId,
+                        ActionId = pa.ActionId
+                    }
+                });
+            }
+
+            _logger.LogInformation("Loaded {Count} plugin actions", pluginActions.Count);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to load plugin actions — continuing without plugins");
         }
     }
 

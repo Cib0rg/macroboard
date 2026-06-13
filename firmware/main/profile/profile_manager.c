@@ -605,6 +605,10 @@ static void generate_action_label(const button_config_t* btn, char* label, size_
             snprintf(label, label_size, "Night");
             break;
 
+        case ACTION_TYPE_PLUGIN:
+            snprintf(label, label_size, "Plugin");
+            break;
+
         default:
             snprintf(label, label_size, "0x%02X", btn->action_type);
             break;
@@ -701,6 +705,10 @@ static void generate_long_press_label(const button_config_t* btn, char* label, s
 
         case ACTION_TYPE_CUSTOM_HID:
             snprintf(label, label_size, "HID");
+            break;
+
+        case ACTION_TYPE_PLUGIN:
+            snprintf(label, label_size, "Plugin");
             break;
 
         default:

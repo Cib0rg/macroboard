@@ -23,10 +23,10 @@ public interface IPlugin : IDisposable
     /// <summary>
     /// Handle button press event
     /// </summary>
-    Task OnButtonPressedAsync(int buttonIndex, CancellationToken cancellationToken = default);
-    
+    Task OnButtonPressedAsync(string actionId, string? settings, int buttonIndex, CancellationToken cancellationToken = default);
+
     /// <summary>
     /// Handle button release event
     /// </summary>
-    Task OnButtonReleasedAsync(int buttonIndex, CancellationToken cancellationToken = default);
+    Task OnButtonReleasedAsync(string actionId, string? settings, int buttonIndex, CancellationToken cancellationToken = default);
 }

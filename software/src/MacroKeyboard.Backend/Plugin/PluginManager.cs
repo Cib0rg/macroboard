@@ -1,3 +1,5 @@
+using MacroKeyboard.Core.Models;
+using MacroKeyboard.Core.Services;
 using MacroKeyboard.Shared.Plugin;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
@@ -14,12 +16,20 @@ public class PluginManager : IDisposable
 {
     private readonly ILogger<PluginManager> _logger;
     private readonly string _pluginsDirectory;
+    private readonly IDeviceService _deviceService;
+    private readonly WebSocketServer _webSocketServer;
     private readonly ConcurrentDictionary<string, PluginInstance> _plugins = new();
     private readonly ConcurrentDictionary<string, PluginManifest> _manifests = new();
 
-    public PluginManager(ILogger<PluginManager> logger, string pluginsDirectory)
+    public PluginManager(
+        ILogger<PluginManager> logger,
+        IDeviceService deviceService,
+        WebSocketServer webSocketServer,
+        string pluginsDirectory)
     {
         _logger = logger;
+        _deviceService = deviceService;
+        _webSocketServer = webSocketServer;
         _pluginsDirectory = pluginsDirectory;
     }
 
@@ -85,7 +95,7 @@ public class PluginManager : IDisposable
         PluginInstance? instance = manifest.Type switch
         {
             "executable" => new ExecutablePluginInstance(manifest, pluginDir, _logger),
-            "managed" => new ManagedPluginInstance(manifest, pluginDir, _logger),
+            "managed" => new ManagedPluginInstance(manifest, pluginDir, _logger, _deviceService),
             _ => null
         };
 
@@ -142,6 +152,88 @@ public class PluginManager : IDisposable
     public PluginManifest? GetPlugin(string pluginId)
     {
         return _manifests.TryGetValue(pluginId, out var manifest) ? manifest : null;
+    }
+
+    /// <summary>
+    /// Dispatch a button press to the appropriate plugin instance.
+    /// Managed: calls IPlugin.OnButtonPressedAsync directly.
+    /// Executable: sends a Stream Deck-compatible keyDown event via WebSocket.
+    /// </summary>
+    public async Task DispatchButtonPressAsync(
+        string pluginId, string actionId, string? settings, int buttonIndex,
+        CancellationToken ct = default)
+    {
+        if (!_plugins.TryGetValue(pluginId, out var instance))
+        {
+            _logger.LogWarning("DispatchButtonPress: plugin not found: {PluginId}", pluginId);
+            return;
+        }
+
+        if (instance is ManagedPluginInstance managed)
+        {
+            await managed.OnButtonPressedAsync(actionId, settings, buttonIndex, ct);
+        }
+        else
+        {
+            await _webSocketServer.BroadcastAsync(new PluginMessage
+            {
+                Event = "keyDown",
+                Action = actionId,
+                Context = $"{pluginId}:{buttonIndex}",
+                Payload = new
+                {
+                    settings = string.IsNullOrEmpty(settings) ? null : JsonConvert.DeserializeObject(settings),
+                    coordinates = new { column = buttonIndex % 5, row = buttonIndex / 5 },
+                    isInMultiAction = false
+                }
+            }, ct);
+        }
+    }
+
+    /// <summary>
+    /// Dispatch a button release to the appropriate plugin instance.
+    /// </summary>
+    public async Task DispatchButtonReleaseAsync(
+        string pluginId, string actionId, string? settings, int buttonIndex,
+        CancellationToken ct = default)
+    {
+        if (!_plugins.TryGetValue(pluginId, out var instance))
+        {
+            _logger.LogWarning("DispatchButtonRelease: plugin not found: {PluginId}", pluginId);
+            return;
+        }
+
+        if (instance is ManagedPluginInstance managed)
+        {
+            await managed.OnButtonReleasedAsync(actionId, settings, buttonIndex, ct);
+        }
+        else
+        {
+            await _webSocketServer.BroadcastAsync(new PluginMessage
+            {
+                Event = "keyUp",
+                Action = actionId,
+                Context = $"{pluginId}:{buttonIndex}",
+                Payload = new
+                {
+                    settings = string.IsNullOrEmpty(settings) ? null : JsonConvert.DeserializeObject(settings),
+                    coordinates = new { column = buttonIndex % 5, row = buttonIndex / 5 },
+                    isInMultiAction = false
+                }
+            }, ct);
+        }
+    }
+
+    /// <summary>
+    /// Returns all available plugin actions — used by the UI to populate the action palette.
+    /// </summary>
+    public IEnumerable<(string PluginId, string PluginName, PluginAction Action)> GetLoadedActions()
+    {
+        foreach (var manifest in _manifests.Values)
+        {
+            foreach (var action in manifest.Actions)
+                yield return (manifest.Id, manifest.Name, action);
+        }
     }
 
     public void Dispose()
@@ -284,11 +376,19 @@ public class ManagedPluginInstance : PluginInstance
     private AssemblyLoadContext? _loadContext;
     private IPlugin? _pluginInstance;
     private Assembly? _pluginAssembly;
+    private readonly IDeviceService _deviceService;
 
-    public ManagedPluginInstance(PluginManifest manifest, string pluginDirectory, ILogger logger)
+    public ManagedPluginInstance(PluginManifest manifest, string pluginDirectory, ILogger logger, IDeviceService deviceService)
         : base(manifest, pluginDirectory, logger)
     {
+        _deviceService = deviceService;
     }
+
+    public Task OnButtonPressedAsync(string actionId, string? settings, int buttonIndex, CancellationToken ct = default)
+        => _pluginInstance?.OnButtonPressedAsync(actionId, settings, buttonIndex, ct) ?? Task.CompletedTask;
+
+    public Task OnButtonReleasedAsync(string actionId, string? settings, int buttonIndex, CancellationToken ct = default)
+        => _pluginInstance?.OnButtonReleasedAsync(actionId, settings, buttonIndex, ct) ?? Task.CompletedTask;
 
     public override async Task StartAsync(CancellationToken cancellationToken = default)
     {
@@ -339,8 +439,7 @@ public class ManagedPluginInstance : PluginInstance
                 throw new InvalidOperationException($"Failed to create instance of plugin type: {pluginType.FullName}");
             }
 
-            // Create plugin context (simplified - would need actual implementation)
-            var context = new PluginContext(Manifest.Id, Logger);
+            var context = new PluginContext(Manifest.Id, Logger, _deviceService);
             
             // Initialize and start the plugin
             await _pluginInstance.InitializeAsync(context, cancellationToken);
@@ -399,77 +498,74 @@ public class ManagedPluginInstance : PluginInstance
 }
 
 /// <summary>
-/// Simple plugin context implementation
+/// Plugin context implementation — bridges IPlugin calls to device services.
 /// </summary>
 internal class PluginContext : IPluginContext
 {
     private readonly ILogger _logger;
+    private readonly IDeviceService _deviceService;
 
     public string PluginId { get; }
 
-    public PluginContext(string pluginId, ILogger logger)
+    public PluginContext(string pluginId, ILogger logger, IDeviceService deviceService)
     {
         PluginId = pluginId;
         _logger = logger;
+        _deviceService = deviceService;
     }
 
     public Task SetButtonImageAsync(int buttonIndex, byte[] imageData, CancellationToken cancellationToken = default)
-    {
-        _logger.LogInformation("[{PluginId}] SetButtonImage: Button {ButtonIndex}, {Size} bytes",
-            PluginId, buttonIndex, imageData.Length);
-        // TODO: Implement actual device communication
-        return Task.CompletedTask;
-    }
+        => _deviceService.SendButtonImageAsync(0, (byte)buttonIndex, imageData, null, cancellationToken);
 
     public Task SetButtonTitleAsync(int buttonIndex, string title, CancellationToken cancellationToken = default)
-    {
-        _logger.LogInformation("[{PluginId}] SetButtonTitle: Button {ButtonIndex}, Title: {Title}",
-            PluginId, buttonIndex, title);
-        // TODO: Implement actual device communication
-        return Task.CompletedTask;
-    }
+        => _deviceService.SetButtonNameAsync(0, (byte)buttonIndex, title, cancellationToken);
 
     public Task SetLedColorAsync(int buttonIndex, byte r, byte g, byte b, CancellationToken cancellationToken = default)
+        => _deviceService.SetLedColorAsync(0, (byte)buttonIndex, new LedConfig { R = r, G = g, B = b, Brightness = 100 }, cancellationToken);
+
+    public async Task ShowAlertAsync(int buttonIndex, CancellationToken cancellationToken = default)
     {
-        _logger.LogInformation("[{PluginId}] SetLedColor: Button {ButtonIndex}, RGB({R},{G},{B})",
-            PluginId, buttonIndex, r, g, b);
-        // TODO: Implement actual device communication
-        return Task.CompletedTask;
+        // Brief red flash to indicate alert
+        await _deviceService.SetLedColorAsync(0, (byte)buttonIndex,
+            new LedConfig { R = 255, G = 0, B = 0, Brightness = 100 }, cancellationToken);
+        await Task.Delay(200, cancellationToken);
+        await _deviceService.SetLedColorAsync(0, (byte)buttonIndex,
+            new LedConfig { R = 0, G = 0, B = 0, Brightness = 0 }, cancellationToken);
     }
 
-    public Task ShowAlertAsync(int buttonIndex, CancellationToken cancellationToken = default)
-    {
-        _logger.LogInformation("[{PluginId}] ShowAlert: Button {ButtonIndex}", PluginId, buttonIndex);
-        // TODO: Implement actual device communication
-        return Task.CompletedTask;
-    }
-
-    public void LogInfo(string message)
-    {
-        _logger.LogInformation("[{PluginId}] {Message}", PluginId, message);
-    }
-
-    public void LogWarning(string message)
-    {
-        _logger.LogWarning("[{PluginId}] {Message}", PluginId, message);
-    }
-
-    public void LogError(string message, Exception? exception = null)
-    {
+    public void LogInfo(string message) => _logger.LogInformation("[{PluginId}] {Message}", PluginId, message);
+    public void LogWarning(string message) => _logger.LogWarning("[{PluginId}] {Message}", PluginId, message);
+    public void LogError(string message, Exception? exception = null) =>
         _logger.LogError(exception, "[{PluginId}] {Message}", PluginId, message);
+
+    public async Task<T?> GetSettingsAsync<T>(CancellationToken cancellationToken = default) where T : class
+    {
+        var path = GetSettingsPath();
+        if (!File.Exists(path))
+            return null;
+
+        try
+        {
+            var json = await File.ReadAllTextAsync(path, cancellationToken);
+            return JsonConvert.DeserializeObject<T>(json);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[{PluginId}] Failed to load settings", PluginId);
+            return null;
+        }
     }
 
-    public Task<T?> GetSettingsAsync<T>(CancellationToken cancellationToken = default) where T : class
+    public async Task SaveSettingsAsync<T>(T settings, CancellationToken cancellationToken = default) where T : class
     {
-        _logger.LogInformation("[{PluginId}] GetSettings<{Type}>", PluginId, typeof(T).Name);
-        // TODO: Implement settings storage
-        return Task.FromResult<T?>(null);
+        var path = GetSettingsPath();
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        var json = JsonConvert.SerializeObject(settings, Formatting.Indented);
+        await File.WriteAllTextAsync(path, json, cancellationToken);
     }
 
-    public Task SaveSettingsAsync<T>(T settings, CancellationToken cancellationToken = default) where T : class
-    {
-        _logger.LogInformation("[{PluginId}] SaveSettings<{Type}>", PluginId, typeof(T).Name);
-        // TODO: Implement settings storage
-        return Task.CompletedTask;
-    }
+    private string GetSettingsPath() =>
+        Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+            "MacroKeyboard", "plugins", PluginId, "settings.json");
 }

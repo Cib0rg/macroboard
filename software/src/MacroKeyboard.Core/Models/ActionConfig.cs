@@ -348,6 +348,29 @@ public class NoneAction : ActionConfig
 }
 
 /// <summary>
+/// Конфигурация действия плагина.
+/// Firmware хранит как непрозрачный blob; backend читает профиль и маршрутизирует в плагин.
+/// </summary>
+public class PluginActionConfig : ActionConfig
+{
+    public override ActionType ActionType => ActionType.Plugin;
+
+    public string PluginId { get; set; } = string.Empty;
+    public string ActionId { get; set; } = string.Empty;
+
+    /// <summary>JSON-строка с настройками action (передаётся в OnButtonPressedAsync)</summary>
+    public string? Settings { get; set; }
+
+    public override byte[] ToBytes()
+    {
+        var pluginIdBytes = System.Text.Encoding.UTF8.GetBytes(PluginId + "\0");
+        var actionIdBytes = System.Text.Encoding.UTF8.GetBytes(ActionId + "\0");
+        var settingsBytes = System.Text.Encoding.UTF8.GetBytes((Settings ?? "") + "\0");
+        return [..pluginIdBytes, ..actionIdBytes, ..settingsBytes];
+    }
+}
+
+/// <summary>
 /// JSON converter for ActionConfig abstract class.
 /// Uses the ActionType property to determine the concrete type during deserialization.
 /// Writing is handled by the default serializer (CanWrite = false).
@@ -383,6 +406,7 @@ public class ActionConfigConverter : JsonConverter<ActionConfig>
             ActionType.LaunchApp => new LaunchAppAction(),
             ActionType.Media => new MediaAction(),
             ActionType.NightMode => new NightModeAction(),
+            ActionType.Plugin => new PluginActionConfig(),
             _ => null
         };
 

@@ -59,5 +59,11 @@ public enum ActionType : byte
     /// Ночной режим — отключает LEDs и уменьшает яркость дисплеев до 0.
     /// Повторное нажатие восстанавливает предыдущие настройки.
     /// </summary>
-    NightMode = 0x0A
+    NightMode = 0x0A,
+
+    /// <summary>
+    /// Действие плагина — backend маршрутизирует нажатие в плагин по PluginId+ActionId.
+    /// Firmware хранит конфиг как непрозрачный blob.
+    /// </summary>
+    Plugin = 0x0B
 }

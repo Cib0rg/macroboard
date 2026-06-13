@@ -120,6 +120,7 @@ public static class IpcMessageTypes
     public const string PluginRegistered = "plugin.registered";
     public const string PluginUnregistered = "plugin.unregistered";
     public const string PluginAction = "plugin.action";
+    public const string PluginList = "plugin.list";
 }
 
 /// <summary>

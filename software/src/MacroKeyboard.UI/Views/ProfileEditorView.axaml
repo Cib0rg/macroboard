@@ -233,7 +233,25 @@
                                 IsVisible="{Binding IsCustomHidAction}">
                             <StackPanel Spacing="6">
                                 <TextBlock Text="CUSTOM HID" FontSize="12" FontWeight="Bold" />
-                                <TextBlock Text="Custom HID report (coming soon)" FontSize="10" Opacity="0.6" />
+                                <TextBlock Text="Report bytes (hex, space-separated):" FontSize="10" Opacity="0.7" />
+                                <TextBox Text="{Binding CustomHidData}"
+                                         PlaceholderText="FF 00 A0 ..."
+                                         FontFamily="Consolas, monospace" />
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Plugin Action -->
+                        <Border Background="#161B22" CornerRadius="4" Padding="10"
+                                IsVisible="{Binding IsPluginAction}">
+                            <StackPanel Spacing="6">
+                                <TextBlock Text="PLUGIN ACTION" FontSize="12" FontWeight="Bold" />
+                                <TextBlock Text="{Binding PluginId}" FontSize="10" Opacity="0.6" />
+                                <TextBlock Text="{Binding PluginActionId}" FontSize="11" />
+                                <TextBlock Text="Settings (JSON):" FontSize="10" Opacity="0.7" />
+                                <TextBox Text="{Binding PluginSettings}"
+                                         AcceptsReturn="True" Height="80"
+                                         PlaceholderText="{}"
+                                         FontFamily="Consolas, monospace" />
                             </StackPanel>
                         </Border>
 
@@ -562,7 +580,25 @@
                                                     IsVisible="{Binding IsCustomHidAction}">
                                                 <StackPanel Spacing="6">
                                                     <TextBlock Text="CUSTOM HID" FontSize="12" FontWeight="Bold" />
-                                                    <TextBlock Text="Custom HID report (coming soon)" FontSize="10" Opacity="0.6" />
+                                                    <TextBlock Text="Report bytes (hex, space-separated):" FontSize="10" Opacity="0.7" />
+                                                    <TextBox Text="{Binding CustomHidData}"
+                                                             PlaceholderText="FF 00 A0 ..."
+                                                             FontFamily="Consolas, monospace" />
+                                                </StackPanel>
+                                            </Border>
+
+                                            <!-- Plugin Action -->
+                                            <Border Background="#161B22" CornerRadius="4" Padding="10"
+                                                    IsVisible="{Binding IsPluginAction}">
+                                                <StackPanel Spacing="6">
+                                                    <TextBlock Text="PLUGIN ACTION" FontSize="12" FontWeight="Bold" />
+                                                    <TextBlock Text="{Binding PluginId}" FontSize="10" Opacity="0.6" />
+                                                    <TextBlock Text="{Binding PluginActionId}" FontSize="11" />
+                                                    <TextBlock Text="Settings (JSON):" FontSize="10" Opacity="0.7" />
+                                                    <TextBox Text="{Binding PluginSettings}"
+                                                             AcceptsReturn="True" Height="80"
+                                                             PlaceholderText="{}"
+                                                             FontFamily="Consolas, monospace" />
                                                 </StackPanel>
                                             </Border>
 
