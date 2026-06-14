@@ -4,6 +4,7 @@
  */
 
 #include "buttons.h"
+#include "leds.h"
 #include "config.h"
 #include "esp_log.h"
 #include "driver/gpio.h"
@@ -37,15 +38,15 @@ static button_state_t button_states[NUM_BUTTONS] = {0};
 static void IRAM_ATTR button_isr_handler(void* arg) {
     uint8_t button_id = (uint8_t)(uintptr_t)arg;
     BaseType_t xHigherPriorityTaskWoken = pdFALSE;
-    
+
     button_event_t event = {
         .button_id = button_id,
         .timestamp = esp_timer_get_time(),
         .event_type = BUTTON_EVENT_PRESS,
     };
-    
+
     xQueueSendFromISR(button_event_queue, &event, &xHigherPriorityTaskWoken);
-    
+
     if (xHigherPriorityTaskWoken) {
         portYIELD_FROM_ISR();
     }
@@ -53,21 +54,21 @@ static void IRAM_ATTR button_isr_handler(void* arg) {
 
 esp_err_t buttons_init(void) {
     ESP_LOGI(TAG, "Initializing buttons");
-    
+
     // Create event queue
     button_event_queue = xQueueCreate(10, sizeof(button_event_t));
     if (button_event_queue == NULL) {
         ESP_LOGE(TAG, "Failed to create button event queue");
         return ESP_FAIL;
     }
-    
+
     // Install GPIO ISR service FIRST
     esp_err_t ret = gpio_install_isr_service(0);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to install GPIO ISR service: %s", esp_err_to_name(ret));
         return ret;
     }
-    
+
     // Configure button pins with interrupts
     for (int i = 0; i < NUM_BUTTONS; i++) {
         gpio_config_t io_conf = {
@@ -77,89 +78,149 @@ esp_err_t buttons_init(void) {
             .pull_down_en = GPIO_PULLDOWN_DISABLE,
             .intr_type = GPIO_INTR_ANYEDGE,  // Both press and release
         };
-        
+
         ret = gpio_config(&io_conf);
         if (ret != ESP_OK) {
             ESP_LOGE(TAG, "Failed to configure button %d: %s", i, esp_err_to_name(ret));
             return ret;
         }
-        
+
         // Add ISR handler
         gpio_isr_handler_add(button_pins[i], button_isr_handler, (void*)(uintptr_t)i);
     }
-    
+
     ESP_LOGI(TAG, "Buttons initialized (%d buttons)", NUM_BUTTONS);
     return ESP_OK;
 }
 
+// Brief LED flash to confirm long press fired: off 100 ms, then restore.
+static void led_blink_confirm(uint8_t btn_id) {
+    button_config_t* cfg = profile_get_button_config(btn_id);
+
+    led_set_color(btn_id, 0, 0, 0, 0);
+    led_update();
+
+    vTaskDelay(pdMS_TO_TICKS(100));
+
+    if (cfg != NULL) {
+        led_set_color(btn_id, cfg->led_r, cfg->led_g, cfg->led_b, cfg->led_brightness);
+    }
+    led_update();
+}
+
+// Calculate how many ticks until the next long-press threshold crossing.
+// Returns portMAX_DELAY when no button is awaiting threshold.
+static TickType_t calculate_timeout(void) {
+    TickType_t min_ticks = portMAX_DELAY;
+    uint64_t now = esp_timer_get_time();
+
+    for (int i = 0; i < NUM_BUTTONS; i++) {
+        if (!button_states[i].is_pressed || button_states[i].long_press_sent) continue;
+
+        uint64_t held_us  = now - button_states[i].press_time;
+        uint64_t threshold_us = (uint64_t)BUTTON_LONG_PRESS_MS * 1000ULL;
+
+        if (held_us >= threshold_us) {
+            return 0;  // already past threshold — wake up immediately
+        }
+
+        uint64_t remaining_us = threshold_us - held_us;
+        // ceiling division to avoid waking too early
+        uint32_t remaining_ms = (uint32_t)((remaining_us + 999ULL) / 1000ULL);
+        TickType_t ticks = pdMS_TO_TICKS(remaining_ms);
+        if (ticks == 0) ticks = 1;
+        if (ticks < min_ticks) min_ticks = ticks;
+    }
+
+    return min_ticks;
+}
+
 void button_task(void* arg) {
     button_event_t event;
-    
+
     ESP_LOGI(TAG, "Button task started");
-    
-    // Log initial stack high water mark
     ESP_LOGI(TAG, "Button task stack high water mark: %u bytes free",
              (unsigned int)(uxTaskGetStackHighWaterMark(NULL) * sizeof(StackType_t)));
-    
+
     while (1) {
-        if (xQueueReceive(button_event_queue, &event, portMAX_DELAY)) {
-            uint8_t btn_id = event.button_id;
-            
-            if (btn_id >= NUM_BUTTONS) {
-                continue;
-            }
-            
-            // Read current button state
-            int level = gpio_get_level(button_pins[btn_id]);
-            
-            // Debouncing delay
-            vTaskDelay(pdMS_TO_TICKS(BUTTON_DEBOUNCE_MS));
-            
-            // Verify state after debounce
-            int level_after = gpio_get_level(button_pins[btn_id]);
-            if (level != level_after) {
-                // Bounce detected, ignore
-                continue;
-            }
-            
-            if (level == 0) {
-                // Button pressed (active low) — record time, send PC event, don't execute yet
-                if (!button_states[btn_id].is_pressed) {
-                    button_states[btn_id].is_pressed = true;
-                    button_states[btn_id].press_time = event.timestamp;
-                    button_states[btn_id].long_press_sent = false;
+        TickType_t timeout = calculate_timeout();
 
-                    ESP_LOGI(TAG, "Button %d pressed", btn_id);
+        if (xQueueReceive(button_event_queue, &event, timeout) == pdFALSE) {
+            // Timeout: check which buttons crossed the long-press threshold
+            uint64_t now = esp_timer_get_time();
+            for (int i = 0; i < NUM_BUTTONS; i++) {
+                if (!button_states[i].is_pressed || button_states[i].long_press_sent) continue;
 
-                    // Notify PC immediately so UI can show visual feedback
-                    uint8_t evt_payload[3];
-                    evt_payload[0] = btn_id;
-                    evt_payload[1] = 0; // profile slot always 0
-                    button_config_t* btn_cfg = profile_get_button_config(btn_id);
-                    evt_payload[2] = btn_cfg ? btn_cfg->action_type : 0;
-                    protocol_send_event(EVENT_BUTTON_PRESSED, evt_payload, 3);
+                uint64_t held_us = now - button_states[i].press_time;
+                if (held_us >= (uint64_t)BUTTON_LONG_PRESS_MS * 1000ULL) {
+                    ESP_LOGI(TAG, "Button %d long press (threshold)", i);
+                    button_states[i].long_press_sent = true;
+                    action_execute_long_press((uint8_t)i);
+                    led_blink_confirm((uint8_t)i);
                 }
-            } else {
-                // Button released — now determine short vs long press and execute
-                if (button_states[btn_id].is_pressed) {
-                    uint64_t press_duration = event.timestamp - button_states[btn_id].press_time;
-                    button_states[btn_id].is_pressed = false;
+            }
+            continue;
+        }
 
-                    ESP_LOGI(TAG, "Button %d released (duration: %llu us)", btn_id, press_duration);
-                    ESP_LOGI(TAG, "Stack before action: %u bytes free",
-                             (unsigned int)(uxTaskGetStackHighWaterMark(NULL) * sizeof(StackType_t)));
+        // Got an edge event from ISR
+        uint8_t btn_id = event.button_id;
+        if (btn_id >= NUM_BUTTONS) continue;
 
-                    if (press_duration >= (BUTTON_LONG_PRESS_MS * 1000ULL)) {
-                        ESP_LOGI(TAG, "Button %d long press", btn_id);
-                        action_execute_long_press(btn_id);
-                    } else {
-                        ESP_LOGI(TAG, "Button %d short press", btn_id);
-                        action_execute(btn_id);
-                    }
+        // Read current button state
+        int level = gpio_get_level(button_pins[btn_id]);
 
-                    ESP_LOGI(TAG, "Stack after action: %u bytes free",
-                             (unsigned int)(uxTaskGetStackHighWaterMark(NULL) * sizeof(StackType_t)));
+        // Debouncing delay
+        vTaskDelay(pdMS_TO_TICKS(BUTTON_DEBOUNCE_MS));
+
+        // Verify state after debounce
+        int level_after = gpio_get_level(button_pins[btn_id]);
+        if (level != level_after) {
+            // Bounce detected, ignore
+            continue;
+        }
+
+        if (level == 0) {
+            // Button pressed (active low)
+            if (!button_states[btn_id].is_pressed) {
+                button_states[btn_id].is_pressed       = true;
+                button_states[btn_id].press_time       = event.timestamp;
+                button_states[btn_id].long_press_sent  = false;
+
+                ESP_LOGI(TAG, "Button %d pressed", btn_id);
+
+                // Notify PC immediately for UI visual feedback
+                uint8_t evt_payload[3];
+                evt_payload[0] = btn_id;
+                evt_payload[1] = 0;
+                button_config_t* btn_cfg = profile_get_button_config(btn_id);
+                evt_payload[2] = btn_cfg ? btn_cfg->action_type : 0;
+                protocol_send_event(EVENT_BUTTON_PRESSED, evt_payload, 3);
+            }
+        } else {
+            // Button released
+            if (button_states[btn_id].is_pressed) {
+                uint64_t press_duration = event.timestamp - button_states[btn_id].press_time;
+                bool already_fired = button_states[btn_id].long_press_sent;
+                button_states[btn_id].is_pressed      = false;
+                button_states[btn_id].long_press_sent = false;
+
+                ESP_LOGI(TAG, "Button %d released (duration: %llu us, already_fired: %d)",
+                         btn_id, press_duration, already_fired);
+
+                if (already_fired) {
+                    // Long press already executed at threshold crossing — do nothing on release
+                } else if (press_duration >= (uint64_t)BUTTON_LONG_PRESS_MS * 1000ULL) {
+                    // Release happened just as threshold was crossed (timer race) — fire now
+                    ESP_LOGI(TAG, "Button %d long press (on release)", btn_id);
+                    action_execute_long_press(btn_id);
+                    led_blink_confirm(btn_id);
+                } else {
+                    ESP_LOGI(TAG, "Button %d short press", btn_id);
+                    action_execute(btn_id);
                 }
+
+                ESP_LOGI(TAG, "Stack after action: %u bytes free",
+                         (unsigned int)(uxTaskGetStackHighWaterMark(NULL) * sizeof(StackType_t)));
             }
         }
     }
