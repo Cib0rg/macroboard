@@ -838,6 +838,7 @@ public partial class ButtonConfigDialogViewModel : ViewModelBase
     /// <summary>
     /// Clear captured keys
     /// </summary>
+    [RelayCommand]
     public void ClearCapturedKeys()
     {
         _capturedKeys.Clear();
@@ -1209,18 +1210,18 @@ public partial class ButtonConfigDialogViewModel : ViewModelBase
     /// Create a KeyboardAction from captured keys or text input.
     /// Priority: captured keys > TextToType > KeySequence (legacy)
     ///
-    /// When keys are captured, we store the HID keycode + modifiers and set Text = null.
-    /// The firmware will send a single key press (modifier + keycode).
-    ///
-    /// When TextToType is used, we store Text and set KeyCode = 0.
-    /// The firmware will type the text character by character via usb_hid_keyboard_type_text().
+    /// When a single key is captured, we store the HID keycode + modifiers (KeyboardAction).
+    /// When multiple keys are captured, we build a SequenceAction (max 4 steps fit in one HID packet).
+    /// When TextToType is used, we store Text and set KeyCode = 0 (firmware types char by char).
     /// </summary>
-    private KeyboardAction CreateKeyboardAction()
+    private ActionConfig CreateKeyboardAction()
     {
         if (_capturedKeys.Count == 0)
         {
-            // No keys captured - use TextToType field (for typing text like "Hello")
-            var text = !string.IsNullOrEmpty(TextToType) ? TextToType : KeySequence;
+            // No keys captured - use TextToType field.
+            // Process escape sequences so the user can type \n for Enter, \t for Tab.
+            var raw = !string.IsNullOrEmpty(TextToType) ? TextToType : KeySequence;
+            var text = raw.Replace("\\n", "\n").Replace("\\t", "\t");
             return new KeyboardAction
             {
                 Text = text,
@@ -1228,17 +1229,37 @@ public partial class ButtonConfigDialogViewModel : ViewModelBase
                 Modifiers = KeyModifiers.None
             };
         }
-        
-        // Use captured keys - store HID keycode + modifiers, NO text.
-        // Text must be null when keycode is set, otherwise the firmware
-        // will try to type the display string literally after the key press.
-        var firstKey = _capturedKeys[0];
-        return new KeyboardAction
+
+        if (_capturedKeys.Count == 1)
         {
-            Text = null,  // Do NOT store display text — it would be typed literally by firmware
-            KeyCode = firstKey.KeyCode,
-            Modifiers = firstKey.Modifiers
-        };
+            var key = _capturedKeys[0];
+            return new KeyboardAction
+            {
+                Text = null,
+                KeyCode = key.KeyCode,
+                Modifiers = key.Modifiers
+            };
+        }
+
+        // Multiple captured keys → SequenceAction.
+        // Each KeyboardAction step serializes to 7 bytes; with 5-byte step header that's 12 bytes/step.
+        // HID packet allows 51 bytes of action data → max 4 steps: (1 + 4*12 = 49 bytes).
+        const int MaxKeysAsSequence = 4;
+        if (_capturedKeys.Count > MaxKeysAsSequence)
+        {
+            _logger.LogWarning(
+                "Key capture has {Count} keys but only {Max} fit in one HID packet. " +
+                "Use TextToType for long text sequences.",
+                _capturedKeys.Count, MaxKeysAsSequence);
+        }
+
+        var steps = _capturedKeys.Take(MaxKeysAsSequence).Select(k => new SequenceStep
+        {
+            Action = new KeyboardAction { KeyCode = k.KeyCode, Modifiers = k.Modifiers, Text = null },
+            DelayBeforeMs = 0
+        }).ToList();
+
+        return new SequenceAction { Steps = steps };
     }
 
     /// <summary>

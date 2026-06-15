@@ -265,11 +265,14 @@
                                             <TextBlock Text="{Binding CapturedModifiersText}" FontWeight="Bold" FontSize="10" />
                                             <TextBlock Text="Key:" Opacity="0.6" VerticalAlignment="Center" FontSize="10" Margin="6,0,0,0" />
                                             <TextBlock Text="{Binding CapturedKeyText}" FontWeight="Bold" FontSize="10" />
+                                            <Button Content="Clear" FontSize="10" Padding="6,2"
+                                                    Margin="6,0,0,0"
+                                                    Command="{Binding ClearCapturedKeysCommand}" />
                                         </StackPanel>
                                         <Separator Margin="0,2" />
                                         <TextBlock Text="Or enter text:" FontSize="10" Opacity="0.6" />
                                         <TextBox Text="{Binding TextToType}"
-                                                 PlaceholderText="Hello World"
+                                                 PlaceholderText="Hello World\n  (use \n for Enter)"
                                                  IsEnabled="{Binding !IsCapturingKeys}" />
                                     </StackPanel>
                                 </Border>
@@ -659,9 +662,20 @@
                                                         Width="76" Command="{Binding ToggleKeyCaptureCommand}"
                                                         VerticalAlignment="Stretch" />
                                             </Grid>
+                                            <StackPanel Orientation="Horizontal" Spacing="6"
+                                                        IsVisible="{Binding HasCapturedKeys}">
+                                                <TextBlock Text="Mod:" Opacity="0.6" VerticalAlignment="Center" FontSize="10" />
+                                                <TextBlock Text="{Binding CapturedModifiersText}" FontWeight="Bold" FontSize="10" />
+                                                <TextBlock Text="Key:" Opacity="0.6" VerticalAlignment="Center" FontSize="10" Margin="6,0,0,0" />
+                                                <TextBlock Text="{Binding CapturedKeyText}" FontWeight="Bold" FontSize="10" />
+                                                <Button Content="Clear" FontSize="10" Padding="6,2"
+                                                        Margin="6,0,0,0"
+                                                        Command="{Binding ClearCapturedKeysCommand}" />
+                                            </StackPanel>
+                                            <Separator Margin="0,2" />
                                             <TextBlock Text="Or enter text:" FontSize="10" Opacity="0.6" />
                                             <TextBox Text="{Binding TextToType}"
-                                                     PlaceholderText="Hello World"
+                                                     PlaceholderText="Hello World\n  (use \n for Enter)"
                                                      IsEnabled="{Binding !IsCapturingKeys}" />
                                         </StackPanel>
                                     </Border>
