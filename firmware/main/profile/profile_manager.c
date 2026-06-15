@@ -34,6 +34,11 @@ static void profile_show_back_icon(uint8_t button_id);
 static uint8_t folder_stack[FOLDER_STACK_DEPTH];
 static uint8_t folder_stack_depth = 0;
 
+// Unassigned buttons (ACTION_TYPE_NONE) have their LED suppressed to avoid burning eyes.
+// Stored color/brightness is preserved so it lights up as soon as an action is assigned.
+#define BTN_LED_BRIGHTNESS(btn) \
+    ((btn)->action_type == ACTION_TYPE_NONE ? 0 : (btn)->led_brightness)
+
 // PSRAM display cache: raw RGB565 big-endian buffers, one per button (NULL = not cached).
 // Populated on first draw; freed on profile switch via display_cache_clear().
 static uint8_t* s_display_cache[NUM_BUTTONS];
@@ -109,7 +114,7 @@ esp_err_t profile_switch(uint8_t profile_id) {
     // Update LEDs
     for (int i = 0; i < NUM_BUTTONS; i++) {
         button_config_t* btn = &current_profile.buttons[i];
-        led_set_color(i, btn->led_r, btn->led_g, btn->led_b, btn->led_brightness);
+        led_set_color(i, btn->led_r, btn->led_g, btn->led_b, BTN_LED_BRIGHTNESS(btn));
     }
     led_update();
 
@@ -345,8 +350,9 @@ esp_err_t profile_set_led_color(uint8_t profile_id, uint8_t button_id,
     
     // Update LED immediately if current profile, but not while night mode is active
     // (night mode exit will call profile_restore_leds() to pick up the new color)
-    if (profile_id == current_profile_id && !night_mode_is_active()) {
-        led_set_color(button_id, r, g, b, brightness);
+    if (profile_id == current_profile_id && !night_mode_is_active() && !profile_is_in_folder()) {
+        uint8_t hw_brightness = (btn->action_type == ACTION_TYPE_NONE) ? 0 : brightness;
+        led_set_color(button_id, r, g, b, hw_brightness);
         led_update();
     }
     
@@ -733,16 +739,31 @@ void profile_restore_leds(void) {
     xSemaphoreTake(profile_mutex, portMAX_DELAY);
     for (int i = 0; i < NUM_BUTTONS; i++) {
         button_config_t* btn = &current_profile.buttons[i];
-        led_set_color(i, btn->led_r, btn->led_g, btn->led_b, btn->led_brightness);
+        led_set_color(i, btn->led_r, btn->led_g, btn->led_b, BTN_LED_BRIGHTNESS(btn));
     }
     led_update();
     xSemaphoreGive(profile_mutex);
 }
 
 void profile_refresh_displays(void) {
+    if (folder_stack_depth > 0) {
+        // Inside a folder: refresh using folder buttons and restore folder LEDs.
+        // profile_update_button_display already handles the back icon for folder_entry_button.
+        uint8_t current_folder_id = folder_stack[folder_stack_depth - 1];
+        folder_t* folder = &current_profile.folders[current_folder_id];
+        for (int i = 0; i < NUM_BUTTONS; i++) {
+            button_config_t* btn = &folder->buttons[i];
+            led_set_color(i, btn->led_r, btn->led_g, btn->led_b, BTN_LED_BRIGHTNESS(btn));
+            profile_update_button_display(i, btn);
+            vTaskDelay(pdMS_TO_TICKS(2));
+        }
+        led_update();
+        return;
+    }
+
     for (int i = 0; i < NUM_BUTTONS; i++) {
         profile_update_button_display(i, &current_profile.buttons[i]);
-        vTaskDelay(pdMS_TO_TICKS(2)); // yield to USB/watchdog task
+        vTaskDelay(pdMS_TO_TICKS(2));
     }
 }
 
@@ -907,7 +928,7 @@ esp_err_t profile_folder_enter(uint8_t folder_id, uint8_t entry_button_id) {
     // Update LEDs and displays with folder buttons
     for (int i = 0; i < NUM_BUTTONS; i++) {
         button_config_t* btn = &folder->buttons[i];
-        led_set_color(i, btn->led_r, btn->led_g, btn->led_b, btn->led_brightness);
+        led_set_color(i, btn->led_r, btn->led_g, btn->led_b, BTN_LED_BRIGHTNESS(btn));
         
         // Update display: try to load button image, otherwise clear to black
         profile_update_button_display(i, btn);
@@ -959,7 +980,7 @@ esp_err_t profile_folder_exit(void) {
     // Update LEDs and displays
     for (int i = 0; i < NUM_BUTTONS; i++) {
         button_config_t* btn = &buttons[i];
-        led_set_color(i, btn->led_r, btn->led_g, btn->led_b, btn->led_brightness);
+        led_set_color(i, btn->led_r, btn->led_g, btn->led_b, BTN_LED_BRIGHTNESS(btn));
         
         // Update display: try to load button image, otherwise clear to black
         profile_update_button_display(i, btn);
