@@ -13,7 +13,8 @@ public partial class ButtonTileViewModel : ViewModelBase
     [ObservableProperty]
     private bool _isSelected;
 
-    public bool IsFolder => Button.Action is FolderAction;
+    public bool IsFolder       => Button.Action is FolderAction;
+    public bool IsPluginAction => Button.Action is PluginActionConfig;
 
     public bool HasLongPress =>
         Button.LongPressAction != null &&
@@ -57,7 +58,8 @@ public partial class ButtonTileViewModel : ViewModelBase
                 ShellAction         => "Shell",
                 LaunchAppAction la  => Path.GetFileNameWithoutExtension(la.ExecutablePath ?? "App"),
                 NightModeAction     => "Night",
-                PluginActionConfig pa when !string.IsNullOrEmpty(pa.ActionId) => pa.ActionId,
+                PluginActionConfig pa when !string.IsNullOrEmpty(pa.ActionName) => pa.ActionName,
+                PluginActionConfig pa when !string.IsNullOrEmpty(pa.ActionId)   => pa.ActionId,
                 _                   => $"B{Button.ButtonId + 1}"
             };
         }

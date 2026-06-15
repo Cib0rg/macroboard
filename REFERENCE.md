@@ -26,11 +26,11 @@
 - MacroKeyboard.Infrastructure — `DeviceService`, `ImageService`, `ProfileService`
 - MacroKeyboard.UI — `ProfileEditorView`, `ButtonConfigDialogViewModel`, полный UI
 
-### Software (стабы, не подключены)
-- `PluginManager` — файл есть, в DI не регистрируется
-- `WebSocketServer` — файл есть, не стартует
-- `PluginContext` — все методы заглушки (`// TODO`)
-- `ActionType.Plugin = 0x0B` — не добавлен в enum
+### Software (реализовано, плагины)
+- `PluginManager` — загрузка, жизненный цикл, маршрутизация SD-протокола
+- `WebSocketServer` — WS сервер порт 28196, обе привязки `localhost` и `127.0.0.1`
+- `PropertyInspectorServer` — HTTP файловый сервер порт 8787 для PI-страниц
+- `ActionType.Plugin = 0x0B` — добавлен в enum и поддержан в firmware/software
 
 ### Software (не существует)
 - **TrayApp** — проекта `MacroKeyboard.TrayApp` нет, UI открывается напрямую
@@ -107,7 +107,7 @@
 | 0x08 | ACTION_TYPE_LAUNCH_APP    | LaunchApp             |
 | 0x09 | ACTION_TYPE_MEDIA         | Media                 |
 | 0x0A | ACTION_TYPE_NIGHT_MODE    | NightMode             |
-| 0x0B | (не добавлен)             | (Plugin — plan only)  |
+| 0x0B | ACTION_TYPE_PLUGIN        | Plugin                |
 
 Delay (0x05) и Shell/LaunchApp/Media/NightMode — реализованы в firmware и software.
 
@@ -230,6 +230,134 @@ else
 - `delay_before_ms` — задержка перед конкретным шагом (0–65535 мс).
 - Шаг типа `ACTION_TYPE_DELAY` — чистая пауза без действия.
 - Sequence не может содержать другой Sequence (запрещено).
+
+---
+
+## Система плагинов (Stream Deck совместимость)
+
+### Обзор
+
+Плагины — сторонние исполняемые файлы, совместимые с протоколом Elgato Stream Deck SDK v2. Backend запускает их как дочерние процессы, общается через WebSocket и предоставляет Property Inspector через HTTP.
+
+Поддерживаемый формат дистрибутива: `.streamDeckPlugin` (ZIP-архив с нестандартным расширением). При старте backend автоматически извлекает архив в поддиректорию плагинов рядом с самим архивом, повторная распаковка при следующих запусках не производится.
+
+Структура директории плагина:
+```
+plugins/
+├── com.example.plugin.streamDeckPlugin   ← оригинальный архив (можно оставить)
+└── com.example.plugin.sdPlugin/          ← извлечённая директория
+    ├── manifest.json
+    ├── plugin.exe
+    └── propertyinspector/
+        └── index.html
+```
+
+### Запуск плагина
+
+Backend запускает исполняемый файл из `manifest.json → CodePathWin` (Windows) или `CodePathMac`/`CodePath` с аргументами Stream Deck CLI:
+
+```
+plugin.exe -port 28196 -pluginUUID <id> -registerEvent registerPlugin -info <json>
+```
+
+После запуска процесс ждёт 600 мс и проверяет, жив ли он. Если процесс вышел — ошибка в лог с кодом выхода. Stdout/stderr перехватываются и выводятся в лог с префиксом `[pluginId:stdout]` / `[pluginId:stderr]`.
+
+### Протокол WebSocket (порт 28196)
+
+Оба участника (плагин и Property Inspector) подключаются к одному серверу. Сервер слушает на `localhost:28196` **и** `127.0.0.1:28196` — обе привязки обязательны, т.к. на Windows `localhost` может резолвиться в IPv6 `::1`, а плагины и WebView коннектятся напрямую на `127.0.0.1`.
+
+**Рукопожатие плагина:**
+
+| Направление | Событие | Поле-идентификатор |
+|---|---|---|
+| Plugin → Backend | `registerPlugin` | `uuid` (не `context`) |
+| Backend → Plugin | `applicationDidLaunch` | — |
+| Backend → Plugin | `deviceDidConnect` | — |
+| Backend → Plugin | `didReceiveGlobalSettings` | — (из `global.json`, если есть) |
+
+**Рукопожатие Property Inspector:**
+
+| Направление | Событие | Поле-идентификатор |
+|---|---|---|
+| PI → Backend | `registerPropertyInspector` | `uuid` (не `context`) |
+| Backend → PI | `didReceiveSettings` | action-specific из `actions/{ctx}.json` |
+| Backend → PI | `didReceiveGlobalSettings` | из `global.json` |
+| Backend → Plugin | `propertyInspectorDidAppear` | action + context |
+
+> **Важно:** SD SDK отправляет `registerPlugin` и `registerPropertyInspector` с идентификатором в поле `uuid`, а не `context`. Все остальные события используют `context`. `PluginMessage.EffectiveContext` = `Context ?? Uuid` нормализует это.
+
+**Context format:** `pluginId:buttonIndex`, например `com.rgpaul.vlc:3`. Для global settings перед использованием в пути контекст обрезается до pluginId (`GetPluginIdFromContext`).
+
+### Хранение настроек
+
+```
+%APPDATA%\MacroKeyboard\plugins\
+├── {pluginId}\
+│   ├── global.json          ← setGlobalSettings / getGlobalSettings
+│   └── actions\
+│       └── {context}.json   ← setSettings / getSettings (контекст sanitized)
+```
+
+При вызове `setGlobalSettings` (от PI или плагина) backend:
+1. Сохраняет `global.json`
+2. Отправляет `didReceiveGlobalSettings` живому процессу плагина
+3. Отправляет `didReceiveGlobalSettings` всем открытым PI для этого плагина
+
+Без пункта 2 плагин работал бы с пустыми/старыми настройками до перезапуска.
+
+### Property Inspector (порт 8787)
+
+HTTP файловый сервер отдаёт ассеты плагина по схеме:
+```
+http://localhost:8787/plugins/{pluginId}/{relativePath}
+```
+
+Для HTML-страниц, загружаемых с параметром `?registerEvent=`, сервер инжектирует в конец `<body>` скрипт автоподключения:
+
+```javascript
+(function() {
+  var p = new URLSearchParams(window.location.search);
+  // читает port, propertyInspectorUUID, registerEvent, info, actionInfo
+  // вызывает connectElgatoStreamDeckSocket(...) когда функция готова
+})();
+```
+
+Это зеркалирует поведение настоящего Stream Deck: сам плагин не читает `window.location.search` — хост инжектирует вызов снаружи.
+
+URL, которым UI открывает PI:
+```
+http://localhost:8787/plugins/{pluginId}/{piPath}
+  ?port=28196
+  &propertyInspectorUUID={pluginId}:{buttonIndex}
+  &registerEvent=registerPropertyInspector
+  &info={json}
+  &actionInfo={json}
+```
+
+`PluginId` **должен** быть установлен до `PropertyInspectorUrl` в `ButtonConfigDialogViewModel.OnSelectedPluginActionChanged`, иначе `PropertyInspectorSourceUrl` вычислится с пустым pluginId и PI получит UUID вида `:3` вместо `com.rgpaul.vlc:3`.
+
+### LED-сигналы при работе с плагинами
+
+| Событие | Сигнал | Параметры |
+|---|---|---|
+| `showOk` (плагин) | 1× зелёная вспышка | 500 мс вкл, RGB(0,220,0) |
+| `showAlert` (плагин) | 2× оранжевая вспышка | 200 мс вкл / 100 мс пауза, RGB(255,165,0) |
+| Плагин не установлен | 2× красная вспышка | 200 мс вкл / 100 мс пауза, RGB(255,0,0) |
+
+Красная вспышка срабатывает в `DispatchButtonPressAsync` когда `pluginId` из профиля не найден в загруженных плагинах — это единственная обратная связь при удалённом/отсутствующем плагине. Приложение при этом **не падает**.
+
+### Манифест плагина
+
+Backend читает `manifest.json` в формате Stream Deck. Нестандартные поля:
+
+| Поле | Описание |
+|---|---|
+| `CodePathWin` | Путь к exe на Windows (приоритет над `CodePath`) |
+| `PropertyInspectorPath` | Путь к PI-странице относительно директории плагина |
+| `SDKVersion` | Версия протокола (поддерживается v2) |
+| `Type` | `"executable"` (по умолчанию для SD-манифестов) |
+
+`Id` плагина — имя директории без суффикса `.sdPlugin`, например `com.rgpaul.vlc`.
 
 ---
 

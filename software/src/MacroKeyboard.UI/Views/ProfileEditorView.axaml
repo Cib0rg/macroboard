@@ -4,6 +4,7 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="using:MacroKeyboard.UI.ViewModels"
              xmlns:views="using:MacroKeyboard.UI.Views"
+             xmlns:converters="using:MacroKeyboard.UI.Converters"
              mc:Ignorable="d" d:DesignWidth="1100" d:DesignHeight="720"
              x:Class="MacroKeyboard.UI.Views.ProfileEditorView"
              x:DataType="vm:ProfileEditorViewModel"
@@ -18,7 +19,7 @@
                 Background="#0D1117" CornerRadius="8"
                 BorderBrush="#00FFFF" BorderThickness="1"
                 Padding="10,6" Margin="0,0,0,8">
-            <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto,Auto,Auto,Auto,Auto">
+            <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto">
 
                 <!-- Profile label -->
                 <TextBlock Grid.Column="0"
@@ -66,11 +67,16 @@
                         Command="{Binding DeleteProfileCommand}"
                         Margin="4,0" VerticalAlignment="Center" />
 
-                <Separator Grid.Column="7" Width="1" Height="24"
+                <Button Grid.Column="7" Content="💾 Save"
+                        Command="{Binding SaveProfileCommand}"
+                        IsVisible="{Binding SelectedProfile, Converter={x:Static ObjectConverters.IsNotNull}}"
+                        Margin="4,0" VerticalAlignment="Center" />
+
+                <Separator Grid.Column="8" Width="1" Height="24"
                            Background="#444" Margin="8,0" />
 
                 <!-- Send to Device — accent button -->
-                <Button Grid.Column="8"
+                <Button Grid.Column="9"
                         Content="→ Send to Device"
                         Command="{Binding SendToDeviceCommand}"
                         Background="#0D4429" BorderBrush="#00FF00"
@@ -314,18 +320,87 @@
                                     </StackPanel>
                                 </Border>
 
-                                <!-- Plugin -->
+                                <!-- Plugin command palette -->
                                 <Border Background="#161B22" CornerRadius="4" Padding="10"
                                         IsVisible="{Binding IsPluginAction}">
                                     <StackPanel Spacing="6">
                                         <TextBlock Text="PLUGIN ACTION" FontSize="11" FontWeight="Bold" />
-                                        <TextBlock Text="{Binding PluginId}" FontSize="10" Opacity="0.6" />
-                                        <TextBlock Text="{Binding PluginActionId}" FontSize="11" />
-                                        <TextBlock Text="Settings (JSON):" FontSize="10" Opacity="0.7" />
-                                        <TextBox Text="{Binding PluginSettings}"
-                                                 AcceptsReturn="True" Height="70"
-                                                 PlaceholderText="{}"
-                                                 FontFamily="Consolas, monospace" />
+
+                                        <!-- SEARCH MODE: visible while no action is selected -->
+                                        <StackPanel Spacing="4"
+                                                    IsVisible="{Binding SelectedPluginAction, Converter={x:Static ObjectConverters.IsNull}}">
+                                            <TextBox Text="{Binding PluginSearchText}"
+                                                     PlaceholderText="Search plugin actions…"
+                                                     FontSize="12" />
+                                            <Border Background="#0D1117" CornerRadius="3" MaxHeight="180">
+                                                <ListBox ItemsSource="{Binding FilteredPluginActions}"
+                                                         SelectionChanged="OnPluginListSelectionChanged"
+                                                         Background="Transparent">
+                                                    <ListBox.ItemTemplate>
+                                                        <DataTemplate>
+                                                            <StackPanel Orientation="Horizontal" Spacing="6" Margin="2">
+                                                                <Image Width="18" Height="18"
+                                                                       Source="{Binding IconPath, Converter={x:Static converters:PathToBitmapConverter.Instance}}"
+                                                                       IsVisible="{Binding IconPath, Converter={x:Static ObjectConverters.IsNotNull}}"
+                                                                       VerticalAlignment="Center" />
+                                                                <TextBlock Text="{Binding PluginName}"
+                                                                           FontSize="10" Opacity="0.5"
+                                                                           VerticalAlignment="Center" />
+                                                                <TextBlock Text="/"
+                                                                           FontSize="10" Opacity="0.3"
+                                                                           VerticalAlignment="Center" />
+                                                                <TextBlock Text="{Binding ActionName}"
+                                                                           FontSize="12"
+                                                                           VerticalAlignment="Center" />
+                                                            </StackPanel>
+                                                        </DataTemplate>
+                                                    </ListBox.ItemTemplate>
+                                                </ListBox>
+                                            </Border>
+                                        </StackPanel>
+
+                                        <!-- SELECTED MODE: compact row shown after selection -->
+                                        <Border Background="#0D1117" CornerRadius="3" Padding="8,6"
+                                                IsVisible="{Binding SelectedPluginAction, Converter={x:Static ObjectConverters.IsNotNull}}">
+                                            <Grid ColumnDefinitions="Auto,*,Auto">
+                                                <Image Grid.Column="0" Width="24" Height="24"
+                                                       Margin="0,0,8,0" VerticalAlignment="Center"
+                                                       Source="{Binding SelectedPluginAction.IconPath, Converter={x:Static converters:PathToBitmapConverter.Instance}}" />
+                                                <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                                    <TextBlock Text="{Binding SelectedPluginAction.ActionName}"
+                                                               FontSize="13" FontWeight="Medium" />
+                                                    <TextBlock Text="{Binding SelectedPluginAction.PluginName}"
+                                                               FontSize="10" Opacity="0.5" />
+                                                </StackPanel>
+                                                <Button Grid.Column="2" Content="✕"
+                                                        Command="{Binding ClearPluginActionCommand}"
+                                                        Width="28" Height="28" Padding="0"
+                                                        FontSize="12"
+                                                        VerticalAlignment="Center"
+                                                        Background="Transparent" />
+                                            </Grid>
+                                        </Border>
+
+                                        <!-- Property Inspector WebView (when plugin action has a PI page) -->
+                                        <Border Background="#000000" CornerRadius="3"
+                                                Height="320" Margin="0,4,0,0"
+                                                IsVisible="{Binding HasPropertyInspector}">
+                                            <NativeWebView
+                                                Source="{Binding PropertyInspectorSourceUrl}"
+                                                NavigationCompleted="OnPropertyInspectorNavigated" />
+                                        </Border>
+
+                                        <!-- Settings JSON fallback (when no PI page) -->
+                                        <StackPanel Spacing="4"
+                                                    IsVisible="{Binding !HasPropertyInspector}">
+                                            <TextBlock Text="Settings (JSON):" FontSize="10" Opacity="0.5"
+                                                       IsVisible="{Binding SelectedPluginAction, Converter={x:Static ObjectConverters.IsNotNull}}" />
+                                            <TextBox Text="{Binding PluginSettings}"
+                                                     AcceptsReturn="True" Height="55"
+                                                     PlaceholderText="{}"
+                                                     FontFamily="Consolas, monospace" FontSize="11"
+                                                     IsVisible="{Binding SelectedPluginAction, Converter={x:Static ObjectConverters.IsNotNull}}" />
+                                        </StackPanel>
                                     </StackPanel>
                                 </Border>
 

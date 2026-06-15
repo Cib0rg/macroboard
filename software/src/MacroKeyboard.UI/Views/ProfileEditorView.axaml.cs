@@ -1,7 +1,9 @@
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using MacroKeyboard.Shared.Plugin;
 using MacroKeyboard.UI.ViewModels;
+using System;
 
 namespace MacroKeyboard.UI.Views;
 
@@ -121,5 +123,26 @@ public partial class ProfileEditorView : UserControl
             if (button.Parent is Grid grid && grid.Children.Count > 0 && grid.Children[0] is Border border)
                 border.Focus();
         }
+    }
+
+    // ── Plugin action list selection ──────────────────────────────────────────
+    // Using code-behind because SelectedItem TwoWay binding across a DataContext
+    // boundary (DataContext="{Binding ButtonConfigViewModel}") is unreliable with
+    // Avalonia's compiled binding when the outer x:DataType is ProfileEditorViewModel.
+
+    private void OnPluginListSelectionChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (sender is ListBox { SelectedItem: PluginActionInfo action, DataContext: ButtonConfigDialogViewModel vm })
+        {
+            vm.SelectedPluginAction = action;
+        }
+    }
+
+    // ── Property Inspector WebView ────────────────────────────────────────────
+
+    private void OnPropertyInspectorNavigated(object? sender, WebViewNavigationCompletedEventArgs e)
+    {
+        // Connection is established via autoconnect script injected by PropertyInspectorServer
+        // into the served HTML — no post-navigation JS injection needed here.
     }
 }

@@ -358,6 +358,9 @@ public class PluginActionConfig : ActionConfig
     public string PluginId { get; set; } = string.Empty;
     public string ActionId { get; set; } = string.Empty;
 
+    /// <summary>Human-readable action name (from plugin manifest), for display only.</summary>
+    public string? ActionName { get; set; }
+
     /// <summary>JSON-строка с настройками action (передаётся в OnButtonPressedAsync)</summary>
     public string? Settings { get; set; }
 

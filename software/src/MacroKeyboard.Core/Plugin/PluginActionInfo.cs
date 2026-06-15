@@ -12,4 +12,13 @@ public class PluginActionInfo
     public string ActionName { get; set; } = string.Empty;
     public string Icon { get; set; } = string.Empty;
     public string Tooltip { get; set; } = string.Empty;
+
+    /// <summary>Absolute file path to the action icon, resolved by the backend. Null if not found.</summary>
+    public string? IconPath { get; set; }
+
+    /// <summary>
+    /// Full HTTP URL for the Property Inspector page, or null if this action has no PI.
+    /// Served by PropertyInspectorServer at http://localhost:8787/plugins/{pluginId}/{piPath}
+    /// </summary>
+    public string? PropertyInspectorUrl { get; set; }
 }

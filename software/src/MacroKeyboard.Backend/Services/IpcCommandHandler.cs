@@ -58,10 +58,12 @@ public class IpcCommandHandler
                 IpcMessageTypes.SetButtonAction => await HandleSetButtonAction(message),
                 IpcMessageTypes.GetButtonAction => await HandleGetButtonAction(message),
                 IpcMessageTypes.SetButtonName   => await HandleSetButtonName(message),
+                IpcMessageTypes.SetButtonImage  => await HandleSetButtonImage(message),
                 IpcMessageTypes.SetLedColor => await HandleSetLedColor(message),
                 IpcMessageTypes.GetLedColor => await HandleGetLedColor(message),
                 IpcMessageTypes.SetDisplayBrightness => await HandleSetDisplayBrightness(message),
                 IpcMessageTypes.PluginList => HandlePluginList(message),
+                IpcMessageTypes.PluginGetSettings => await HandlePluginGetSettings(message),
                 _ => HandleUnknownCommand(message)
             };
 
@@ -291,6 +293,32 @@ public class IpcCommandHandler
             : IpcResponse.Fail(message, "Failed to set button name on device");
     }
 
+    private async Task<IpcResponse> HandleSetButtonImage(IpcMessage message)
+    {
+        if (!_deviceService.IsConnected)
+            return IpcResponse.Fail(message, "Device not connected");
+
+        var data = message.GetDataAsDictionary();
+        if (data == null)
+            return IpcResponse.Fail(message, "Invalid data");
+
+        var profileId  = Convert.ToByte(data.GetValueOrDefault("profileId",  (byte)0));
+        var buttonId   = Convert.ToByte(data.GetValueOrDefault("buttonId",   (byte)0));
+        var base64Data = data.GetValueOrDefault("imageData", null)?.ToString();
+
+        if (string.IsNullOrEmpty(base64Data))
+            return IpcResponse.Fail(message, "No image data");
+
+        byte[] imageBytes;
+        try { imageBytes = Convert.FromBase64String(base64Data); }
+        catch { return IpcResponse.Fail(message, "Invalid base64 image data"); }
+
+        var success = await _deviceService.SendButtonImageAsync(profileId, buttonId, imageBytes, null);
+        return success
+            ? IpcResponse.Ok(message)
+            : IpcResponse.Fail(message, "Failed to send button image to device");
+    }
+
     private async Task<IpcResponse> HandleGetButtonAction(IpcMessage message)
     {
         if (!_deviceService.IsConnected)
@@ -389,21 +417,62 @@ public class IpcCommandHandler
             : IpcResponse.Fail(message, "Failed to set display brightness");
     }
 
+    private async Task<IpcResponse> HandlePluginGetSettings(IpcMessage message)
+    {
+        var data = message.GetDataAsDictionary();
+        if (data == null) return IpcResponse.Fail(message, "Invalid data");
+
+        var pluginId    = data.GetValueOrDefault("pluginId",    null)?.ToString();
+        var buttonIndex = Convert.ToInt32(data.GetValueOrDefault("buttonIndex", 0));
+
+        if (string.IsNullOrEmpty(pluginId))
+            return IpcResponse.Fail(message, "Missing pluginId");
+
+        var settings = await _pluginManager.GetActionSettingsAsync(pluginId, buttonIndex);
+        return IpcResponse.Ok(message, settings);
+    }
+
     private IpcResponse HandlePluginList(IpcMessage message)
     {
         var actions = _pluginManager.GetLoadedActions()
-            .Select(x => new PluginActionInfo
+            .Select(x =>
             {
-                PluginId = x.PluginId,
-                PluginName = x.PluginName,
-                ActionId = x.Action.Id,
-                ActionName = x.Action.Name,
-                Icon = x.Action.Icon,
-                Tooltip = x.Action.Tooltip
+                var dir = _pluginManager.GetPluginDirectory(x.PluginId);
+                return new PluginActionInfo
+                {
+                    PluginId   = x.PluginId,
+                    PluginName = x.PluginName,
+                    ActionId   = x.Action.EffectiveId,
+                    ActionName = x.Action.Name,
+                    Icon       = x.Action.Icon,
+                    Tooltip    = x.Action.Tooltip,
+                    IconPath   = ResolveIconPath(dir, x.Action.Icon),
+                    PropertyInspectorUrl = BuildPiUrl(x.PluginId,
+                        x.Action.EffectivePropertyInspectorPath ?? x.ManifestPiPath)
+                };
             })
             .ToList();
 
         return IpcResponse.Ok(message, actions);
+    }
+
+    private static string? BuildPiUrl(string pluginId, string? piPath)
+    {
+        if (string.IsNullOrEmpty(piPath)) return null;
+        return $"http://localhost:8787/plugins/{pluginId}/{piPath.TrimStart('/')}";
+    }
+
+    private static string? ResolveIconPath(string? pluginDir, string? iconRelative)
+    {
+        if (string.IsNullOrEmpty(pluginDir) || string.IsNullOrEmpty(iconRelative)) return null;
+
+        // SD manifests use paths without extension; try common variants
+        foreach (var suffix in new[] { ".png", "@2x.png", ".svg", "" })
+        {
+            var candidate = Path.GetFullPath(Path.Combine(pluginDir, iconRelative + suffix));
+            if (File.Exists(candidate)) return candidate;
+        }
+        return null;
     }
 
     private IpcResponse HandleUnknownCommand(IpcMessage message)

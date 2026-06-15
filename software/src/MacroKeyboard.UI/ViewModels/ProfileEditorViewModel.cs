@@ -5,10 +5,12 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using MacroKeyboard.Core.Models;
 using MacroKeyboard.Core.Services;
+using MacroKeyboard.Infrastructure.Services;
 using MacroKeyboard.Shared.IPC;
 using MacroKeyboard.Shared.Plugin;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
+using SixLabors.ImageSharp;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -22,6 +24,7 @@ public partial class ProfileEditorViewModel : ViewModelBase
 {
     private readonly IProfileService _profileService;
     private readonly IpcClient _ipcClient;
+    private readonly ImageService _imageService;
     private readonly ILogger<ProfileEditorViewModel> _logger;
     private readonly ILogger<ButtonConfigDialogViewModel> _dialogLogger;
     private IStorageProvider? _storageProvider;
@@ -66,6 +69,9 @@ public partial class ProfileEditorViewModel : ViewModelBase
     /// <summary>Temporary ButtonConfig that holds long-press state while editing.</summary>
     private ButtonConfig? _longPressTempConfig;
 
+    /// <summary>Plugin actions fetched from backend — passed to config VMs for the command palette.</summary>
+    private List<PluginActionInfo> _availablePluginActions = new();
+
     /// <summary>Header label for the config panel ("Button 3", "Encoder: CW", …).</summary>
     [ObservableProperty]
     private string _selectedButtonHeader = string.Empty;
@@ -97,6 +103,7 @@ public partial class ProfileEditorViewModel : ViewModelBase
         CustomHidAction     => "Custom HID",
         NightModeAction     => "Night Mode",
         DelayAction da      => $"Delay {da.DelayMs}ms",
+        PluginActionConfig pa when !string.IsNullOrEmpty(pa.ActionName) => $"🔌 {pa.ActionName}",
         PluginActionConfig pa => $"Plugin: {pa.ActionId}",
         _ => action.ActionType.ToString()
     };
@@ -136,11 +143,13 @@ public partial class ProfileEditorViewModel : ViewModelBase
     public ProfileEditorViewModel(
         IProfileService profileService,
         IpcClient ipcClient,
+        ImageService imageService,
         ILogger<ProfileEditorViewModel> logger,
         ILogger<ButtonConfigDialogViewModel> dialogLogger)
     {
         _profileService = profileService;
         _ipcClient = ipcClient;
+        _imageService = imageService;
         _logger = logger;
         _dialogLogger = dialogLogger;
 
@@ -173,7 +182,7 @@ public partial class ProfileEditorViewModel : ViewModelBase
         var profileItems = GetAvailableProfileItems();
         var folderItems  = GetAvailableFolderItems();
 
-        ButtonConfigViewModel = new ButtonConfigDialogViewModel(_dialogLogger, button, profileItems, folderItems);
+        ButtonConfigViewModel = new ButtonConfigDialogViewModel(_dialogLogger, button, profileItems, folderItems, _availablePluginActions);
         if (_storageProvider != null)
             ButtonConfigViewModel.SetStorageProvider(_storageProvider);
 
@@ -183,7 +192,7 @@ public partial class ProfileEditorViewModel : ViewModelBase
             Action   = button.LongPressAction,
             Name     = button.LongPressName
         };
-        LongPressConfigViewModel = new ButtonConfigDialogViewModel(_dialogLogger, _longPressTempConfig, profileItems, folderItems);
+        LongPressConfigViewModel = new ButtonConfigDialogViewModel(_dialogLogger, _longPressTempConfig, profileItems, folderItems, _availablePluginActions);
         LongPressConfigViewModel.IsLongPress = true;
 
         var label = string.IsNullOrWhiteSpace(button.Name)
@@ -208,7 +217,7 @@ public partial class ProfileEditorViewModel : ViewModelBase
         var profileItems = GetAvailableProfileItems();
         var folderItems  = GetAvailableFolderItems();
 
-        ButtonConfigViewModel = new ButtonConfigDialogViewModel(_dialogLogger, config, profileItems, folderItems);
+        ButtonConfigViewModel = new ButtonConfigDialogViewModel(_dialogLogger, config, profileItems, folderItems, _availablePluginActions);
         ButtonConfigViewModel.IsLongPress = true; // hides LED + long press fields
         if (_storageProvider != null)
             ButtonConfigViewModel.SetStorageProvider(_storageProvider);
@@ -266,6 +275,7 @@ public partial class ProfileEditorViewModel : ViewModelBase
         try
         {
             await ButtonConfigViewModel.EnsureIconExtractedAsync();
+            await SyncPluginSettingsFromSidecarAsync(ButtonConfigViewModel);
             ButtonConfigViewModel.SaveToButtonConfig();
             var button = ButtonConfigViewModel.ButtonConfig;
 
@@ -342,12 +352,19 @@ public partial class ProfileEditorViewModel : ViewModelBase
             {
                 bool isFolderButton = !SelectedProfile.Buttons.Contains(button);
                 bool isFolderAction = button.Action?.ActionType == ActionType.Folder;
-                bool hasImage       = !string.IsNullOrEmpty(button.ImagePath);
 
-                if (isFolderButton || isFolderAction || hasImage)
+                if (isFolderButton || isFolderAction)
+                {
+                    // Folders require sending sub-button data — only full profile covers that.
                     await SendFullProfileToDeviceAsync();
+                }
                 else
+                {
+                    // Fast path: send only this button's fields.
+                    // Image (custom, ring, or blank-to-clear) is sent per-button via button.setimage.
                     await SendButtonConfigToDeviceAsync(SelectedProfile.ProfileId, button);
+                    await SendButtonImageToDeviceAsync(button);
+                }
             }
         }
         catch (Exception ex)
@@ -409,6 +426,8 @@ public partial class ProfileEditorViewModel : ViewModelBase
 
             var pluginActions = response.GetData<List<PluginActionInfo>>();
             if (pluginActions == null || pluginActions.Count == 0) return;
+
+            _availablePluginActions = pluginActions;
 
             var existing = ActionPaletteItems.Where(i => i.ActionType == ActionType.Plugin).ToList();
             foreach (var item in existing) ActionPaletteItems.Remove(item);
@@ -663,5 +682,77 @@ public partial class ProfileEditorViewModel : ViewModelBase
             StatusMessage = $"Button {button.ButtonId + 1} synced";
         }
         catch (Exception ex) { _logger.LogWarning(ex, "Error sending button config to device"); }
+    }
+
+    private async Task SyncPluginSettingsFromSidecarAsync(ButtonConfigDialogViewModel vm)
+    {
+        if (!vm.HasPropertyInspector || !_ipcClient.IsConnected) return;
+        if (string.IsNullOrEmpty(vm.PluginId)) return;
+
+        try
+        {
+            var req = new IpcMessage
+            {
+                MessageType = IpcMessageTypes.PluginGetSettings,
+                Data = new { pluginId = vm.PluginId, buttonIndex = (int)vm.ButtonConfig.ButtonId }
+            };
+            var resp = await _ipcClient.SendAndWaitAsync(req, TimeSpan.FromSeconds(3));
+            if (resp.Success && resp.Data is string json && !string.IsNullOrEmpty(json))
+                vm.PluginSettings = json;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Could not fetch plugin settings from sidecar before save");
+        }
+    }
+
+    private async Task SendButtonImageToDeviceAsync(ButtonConfig button)
+    {
+        if (!_ipcClient.IsConnected || SelectedProfile == null) return;
+
+        var ringColor = button.Action switch
+        {
+            FolderAction       => (Color?)Color.FromRgb(0xFF, 0xA5, 0x00),
+            PluginActionConfig => (Color?)Color.FromRgb(0x8B, 0x5C, 0xF6),
+            _                  => null
+        };
+
+        byte[]? imageBytes = null;
+
+        if (!string.IsNullOrEmpty(button.ImagePath) && File.Exists(button.ImagePath))
+        {
+            imageBytes = await _imageService.ProcessImageForButtonAsync(button.ImagePath, ringColor);
+        }
+        else if (button.Action == null || button.Action is NoneAction)
+        {
+            imageBytes = await _imageService.CreateBlankImageAsync();
+        }
+        else if (ringColor.HasValue)
+        {
+            var label = !string.IsNullOrEmpty(button.Name) ? button.Name
+                : button.Action switch
+                {
+                    FolderAction       => "Folder",
+                    PluginActionConfig pa when !string.IsNullOrEmpty(pa.ActionName) => pa.ActionName,
+                    PluginActionConfig => "Plugin",
+                    _                  => null
+                };
+            imageBytes = await _imageService.CreateRingPlaceholderAsync(ringColor.Value, label);
+        }
+        // else: no image — firmware will show button name as text
+
+        if (imageBytes == null) return;
+
+        try
+        {
+            var imgMsg = new IpcMessage
+            {
+                MessageType = IpcMessageTypes.SetButtonImage,
+                Data = new { profileId = SelectedProfile.ProfileId, buttonId = button.ButtonId,
+                             imageData = Convert.ToBase64String(imageBytes) }
+            };
+            await _ipcClient.SendAndWaitAsync(imgMsg, TimeSpan.FromSeconds(10));
+        }
+        catch (Exception ex) { _logger.LogWarning(ex, "Error sending button image to device"); }
     }
 }

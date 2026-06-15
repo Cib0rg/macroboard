@@ -6,6 +6,7 @@ using CommunityToolkit.Mvvm.Input;
 using MacroKeyboard.Core.Models;
 using MacroKeyboard.Shared.Plugin;
 using Microsoft.Extensions.Logging;
+using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -141,6 +142,81 @@ public partial class ButtonConfigDialogViewModel : ViewModelBase
     [ObservableProperty]
     private string _pluginSettings = string.Empty;
 
+    [ObservableProperty]
+    private string _pluginSearchText = string.Empty;
+
+    [ObservableProperty]
+    private PluginActionInfo? _selectedPluginAction;
+
+    /// <summary>Base HTTP URL of the Property Inspector HTML (no query params). Null when action has no PI.</summary>
+    [ObservableProperty]
+    private string? _propertyInspectorUrl;
+
+    /// <summary>True when the selected plugin action has a Property Inspector page.</summary>
+    public bool HasPropertyInspector => !string.IsNullOrEmpty(PropertyInspectorUrl);
+
+    /// <summary>Full URL with SD connection params embedded as query string, for loading in NativeWebView.</summary>
+    public string? PropertyInspectorSourceUrl
+    {
+        get
+        {
+            if (string.IsNullOrEmpty(PropertyInspectorUrl)) return null;
+            var ctx        = $"{PluginId}:{ButtonConfig.ButtonId}";
+            var info       = BuildPiInfoJson();
+            var actionInfo = BuildPiActionInfoJson(ctx);
+            var query = string.Concat(
+                "port=28196",
+                "&propertyInspectorUUID=", Uri.EscapeDataString(ctx),
+                "&registerEvent=registerPropertyInspector",
+                "&info=", Uri.EscapeDataString(info),
+                "&actionInfo=", Uri.EscapeDataString(actionInfo));
+            var ub = new UriBuilder(PropertyInspectorUrl) { Query = query };
+            return ub.Uri.ToString();
+        }
+    }
+
+    partial void OnPropertyInspectorUrlChanged(string? value)
+    {
+        OnPropertyChanged(nameof(HasPropertyInspector));
+        OnPropertyChanged(nameof(PropertyInspectorSourceUrl));
+    }
+
+    /// <summary>Returns the JS call to inject into the PI page after navigation.</summary>
+    public string GetPropertyInspectorConnectScript()
+    {
+        var ctx        = $"{PluginId}:{ButtonConfig.ButtonId}";
+        var info       = BuildPiInfoJson();
+        var actionInfo = BuildPiActionInfoJson(ctx);
+        static string Esc(string s) => s.Replace("\\", "\\\\").Replace("'", "\\'");
+        return $"if(typeof connectElgatoStreamDeckSocket==='function'){{connectElgatoStreamDeckSocket('28196','{ctx}','registerPropertyInspector','{Esc(info)}','{Esc(actionInfo)}')}}";
+    }
+
+    private string BuildPiInfoJson() => JsonConvert.SerializeObject(new
+    {
+        application     = new { font = "Arial", language = "en", platform = "windows", platformVersion = "10.0.0", version = "1.0.0" },
+        plugin          = new { uuid = PluginId, version = "1.0.0" },
+        devicePixelRatio = 1,
+        colors           = new { },
+        devices          = new[] { new { id = "MK_DEVICE_0", name = "MacroKeyboard", size = new { columns = 5, rows = 2 }, type = 0 } }
+    });
+
+    private string BuildPiActionInfoJson(string context)
+    {
+        object? settingsObj = null;
+        if (!string.IsNullOrEmpty(PluginSettings))
+            try { settingsObj = JsonConvert.DeserializeObject(PluginSettings); } catch { }
+        return JsonConvert.SerializeObject(new
+        {
+            action  = PluginActionId,
+            context = context,
+            device  = "MK_DEVICE_0",
+            payload = new { settings = settingsObj ?? (object)new { }, coordinates = new { column = ButtonConfig.ButtonId % 5, row = ButtonConfig.ButtonId / 5 } }
+        });
+    }
+
+    public ObservableCollection<PluginActionInfo> AvailablePluginActions { get; } = new();
+    public ObservableCollection<PluginActionInfo> FilteredPluginActions  { get; } = new();
+
     // ============================================
     // Shell action properties
     // ============================================
@@ -208,6 +284,7 @@ public partial class ButtonConfigDialogViewModel : ViewModelBase
         ActionType.Folder,
         ActionType.NightMode,
         ActionType.CustomHid,
+        ActionType.Plugin,
     };
     
     /// <summary>
@@ -329,6 +406,7 @@ public partial class ButtonConfigDialogViewModel : ViewModelBase
         ActionType.CustomHid => "Custom HID",
         ActionType.NightMode => "Night Mode",
         ActionType.None => "None",
+        ActionType.Plugin when SelectedPluginAction != null => SelectedPluginAction.ActionName,
         ActionType.Plugin => string.IsNullOrEmpty(PluginActionId) ? "Plugin" : $"Plugin: {PluginActionId}",
         _ => "Not Set"
     };
@@ -410,23 +488,34 @@ public partial class ButtonConfigDialogViewModel : ViewModelBase
 
     public ButtonConfigDialogViewModel(ILogger<ButtonConfigDialogViewModel> logger, ButtonConfig buttonConfig,
         IEnumerable<ProfileSwitchItem>? availableProfiles = null,
-        IEnumerable<FolderSwitchItem>? availableFolders = null)
+        IEnumerable<FolderSwitchItem>? availableFolders = null,
+        IEnumerable<PluginActionInfo>? availablePluginActions = null)
     {
         _logger = logger;
         _buttonConfig = buttonConfig;
-        
+
         // Populate available profiles for ProfileSwitch
         if (availableProfiles != null)
         {
             foreach (var profile in availableProfiles)
                 AvailableProfiles.Add(profile);
         }
-        
+
         // Populate available folders for Folder action
         if (availableFolders != null)
         {
             foreach (var folder in availableFolders)
                 AvailableFolders.Add(folder);
+        }
+
+        // Populate plugin action palette
+        if (availablePluginActions != null)
+        {
+            foreach (var pa in availablePluginActions)
+            {
+                AvailablePluginActions.Add(pa);
+                FilteredPluginActions.Add(pa);
+            }
         }
         
         // Load existing configuration
@@ -480,6 +569,9 @@ public partial class ButtonConfigDialogViewModel : ViewModelBase
                 PluginId = pluginAction.PluginId;
                 PluginActionId = pluginAction.ActionId;
                 PluginSettings = pluginAction.Settings ?? string.Empty;
+                // Restore the palette selection so the selected-mode panel shows correctly
+                SelectedPluginAction = AvailablePluginActions
+                    .FirstOrDefault(a => a.PluginId == pluginAction.PluginId && a.ActionId == pluginAction.ActionId);
             }
             else if (buttonConfig.Action is CustomHidAction customHidAction)
             {
@@ -1026,6 +1118,69 @@ public partial class ButtonConfigDialogViewModel : ViewModelBase
         OnPropertyChanged(nameof(CurrentActionDisplayName));
         OnPropertyChanged(nameof(KeySequenceDisplay));
         OnPropertyChanged(nameof(HasCapturedKeys));
+
+        // Reset plugin search when switching away/to Plugin type
+        if (value == ActionType.Plugin)
+        {
+            PluginSearchText = string.Empty;
+            SelectedPluginAction = null;
+            ApplyPluginFilter();
+        }
+
+        // None action means the button is disabled — clear any image so the
+        // device display isn't left showing a stale icon.
+        if (value == ActionType.None)
+            ImagePath = string.Empty;
+    }
+
+    [RelayCommand]
+    private void ClearPluginAction()
+    {
+        SelectedPluginAction = null;
+        PluginId             = string.Empty;
+        PluginActionId       = string.Empty;
+        PropertyInspectorUrl = null;
+        PluginSearchText     = string.Empty;
+        ApplyPluginFilter();
+        OnPropertyChanged(nameof(CurrentActionDisplayName));
+    }
+
+    partial void OnPluginSearchTextChanged(string value) => ApplyPluginFilter();
+
+    partial void OnPluginIdChanged(string value)
+        => OnPropertyChanged(nameof(PropertyInspectorSourceUrl));
+
+    partial void OnSelectedPluginActionChanged(PluginActionInfo? value)
+    {
+        if (value == null)
+        {
+            PropertyInspectorUrl = null;
+            return;
+        }
+        // PluginId must be set BEFORE PropertyInspectorUrl so that PropertyInspectorSourceUrl
+        // computes the correct context ("pluginId:buttonIndex") when the binding refreshes.
+        PluginId       = value.PluginId;
+        PluginActionId = value.ActionId;
+        PropertyInspectorUrl = value.PropertyInspectorUrl;
+        // Auto-set button image from plugin icon if not already customised
+        if (string.IsNullOrEmpty(ImagePath) && !string.IsNullOrEmpty(value.IconPath))
+            ImagePath = value.IconPath;
+        OnPropertyChanged(nameof(CurrentActionDisplayName));
+    }
+
+    private void ApplyPluginFilter()
+    {
+        FilteredPluginActions.Clear();
+        var q = PluginSearchText?.Trim() ?? string.Empty;
+        foreach (var pa in AvailablePluginActions)
+        {
+            if (q.Length == 0
+                || pa.ActionName.Contains(q, StringComparison.OrdinalIgnoreCase)
+                || pa.PluginName.Contains(q, StringComparison.OrdinalIgnoreCase))
+            {
+                FilteredPluginActions.Add(pa);
+            }
+        }
     }
 
     /// <summary>
@@ -1552,9 +1707,10 @@ public partial class ButtonConfigDialogViewModel : ViewModelBase
                 ActionType.NightMode => new NightModeAction(),
                 ActionType.Plugin => new PluginActionConfig
                 {
-                    PluginId = PluginId,
-                    ActionId = PluginActionId,
-                    Settings = string.IsNullOrWhiteSpace(PluginSettings) ? null : PluginSettings
+                    PluginId   = PluginId,
+                    ActionId   = PluginActionId,
+                    ActionName = SelectedPluginAction?.ActionName,
+                    Settings   = string.IsNullOrWhiteSpace(PluginSettings) ? null : PluginSettings
                 },
                 ActionType.None => null,
                 _ => null

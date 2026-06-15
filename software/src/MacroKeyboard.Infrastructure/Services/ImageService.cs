@@ -54,18 +54,18 @@ public class ImageService
     /// Поддерживает: JPEG, PNG, SVG, ICO, GIF.
     /// Результат: 160x160 JPEG (или GIF для анимаций).
     /// </summary>
-    public async Task<byte[]?> ProcessImageForButtonAsync(string imagePath)
+    public async Task<byte[]?> ProcessImageForButtonAsync(string imagePath, Color? ringColor = null)
     {
         try
         {
             var ext = Path.GetExtension(imagePath).ToLowerInvariant();
-            
+
             return ext switch
             {
-                ".svg" => await ProcessSvgAsync(imagePath),
-                ".gif" => await ProcessGifAsync(imagePath),
-                ".ico" => await ProcessIcoAsync(imagePath),
-                _ => await ProcessRasterImageAsync(imagePath) // jpg, jpeg, png, bmp
+                ".svg" => await ProcessSvgAsync(imagePath, ringColor),
+                ".gif" => await ProcessGifAsync(imagePath),          // GIF: no ring (animated)
+                ".ico" => await ProcessIcoAsync(imagePath, ringColor),
+                _      => await ProcessRasterImageAsync(imagePath, ringColor)
             };
         }
         catch (Exception ex)
@@ -74,19 +74,106 @@ public class ImageService
             return null;
         }
     }
-    
+
+    /// <summary>
+    /// Process raw image bytes (e.g., from plugin setImage).
+    /// Resizes to 160×160, applies circular mask, then draws an optional ring.
+    /// Pass Color.FromRgb(0x8B,0x5C,0xF6) for plugin (purple) or
+    /// Color.FromRgb(0xFF,0xA5,0x00) for folder (orange).
+    /// </summary>
+    public async Task<byte[]?> ProcessImageBytesForButtonAsync(byte[] rawBytes, Color? ringColor = null)
+    {
+        try
+        {
+            using var source = Image.Load<Rgba32>(rawBytes);
+            using var image  = PrepareForDisplay(source);
+            ApplyCircularMask(image);
+            if (ringColor.HasValue) DrawRing(image, ringColor.Value);
+
+            using var ms = new MemoryStream();
+            await image.SaveAsJpegAsync(ms, new JpegEncoder { Quality = 85 });
+            return ms.ToArray();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error processing image bytes");
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Send this to the device to erase a previously-displayed image (None action).
+    /// </summary>
+    public async Task<byte[]> CreateBlankImageAsync()
+    {
+        using var image = new Image<Rgba32>(DisplaySize, DisplaySize);
+        image.Mutate(ctx => ctx.BackgroundColor(Color.Black));
+        ApplyCircularMask(image);
+        using var ms = new MemoryStream();
+        await image.SaveAsJpegAsync(ms, new JpegEncoder { Quality = 85 });
+        return ms.ToArray();
+    }
+
+    /// <summary>
+    /// Create a 160×160 black circle with the ring drawn and an optional text label.
+    /// Used when a button has a ring indicator (folder/plugin) but no custom image is assigned.
+    /// </summary>
+    public async Task<byte[]> CreateRingPlaceholderAsync(Color ringColor, string? label = null)
+    {
+        using var image = new Image<Rgba32>(DisplaySize, DisplaySize);
+        image.Mutate(ctx => ctx.BackgroundColor(Color.Black));
+
+        if (!string.IsNullOrEmpty(label))
+        {
+            try
+            {
+                FontFamily fontFamily;
+                try        { fontFamily = SystemFonts.Get("Arial"); }
+                catch      { try { fontFamily = SystemFonts.Get("DejaVu Sans"); }
+                             catch { fontFamily = SystemFonts.Families.First(); } }
+
+                var font = fontFamily.CreateFont(28, FontStyle.Bold);
+                var opts = new RichTextOptions(font)
+                {
+                    Origin              = new PointF(DisplaySize / 2f, DisplaySize / 2f),
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                    VerticalAlignment   = VerticalAlignment.Center,
+                    WrappingLength      = DisplaySize - 24,
+                    TextAlignment       = TextAlignment.Center
+                };
+                image.Mutate(ctx => ctx.DrawText(opts, label, Color.White));
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to render label on ring placeholder");
+            }
+        }
+
+        ApplyCircularMask(image);
+        DrawRing(image, ringColor);
+
+        using var ms = new MemoryStream();
+        await image.SaveAsJpegAsync(ms, new JpegEncoder { Quality = 85 });
+        return ms.ToArray();
+    }
+
+    private static void DrawRing(Image<Rgba32> image, Color color)
+    {
+        var ring = new SixLabors.ImageSharp.Drawing.EllipsePolygon(
+            DisplaySize / 2f, DisplaySize / 2f, (DisplaySize / 2f) - 4f);
+        image.Mutate(ctx => ctx.Draw(Pens.Solid(color, 4f), ring));
+    }
+
     /// <summary>
     /// Process raster images (JPEG, PNG, BMP) — resize to display size and convert to JPEG
     /// </summary>
-    private async Task<byte[]> ProcessRasterImageAsync(string imagePath)
+    private async Task<byte[]> ProcessRasterImageAsync(string imagePath, Color? ringColor = null)
     {
         using var source = await Image.LoadAsync<Rgba32>(imagePath);
         using var image = PrepareForDisplay(source);
-
-        // Apply circular mask for round display
         ApplyCircularMask(image);
+        if (ringColor.HasValue) DrawRing(image, ringColor.Value);
 
-        // Convert to JPEG
         using var ms = new MemoryStream();
         await image.SaveAsJpegAsync(ms, new JpegEncoder { Quality = 85 });
 
@@ -95,66 +182,48 @@ public class ImageService
             imagePath, result.Length, DisplaySize, DisplaySize);
         return result;
     }
-    
-    /// <summary>
-    /// Process SVG images — render to bitmap at display size, then convert to JPEG
-    /// </summary>
-    private async Task<byte[]> ProcessSvgAsync(string imagePath)
+
+    private async Task<byte[]> ProcessSvgAsync(string imagePath, Color? ringColor = null)
     {
         var svgContent = await File.ReadAllTextAsync(imagePath);
-        
+
         using var svg = new SKSvg();
         svg.FromSvg(svgContent);
-        
+
         if (svg.Picture == null)
             throw new InvalidOperationException($"Failed to parse SVG: {imagePath}");
-        
-        // Render SVG to bitmap at display size
+
         using var bitmap = new SKBitmap(DisplaySize, DisplaySize);
         using var canvas = new SKCanvas(bitmap);
         canvas.Clear(SKColors.Black);
-        
-        // Scale SVG to fit display
+
         var bounds = svg.Picture.CullRect;
         var scaleX = DisplaySize / bounds.Width;
         var scaleY = DisplaySize / bounds.Height;
-        var scale = Math.Min(scaleX, scaleY);
-        
-        var offsetX = (DisplaySize - bounds.Width * scale) / 2;
-        var offsetY = (DisplaySize - bounds.Height * scale) / 2;
-        
-        canvas.Translate(offsetX, offsetY);
+        var scale  = Math.Min(scaleX, scaleY);
+        canvas.Translate((DisplaySize - bounds.Width * scale) / 2, (DisplaySize - bounds.Height * scale) / 2);
         canvas.Scale(scale);
         canvas.DrawPicture(svg.Picture);
-        
-        // Convert SKBitmap to ImageSharp Image
+
         using var image = ConvertSkBitmapToImageSharp(bitmap);
-        
-        // Apply circular mask
         ApplyCircularMask(image);
-        
-        // Convert to JPEG
+        if (ringColor.HasValue) DrawRing(image, ringColor.Value);
+
         using var ms = new MemoryStream();
         await image.SaveAsJpegAsync(ms, new JpegEncoder { Quality = 85 });
-        
+
         var result = ms.ToArray();
         _logger.LogInformation("SVG image processed: {Path} → {Size} bytes", imagePath, result.Length);
         return result;
     }
-    
-    /// <summary>
-    /// Process ICO files — extract the largest icon and resize
-    /// </summary>
-    private async Task<byte[]> ProcessIcoAsync(string imagePath)
+
+    private async Task<byte[]> ProcessIcoAsync(string imagePath, Color? ringColor = null)
     {
-        // ImageSharp can load ICO files directly (they contain embedded BMP/PNG)
         using var source = await Image.LoadAsync<Rgba32>(imagePath);
-        using var image = PrepareForDisplay(source);
-
-        // Apply circular mask
+        using var image  = PrepareForDisplay(source);
         ApplyCircularMask(image);
+        if (ringColor.HasValue) DrawRing(image, ringColor.Value);
 
-        // Convert to JPEG
         using var ms = new MemoryStream();
         await image.SaveAsJpegAsync(ms, new JpegEncoder { Quality = 85 });
 

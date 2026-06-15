@@ -99,17 +99,28 @@ public class ActionExecutorService
 
     private async Task ExecutePluginActionAsync(byte profileId, byte buttonId)
     {
-        var profile = await _profileService.GetProfileAsync(profileId);
-        var button = profile?.Buttons.FirstOrDefault(b => b.ButtonId == buttonId);
+        // Device always uses slot 0; map back to the database profile ID we last sent.
+        var dbProfileId = _profileService.ActiveProfileId;
+        var profile = await _profileService.GetProfileAsync(dbProfileId);
+        var button  = profile?.Buttons.FirstOrDefault(b => b.ButtonId == buttonId);
 
         if (button?.Action is not PluginActionConfig action)
         {
-            _logger.LogWarning("Plugin: no valid action for button {ButtonId} in profile {ProfileId}",
-                buttonId, profileId);
+            _logger.LogWarning(
+                "Plugin: no valid action for button {ButtonId} in profile dbId={DbId} (device slot={Slot})",
+                buttonId, dbProfileId, profileId);
             return;
         }
 
+        // Prefer sidecar settings (written by setSettings from plugin/PI) over profile snapshot.
+        var liveSettings = await _pluginManager.GetActionSettingsAsync(action.PluginId, buttonId);
+
+        _logger.LogInformation(
+            "Dispatching keyDown: plugin={Plugin} action={Action} button={Btn} settingsSource={Src}",
+            action.PluginId, action.ActionId, buttonId,
+            liveSettings != null ? "sidecar" : "profile");
+
         await _pluginManager.DispatchButtonPressAsync(
-            action.PluginId, action.ActionId, action.Settings, buttonId);
+            action.PluginId, action.ActionId, liveSettings ?? action.Settings, buttonId);
     }
 }

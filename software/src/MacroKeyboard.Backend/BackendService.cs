@@ -2,6 +2,7 @@ using MacroKeyboard.Backend.Plugin;
 using MacroKeyboard.Backend.Services;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using SharedEvents = MacroKeyboard.Shared.Events;
 
 namespace MacroKeyboard.Backend;
 
@@ -17,6 +18,7 @@ public class BackendService : BackgroundService
     private readonly IpcCommandHandler _commandHandler;
     private readonly ActionExecutorService _actionExecutor;
     private readonly WebSocketServer _webSocketServer;
+    private readonly PropertyInspectorServer _piServer;
     private readonly PluginManager _pluginManager;
 
     public BackendService(
@@ -27,6 +29,7 @@ public class BackendService : BackgroundService
         IpcCommandHandler commandHandler,
         ActionExecutorService actionExecutor,
         WebSocketServer webSocketServer,
+        PropertyInspectorServer piServer,
         PluginManager pluginManager)
     {
         _logger = logger;
@@ -36,6 +39,7 @@ public class BackendService : BackgroundService
         _commandHandler = commandHandler;
         _actionExecutor = actionExecutor;
         _webSocketServer = webSocketServer;
+        _piServer = piServer;
         _pluginManager = pluginManager;
     }
 
@@ -51,6 +55,9 @@ public class BackendService : BackgroundService
             // Start WebSocket server for plugins
             await _webSocketServer.StartAsync(stoppingToken);
 
+            // Start Property Inspector HTTP file server
+            await _piServer.StartAsync(stoppingToken);
+
             // Load and start all plugins
             await _pluginManager.LoadPluginsAsync(stoppingToken);
             foreach (var manifest in _pluginManager.GetPlugins())
@@ -64,6 +71,10 @@ public class BackendService : BackgroundService
                     _logger.LogError(ex, "Failed to start plugin {PluginId}", manifest.Id);
                 }
             }
+
+            // Wire device connect/disconnect → plugin notifications
+            _deviceManager.DeviceConnected    += OnDeviceConnected;
+            _deviceManager.DeviceDisconnected += OnDeviceDisconnected;
 
             // Start device manager
             await _deviceManager.StartAsync(stoppingToken);
@@ -84,6 +95,18 @@ public class BackendService : BackgroundService
         }
     }
 
+    private async void OnDeviceConnected(object? sender, SharedEvents.DeviceEventArgs e)
+    {
+        try { await _pluginManager.NotifyDeviceConnectedAsync(); }
+        catch (Exception ex) { _logger.LogError(ex, "Error notifying plugins of device connect"); }
+    }
+
+    private async void OnDeviceDisconnected(object? sender, SharedEvents.DeviceEventArgs e)
+    {
+        try { await _pluginManager.NotifyDeviceDisconnectedAsync(); }
+        catch (Exception ex) { _logger.LogError(ex, "Error notifying plugins of device disconnect"); }
+    }
+
     public override async Task StopAsync(CancellationToken cancellationToken)
     {
         _logger.LogInformation("MacroKeyboard Backend Service stopping...");
@@ -95,6 +118,7 @@ public class BackendService : BackgroundService
         }
 
         await _webSocketServer.StopAsync(cancellationToken);
+        await _piServer.StopAsync();
         await _deviceManager.StopAsync(cancellationToken);
         await _ipcServer.StopAsync(cancellationToken);
 

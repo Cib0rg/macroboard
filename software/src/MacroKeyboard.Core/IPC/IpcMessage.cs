@@ -93,6 +93,7 @@ public static class IpcMessageTypes
     public const string SetButtonAction = "button.setaction";
     public const string GetButtonAction = "button.getaction";
     public const string SetButtonName   = "button.setname";
+    public const string SetButtonImage  = "button.setimage";
     
     // LED messages
     public const string SetLedColor = "led.setcolor";
@@ -121,6 +122,7 @@ public static class IpcMessageTypes
     public const string PluginUnregistered = "plugin.unregistered";
     public const string PluginAction = "plugin.action";
     public const string PluginList = "plugin.list";
+    public const string PluginGetSettings = "plugin.getsettings";
 }
 
 /// <summary>

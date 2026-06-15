@@ -58,6 +58,12 @@ public interface IProfileService
     /// <summary>
     /// Импортировать профиль из файла
     /// </summary>
-    Task<Profile?> ImportProfileAsync(string filePath, 
+    Task<Profile?> ImportProfileAsync(string filePath,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Profile ID that was last successfully sent to the device (device always uses slot 0,
+    /// so e.ProfileId from button events is 0, not the database ID).
+    /// </summary>
+    byte ActiveProfileId { get; }
 }

@@ -27,6 +27,9 @@
         <Style Selector="Border.tile.folder">
             <Setter Property="BorderBrush" Value="#FFA500" />
         </Style>
+        <Style Selector="Border.tile.plugin">
+            <Setter Property="BorderBrush" Value="#8B5CF6" />
+        </Style>
     </UserControl.Styles>
 
     <ItemsControl ItemsSource="{Binding CurrentTiles}">
@@ -42,6 +45,7 @@
                         Classes.selected="{Binding IsSelected}"
                         Classes.back-slot="{Binding IsBackButton}"
                         Classes.folder="{Binding IsFolder}"
+                        Classes.plugin="{Binding IsPluginAction}"
                         Tag="{Binding}"
                         PointerPressed="OnTilePointerPressed"
                         DoubleTapped="OnTileDoubleTapped"
@@ -71,6 +75,14 @@
                                        TextTrimming="CharacterEllipsis"
                                        HorizontalAlignment="Center"
                                        Foreground="White" />
+                        </Border>
+
+                        <!-- Plugin badge (top-left, only when image covers the tile) -->
+                        <Border HorizontalAlignment="Left" VerticalAlignment="Top"
+                                Margin="4,4,0,0"
+                                Background="#AA8B5CF6" CornerRadius="3" Padding="3,1"
+                                IsVisible="{Binding IsPluginAction}">
+                            <TextBlock Text="🔌" FontSize="8" LineHeight="10" />
                         </Border>
 
                         <!-- Long-press dot (top-right) -->

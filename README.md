@@ -44,6 +44,7 @@
 - ✅ **Dashboard** — статус устройства, лог событий, управление яркостью
 - ✅ **Синхронизация с устройством** — отправка/загрузка профилей через USB
 - ✅ **LibUsbDotNet** — кроссплатформенная USB коммуникация (Linux/Windows/macOS)
+- ✅ **Плагины (Stream Deck совместимость)** — запуск `.streamDeckPlugin` архивов и исполняемых плагинов, WebSocket API на порту 28196, Property Inspector на порту 8787
 
 ## Структура проекта
 
@@ -178,6 +179,7 @@ sudo udevadm control --reload-rules
 | 0x07 | Sequence | Последовательность до 16 действий |
 | 0x08 | LaunchApp | Запуск приложения на PC |
 | 0x09 | Media | Медиа-клавиши (Volume, Mute, Play/Pause и др.) |
+| 0x0B | Plugin | Действие стороннего плагина (Stream Deck-совместимого) |
 
 ## Лицензия
 

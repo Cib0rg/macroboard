@@ -15,6 +15,8 @@ public class ProfileService : IProfileService
     private readonly IDeviceService _deviceService;
     private readonly ImageService _imageService;
     private readonly ILogger<ProfileService> _logger;
+
+    public byte ActiveProfileId { get; private set; }
     
     public ProfileService(
         ProfileRepository repository,
@@ -126,6 +128,8 @@ public class ProfileService : IProfileService
                     btn.ButtonId, btn.Action?.ActionType, btn.ImagePath ?? "(null)");
             }
             
+            ActiveProfileId = profile.ProfileId;
+
             // 1. Установить профиль (device always uses slot 0)
             var profileSet = await _deviceService.SetProfileAsync(0, cancellationToken);
             if (!profileSet)
@@ -167,12 +171,19 @@ public class ProfileService : IProfileService
                 var button = profile.Buttons[i];
 
                 // Отправить изображение (обработать через ImageService → 160x160 JPEG)
+                var ringColor = button.Action switch
+                {
+                    FolderAction       => (SixLabors.ImageSharp.Color?)SixLabors.ImageSharp.Color.FromRgb(0xFF, 0xA5, 0x00),
+                    PluginActionConfig => (SixLabors.ImageSharp.Color?)SixLabors.ImageSharp.Color.FromRgb(0x8B, 0x5C, 0xF6),
+                    _                  => null
+                };
+
                 if (!string.IsNullOrEmpty(button.ImagePath) && File.Exists(button.ImagePath))
                 {
                     _logger.LogInformation("Processing image for button {ButtonId}: {Path}",
                         button.ButtonId, button.ImagePath);
 
-                    var processedImage = await _imageService.ProcessImageForButtonAsync(button.ImagePath);
+                    var processedImage = await _imageService.ProcessImageForButtonAsync(button.ImagePath, ringColor);
                     if (processedImage != null && processedImage.Length > 0)
                     {
                         var imageProgress = new Progress<int>(p =>
@@ -203,6 +214,29 @@ public class ProfileService : IProfileService
                 {
                     _logger.LogWarning("Image file not found for button {ButtonId}: {Path}",
                         button.ButtonId, button.ImagePath);
+                }
+                else if (button.Action == null || button.Action is NoneAction)
+                {
+                    // Explicitly clear the display so a previously-sent image doesn't persist.
+                    var blank = await _imageService.CreateBlankImageAsync();
+                    await _deviceService.SendButtonImageAsync(0, button.ButtonId, blank, null, cancellationToken);
+                }
+                else if (ringColor.HasValue)
+                {
+                    // No custom image but this button type needs a ring indicator —
+                    // send a black circle with text + ring so the device shows both.
+                    var placeholderLabel = !string.IsNullOrEmpty(button.Name) ? button.Name
+                        : button.Action switch
+                        {
+                            FolderAction       => "Folder",
+                            PluginActionConfig pa when !string.IsNullOrEmpty(pa.ActionName) => pa.ActionName,
+                            PluginActionConfig => "Plugin",
+                            _                  => null
+                        };
+                    _logger.LogInformation("Sending ring placeholder for button {ButtonId} label='{Label}'",
+                        button.ButtonId, placeholderLabel);
+                    var placeholder = await _imageService.CreateRingPlaceholderAsync(ringColor.Value, placeholderLabel);
+                    await _deviceService.SendButtonImageAsync(0, button.ButtonId, placeholder, null, cancellationToken);
                 }
 
                 // Отправить действие (null → NoneAction чтобы очистить предыдущую конфигурацию на устройстве)

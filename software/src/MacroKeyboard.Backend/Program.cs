@@ -60,10 +60,13 @@ try
 
     // Register Plugin services
     builder.Services.AddSingleton<WebSocketServer>();
+    builder.Services.AddSingleton<PropertyInspectorServer>();
     builder.Services.AddSingleton<PluginManager>(sp => new PluginManager(
         sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<PluginManager>>(),
         sp.GetRequiredService<MacroKeyboard.Core.Services.IDeviceService>(),
         sp.GetRequiredService<WebSocketServer>(),
+        sp.GetRequiredService<MacroKeyboard.Infrastructure.Services.ImageService>(),
+        sp.GetRequiredService<PropertyInspectorServer>(),
         Path.Combine(AppContext.BaseDirectory, "plugins")));
 
     // Register the main service
