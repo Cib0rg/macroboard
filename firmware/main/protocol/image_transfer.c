@@ -105,47 +105,58 @@ esp_err_t image_transfer_end(uint32_t* calculated_crc) {
         return ESP_ERR_INVALID_SIZE;
     }
     
-    // Calculate CRC32
+    // CRC over JPEG bytes — transport integrity check and content-address key
     *calculated_crc = crc32_calculate(transfer_ctx.buffer, transfer_ctx.total_size);
-    
-    ESP_LOGI(TAG, "Transfer complete: %lu bytes, CRC32=0x%08lX",
+
+    ESP_LOGI(TAG, "Transfer complete: %lu bytes JPEG, CRC32=0x%08lX",
              transfer_ctx.total_size, *calculated_crc);
-    
-    // Save image to storage (content-addressed with deduplication)
+
+    // Decode JPEG → raw RGB565 big-endian (one-time cost at upload, ~20-50ms)
+    uint8_t* rgb565_buf = heap_caps_malloc(DISPLAY_BUFFER_SIZE, MALLOC_CAP_SPIRAM);
+    if (rgb565_buf == NULL) {
+        ESP_LOGE(TAG, "Failed to allocate RGB565 decode buffer");
+        free(transfer_ctx.buffer);
+        transfer_ctx.active = false;
+        return ESP_ERR_NO_MEM;
+    }
+
+    uint16_t decoded_w = 0, decoded_h = 0;
+    esp_err_t decode_ret = jpeg_decode_to_rgb565(
+        transfer_ctx.buffer, transfer_ctx.total_size,
+        rgb565_buf, DISPLAY_BUFFER_SIZE, &decoded_w, &decoded_h);
+
+    free(transfer_ctx.buffer);
+    transfer_ctx.buffer = NULL;
+
+    if (decode_ret != ESP_OK) {
+        ESP_LOGE(TAG, "JPEG decode failed: %s", esp_err_to_name(decode_ret));
+        free(rgb565_buf);
+        transfer_ctx.active = false;
+        return decode_ret;
+    }
+
+    ESP_LOGI(TAG, "JPEG decoded to %dx%d", decoded_w, decoded_h);
+
+    // Save raw RGB565 to storage, keyed by JPEG CRC for deduplication
     esp_err_t ret = image_storage_save(transfer_ctx.profile_id, transfer_ctx.button_id,
-                                        transfer_ctx.buffer, transfer_ctx.total_size,
+                                        rgb565_buf, DISPLAY_BUFFER_SIZE,
                                         *calculated_crc);
 
     if (ret == ESP_OK) {
-        // Mark button config as having an image so that profile_update_button_display
-        // loads from storage on subsequent display refreshes (e.g. after folder enter/exit).
-        // Without this, image_size stays 0 and the button falls back to text rendering
-        // even though the blob is persisted in content-addressed storage.
         profile_t* prof = profile_get(transfer_ctx.profile_id);
         if (prof != NULL && transfer_ctx.button_id < NUM_BUTTONS) {
-            prof->buttons[transfer_ctx.button_id].image_size = transfer_ctx.total_size;
+            prof->buttons[transfer_ctx.button_id].image_size = DISPLAY_BUFFER_SIZE;
         }
     }
 
-    // If save succeeded and this is the current profile, decode and display immediately
     if (ret == ESP_OK && transfer_ctx.profile_id == profile_get_current_id()) {
-        uint8_t* rgb565_buf = heap_caps_malloc(DISPLAY_BUFFER_SIZE, MALLOC_CAP_DMA | MALLOC_CAP_SPIRAM);
-        if (rgb565_buf != NULL) {
-            uint16_t w, h;
-            if (jpeg_decode_to_rgb565(transfer_ctx.buffer, transfer_ctx.total_size,
-                                       rgb565_buf, DISPLAY_BUFFER_SIZE, &w, &h) == ESP_OK) {
-                gc9a01_draw_image(transfer_ctx.button_id, rgb565_buf, w, h);
-                ESP_LOGI(TAG, "Image displayed on button %d (%dx%d)", transfer_ctx.button_id, w, h);
-            } else {
-                ESP_LOGW(TAG, "JPEG decode failed for button %d after transfer", transfer_ctx.button_id);
-            }
-            free(rgb565_buf);
-        }
+        profile_image_cache_invalidate(transfer_ctx.button_id);
+        gc9a01_draw_image(transfer_ctx.button_id, rgb565_buf, DISPLAY_WIDTH, DISPLAY_HEIGHT);
+        ESP_LOGI(TAG, "Image displayed on button %d", transfer_ctx.button_id);
     }
-    
-    // Cleanup
-    free(transfer_ctx.buffer);
+
+    free(rgb565_buf);
     transfer_ctx.active = false;
-    
+
     return ret;
 }

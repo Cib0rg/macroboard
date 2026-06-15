@@ -115,4 +115,14 @@ esp_err_t image_storage_cleanup_profile(uint8_t profile_id);
  */
 esp_err_t image_storage_gc(void);
 
+/**
+ * @brief Get the CRC32 of the image mapped to a specific (profile, button) slot.
+ *
+ * @param profile_id Profile ID
+ * @param button_id  Button ID
+ * @param out_crc32  Output: CRC32 of the mapped image
+ * @return ESP_OK if a mapping exists, ESP_ERR_NOT_FOUND otherwise
+ */
+esp_err_t image_storage_get_crc(uint8_t profile_id, uint8_t button_id, uint32_t* out_crc32);
+
 #endif // IMAGE_STORAGE_H

@@ -57,18 +57,18 @@ esp_err_t profile_set_button_action(uint8_t profile_id, uint8_t button_id,
                                      uint8_t action_type, const uint8_t* action_data,
                                      uint16_t action_len);
 
-esp_err_t profile_set_button_long_press_action(uint8_t button_id,
+/**
+ * @brief Set long-press action for a button. folder_id=0xFF writes to root buttons.
+ */
+esp_err_t profile_set_button_long_press_action(uint8_t button_id, uint8_t folder_id,
                                                 uint8_t action_type, const uint8_t* action_data,
                                                 uint16_t action_len);
 
 /**
  * @brief Set the label shown in the long-press section of the split display.
- *        Empty string → firmware auto-generates the label from the action type.
- * @param button_id Button ID (0-9)
- * @param name      Null-terminated UTF-8 string (max BUTTON_NAME_MAX_LEN-1 chars)
- * @return ESP_OK on success
+ *        folder_id=0xFF writes to root buttons. Empty string → firmware auto-generates.
  */
-esp_err_t profile_set_button_long_press_name(uint8_t button_id, const char* name);
+esp_err_t profile_set_button_long_press_name(uint8_t button_id, uint8_t folder_id, const char* name);
 
 /**
  * @brief Set display name for a button (shown when no image is assigned)
@@ -90,6 +90,7 @@ esp_err_t profile_set_folder_button_led(uint8_t profile_id, uint8_t folder_id,
                                          uint8_t button_id,
                                          uint8_t r, uint8_t g, uint8_t b,
                                          uint8_t brightness, uint8_t effect);
+
 
 /**
  * @brief Set LED color for button
@@ -174,5 +175,12 @@ void profile_restore_leds(void);
  *        are not left on screen.
  */
 void profile_refresh_displays(void);
+
+/**
+ * @brief Invalidate the PSRAM display cache for one button.
+ *        Call after a new image is uploaded for that button so the next
+ *        display refresh loads fresh data from storage.
+ */
+void profile_image_cache_invalidate(uint8_t button_id);
 
 #endif // PROFILE_MANAGER_H

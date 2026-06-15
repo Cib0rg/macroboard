@@ -129,7 +129,9 @@ public class DeviceManager : IDisposable
                     if (deviceInfo.IsConnected)
                     {
                         firmwareReady = true;
-                        _logger.LogInformation("Firmware ready — firing DeviceConnected");
+                        _logger.LogInformation("Firmware ready — loading image hash cache");
+                        await _deviceService.LoadImageHashCacheAsync(0, cancellationToken);
+                        _logger.LogInformation("Firing DeviceConnected");
                         DeviceConnected?.Invoke(this, new SharedEvents.DeviceEventArgs
                         {
                             DeviceId = deviceInfo.DeviceId,

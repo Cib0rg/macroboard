@@ -36,10 +36,10 @@ static const char* TAG = "IMG_STOR";
 // Constants
 // ============================================
 
-#define IMAGE_BLOB_FMT          "/storage/img_%08lx.jpg"
+#define IMAGE_BLOB_FMT          "/storage/img_%08lx.raw"
 #define IMAGE_MAP_FILE          "/storage/img_map.bin"
 #define IMAGE_MAP_MAGIC         0x494D4150  // "IMAP"
-#define IMAGE_MAP_VERSION       1
+#define IMAGE_MAP_VERSION       2           // v2: raw RGB565 big-endian instead of JPEG
 
 // Maximum unique images we can track (NUM_PROFILES * NUM_BUTTONS = 50 max,
 // but with folders it could be more; 64 is a safe upper bound for unique blobs)
@@ -640,5 +640,13 @@ done:
     } else {
         ESP_LOGD(TAG, "GC: no orphaned images found");
     }
+    return ESP_OK;
+}
+
+esp_err_t image_storage_get_crc(uint8_t profile_id, uint8_t button_id, uint32_t* out_crc32) {
+    if (!s_initialized || out_crc32 == NULL) return ESP_ERR_INVALID_STATE;
+    int idx = find_mapping(profile_id, button_id);
+    if (idx < 0) return ESP_ERR_NOT_FOUND;
+    *out_crc32 = s_mappings[idx].crc32;
     return ESP_OK;
 }

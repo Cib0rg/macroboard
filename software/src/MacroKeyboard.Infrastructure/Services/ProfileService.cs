@@ -263,15 +263,13 @@ public class ProfileService : IProfileService
 
                 // Отправить действие long press
                 await _deviceService.SetButtonLongPressActionAsync(
-                    button.ButtonId,
-                    button.LongPressAction,
-                    cancellationToken);
+                    0, button.ButtonId, button.LongPressAction,
+                    cancellationToken: cancellationToken);
 
                 // Отправить имя long press (пустая строка — firmware сгенерирует из типа действия)
                 await _deviceService.SetButtonLongPressNameAsync(
-                    button.ButtonId,
-                    button.LongPressName ?? string.Empty,
-                    cancellationToken);
+                    0, button.ButtonId, button.LongPressName ?? string.Empty,
+                    cancellationToken: cancellationToken);
 
                 progress?.Report(10 + ((i + 1) * 70 / profile.Buttons.Count));
 
@@ -300,6 +298,12 @@ public class ProfileService : IProfileService
                     var led = btn?.Led ?? LedConfig.FromRgb(80, 80, 80);
                     await _deviceService.SetFolderButtonLedAsync(
                         0, folder.FolderId, btnId, led, cancellationToken);
+
+                    await _deviceService.SetButtonLongPressActionAsync(
+                        0, btnId, btn?.LongPressAction, folder.FolderId, cancellationToken);
+
+                    await _deviceService.SetButtonLongPressNameAsync(
+                        0, btnId, btn?.LongPressName ?? string.Empty, folder.FolderId, cancellationToken);
 
                     await Task.Delay(50, cancellationToken);
                 }

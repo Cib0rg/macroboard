@@ -5,9 +5,9 @@ using Microsoft.Extensions.Logging;
 namespace MacroKeyboard.Communication.Commands;
 
 /// <summary>
-/// CMD_SET_BUTTON_LONG_PRESS_NAME — set the label shown in the long-press section of the split display.
-/// Payload: [button_id (1)] [name bytes (UTF-8, no null needed, max 31)]
-/// Empty name makes the firmware auto-generate the label from the action type.
+/// CMD_SET_BUTTON_LONG_PRESS_NAME
+/// Payload: [profile_id(1)][folder_id(1)][button_id(1)][name (UTF-8, max PayloadSize-3 bytes)]
+/// folder_id=0xFF → root buttons. Empty name → firmware auto-generates from action type.
 /// </summary>
 public class SetButtonLongPressNameCommand
 {
@@ -21,8 +21,8 @@ public class SetButtonLongPressNameCommand
     }
 
     public async Task<bool> ExecuteAsync(
-        byte buttonId,
-        string? name,
+        byte profileId, byte buttonId, string? name,
+        byte folderId = 0xFF,
         CancellationToken cancellationToken = default)
     {
         try
@@ -31,13 +31,14 @@ public class SetButtonLongPressNameCommand
                 ? Array.Empty<byte>()
                 : Encoding.UTF8.GetBytes(name);
 
-            const int MaxNameBytes = 31;
-            if (nameBytes.Length > MaxNameBytes)
-                nameBytes = nameBytes[..MaxNameBytes];
+            var maxNameLen = ProtocolConstants.PayloadSize - 3;
+            var actualLen = Math.Min(nameBytes.Length, maxNameLen);
 
-            var payload = new byte[1 + nameBytes.Length];
-            payload[0] = buttonId;
-            nameBytes.CopyTo(payload, 1);
+            var payload = new byte[3 + actualLen];
+            payload[0] = profileId;
+            payload[1] = folderId;
+            payload[2] = buttonId;
+            Array.Copy(nameBytes, 0, payload, 3, actualLen);
 
             var response = await _protocol.SendCommandAsync(
                 ProtocolConstants.CMD_SET_BUTTON_LONG_PRESS_NAME,
@@ -48,12 +49,13 @@ public class SetButtonLongPressNameCommand
 
             bool ok = response.Payload[0] == ProtocolConstants.STATUS_OK;
             if (!ok)
-                _logger.LogError("SetButtonLongPressName button {Id} failed: 0x{Status:X2}", buttonId, response.Payload[0]);
+                _logger.LogError("SetButtonLongPressName f={FolderId} b={ButtonId} failed: 0x{Status:X2}",
+                    folderId, buttonId, response.Payload[0]);
             return ok;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error setting long press name for button {Id}", buttonId);
+            _logger.LogError(ex, "Error setting long press name f={FolderId} b={ButtonId}", folderId, buttonId);
             return false;
         }
     }

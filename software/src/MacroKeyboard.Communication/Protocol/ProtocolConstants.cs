@@ -30,6 +30,7 @@ public static class ProtocolConstants
     public const byte CMD_IMAGE_DATA_CHUNK = 0x21;
     public const byte CMD_END_IMAGE_TRANSFER = 0x22;
     public const byte CMD_GET_BUTTON_IMAGE = 0x23;
+    public const byte CMD_GET_IMAGE_HASHES = 0x24;
     public const byte CMD_SET_BUTTON_ACTION         = 0x30;
     public const byte CMD_GET_BUTTON_ACTION         = 0x31;
     public const byte CMD_SET_BUTTON_NAME           = 0x32;

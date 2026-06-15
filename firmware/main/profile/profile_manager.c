@@ -13,8 +13,8 @@
 #include "protocol/protocol_handler.h"
 #include "protocol/protocol_types.h"
 #include "utils/crc.h"
-#include "utils/jpeg_decode_util.h"
 #include "utils/text_render.h"
+#include "utils/jpeg_decode_util.h"
 #include "config.h"
 
 // Embedded firmware assets (compiled into binary via EMBED_FILES in CMakeLists.txt)
@@ -33,6 +33,21 @@ static void profile_update_button_display(uint8_t button_id, button_config_t* bt
 static void profile_show_back_icon(uint8_t button_id);
 static uint8_t folder_stack[FOLDER_STACK_DEPTH];
 static uint8_t folder_stack_depth = 0;
+
+// PSRAM display cache: raw RGB565 big-endian buffers, one per button (NULL = not cached).
+// Populated on first draw; freed on profile switch via display_cache_clear().
+static uint8_t* s_display_cache[NUM_BUTTONS];
+
+static void display_cache_clear(void) {
+    for (int i = 0; i < NUM_BUTTONS; i++) {
+        if (s_display_cache[i]) { free(s_display_cache[i]); s_display_cache[i] = NULL; }
+    }
+}
+
+void profile_image_cache_invalidate(uint8_t button_id) {
+    if (button_id >= NUM_BUTTONS) return;
+    if (s_display_cache[button_id]) { free(s_display_cache[button_id]); s_display_cache[button_id] = NULL; }
+}
 static uint8_t folder_entry_button = 0xFF;  // Button that was used to enter current folder
 
 esp_err_t profile_manager_init(void) {
@@ -98,8 +113,8 @@ esp_err_t profile_switch(uint8_t profile_id) {
     }
     led_update();
 
-    // Refresh all button displays so stale images from the previous profile
-    // don't remain on screen after a switch.
+    // Clear cached images from the previous profile, then refresh displays.
+    display_cache_clear();
     for (int i = 0; i < NUM_BUTTONS; i++) {
         profile_update_button_display(i, &current_profile.buttons[i]);
     }
@@ -201,43 +216,39 @@ esp_err_t profile_set_button_action(uint8_t profile_id, uint8_t button_id,
     return ESP_OK;
 }
 
-esp_err_t profile_set_button_long_press_action(uint8_t button_id,
+esp_err_t profile_set_button_long_press_action(uint8_t button_id, uint8_t folder_id,
                                                 uint8_t action_type, const uint8_t* action_data,
                                                 uint16_t action_len) {
     if (button_id >= NUM_BUTTONS) return ESP_ERR_INVALID_ARG;
+    if (folder_id != 0xFF && folder_id >= NUM_FOLDERS) return ESP_ERR_INVALID_ARG;
     if (action_len > ACTION_DATA_MAX_LEN) action_len = ACTION_DATA_MAX_LEN;
 
     xSemaphoreTake(profile_mutex, portMAX_DELAY);
-    button_config_t* btn = &current_profile.buttons[button_id];
+    button_config_t* btn = (folder_id == 0xFF)
+        ? &current_profile.buttons[button_id]
+        : &current_profile.folders[folder_id].buttons[button_id];
     btn->long_press_action_type = action_type;
     btn->long_press_action_data_len = action_len;
-    if (action_data != NULL && action_len > 0) {
+    if (action_data != NULL && action_len > 0)
         memcpy(btn->long_press_action_data, action_data, action_len);
-    }
     xSemaphoreGive(profile_mutex);
 
-    ESP_LOGD(TAG, "Button %d long press stored: type=0x%02X len=%d",
-             button_id, action_type, action_len);
-
-    // Display is refreshed by CMD_REFRESH_DISPLAYS after the full save sequence,
-    // once both the action and long-press data are fully committed.
-
+    ESP_LOGD(TAG, "Button %d (folder=%d) long press stored: type=0x%02X len=%d",
+             button_id, folder_id, action_type, action_len);
     return ESP_OK;
 }
 
-esp_err_t profile_set_button_long_press_name(uint8_t button_id, const char* name) {
-    if (button_id >= NUM_BUTTONS || name == NULL) {
-        return ESP_ERR_INVALID_ARG;
-    }
+esp_err_t profile_set_button_long_press_name(uint8_t button_id, uint8_t folder_id, const char* name) {
+    if (button_id >= NUM_BUTTONS || name == NULL) return ESP_ERR_INVALID_ARG;
+    if (folder_id != 0xFF && folder_id >= NUM_FOLDERS) return ESP_ERR_INVALID_ARG;
 
     xSemaphoreTake(profile_mutex, portMAX_DELAY);
-
-    button_config_t* btn = &current_profile.buttons[button_id];
+    button_config_t* btn = (folder_id == 0xFF)
+        ? &current_profile.buttons[button_id]
+        : &current_profile.folders[folder_id].buttons[button_id];
     memset(btn->long_press_name, 0, BUTTON_NAME_MAX_LEN);
     strncpy(btn->long_press_name, name, BUTTON_NAME_MAX_LEN - 1);
-
     xSemaphoreGive(profile_mutex);
-
     return ESP_OK;
 }
 
@@ -291,6 +302,7 @@ esp_err_t profile_set_folder_button_led(uint8_t profile_id, uint8_t folder_id,
     xSemaphoreGive(profile_mutex);
     return ESP_OK;
 }
+
 
 esp_err_t profile_set_button_name(uint8_t profile_id, uint8_t button_id, const char* name) {
     if (profile_id >= NUM_PROFILES || button_id >= NUM_BUTTONS || name == NULL) {
@@ -730,9 +742,7 @@ void profile_restore_leds(void) {
 void profile_refresh_displays(void) {
     for (int i = 0; i < NUM_BUTTONS; i++) {
         profile_update_button_display(i, &current_profile.buttons[i]);
-        // Yield between buttons so the USB task and watchdog feed can run.
-        // Without this, rendering 10 displays in a tight loop can starve other tasks.
-        vTaskDelay(pdMS_TO_TICKS(10));
+        vTaskDelay(pdMS_TO_TICKS(2)); // yield to USB/watchdog task
     }
 }
 
@@ -779,15 +789,20 @@ static void profile_update_button_display(uint8_t button_id, button_config_t* bt
 
         // ── Top SPLIT_SHORT_H px: short press content ──────────────────────
         if (btn->image_size > 0) {
-            uint8_t* image_data = NULL;
-            size_t image_size = 0;
-            if (image_storage_load(current_profile_id, button_id, &image_data, &image_size) == ESP_OK &&
-                image_data) {
-                uint16_t w, h;
-                if (jpeg_decode_to_rgb565(image_data, image_size, frame, DISPLAY_BUFFER_SIZE, &w, &h) != ESP_OK)
-                    text_render_fill_region(frame, DISPLAY_WIDTH, 0, SPLIT_SHORT_H, NULL, COLOR_WHITE, COLOR_BLACK);
-                // On success: frame rows 0..SPLIT_SHORT_H-1 hold the top of the image
-                free(image_data);
+            // Get raw RGB565 from cache or load from storage
+            uint8_t* img = s_display_cache[button_id];
+            if (img == NULL) {
+                size_t img_sz = 0;
+                if (image_storage_load(current_profile_id, button_id, &img, &img_sz) == ESP_OK && img != NULL) {
+                    s_display_cache[button_id] = img; // keep in cache
+                } else {
+                    free(img);
+                    img = NULL;
+                }
+            }
+            if (img != NULL) {
+                // Copy top SPLIT_SHORT_H rows of raw RGB565 directly into frame
+                memcpy(frame, img, (size_t)DISPLAY_WIDTH * SPLIT_SHORT_H * 2);
             } else {
                 text_render_fill_region(frame, DISPLAY_WIDTH, 0, SPLIT_SHORT_H, NULL, COLOR_WHITE, COLOR_BLACK);
             }
@@ -822,28 +837,20 @@ static void profile_update_button_display(uint8_t button_id, button_config_t* bt
 
     // ── Full-screen (no long press assigned) ──────────────────────────────
     if (btn->image_size > 0) {
+        // Serve from PSRAM cache when available (avoids SPIFFS read on folder enter/exit)
+        if (s_display_cache[button_id] != NULL) {
+            gc9a01_draw_image(button_id, s_display_cache[button_id], DISPLAY_WIDTH, DISPLAY_HEIGHT);
+            return;
+        }
+        // Load raw RGB565 from SPIFFS and cache it
         uint8_t* image_data = NULL;
         size_t image_size = 0;
-
-        esp_err_t ret = image_storage_load(current_profile_id, button_id, &image_data, &image_size);
-        if (ret == ESP_OK && image_data != NULL) {
-            uint8_t* rgb565_buf = heap_caps_malloc(DISPLAY_BUFFER_SIZE, MALLOC_CAP_DMA | MALLOC_CAP_SPIRAM);
-            if (rgb565_buf != NULL) {
-                uint16_t w, h;
-                if (jpeg_decode_to_rgb565(image_data, image_size, rgb565_buf, DISPLAY_BUFFER_SIZE, &w, &h) == ESP_OK) {
-                    gc9a01_draw_image(button_id, rgb565_buf, w, h);
-                    ESP_LOGD(TAG, "Image displayed for button %d (%dx%d)", button_id, w, h);
-                } else {
-                    ESP_LOGW(TAG, "JPEG decode failed for button %d", button_id);
-                    gc9a01_clear(button_id, COLOR_BLACK);
-                }
-                free(rgb565_buf);
-            } else {
-                ESP_LOGE(TAG, "Failed to allocate RGB565 buffer for button %d", button_id);
-                gc9a01_clear(button_id, COLOR_BLACK);
-            }
-            free(image_data);
+        if (image_storage_load(current_profile_id, button_id, &image_data, &image_size) == ESP_OK
+            && image_data != NULL) {
+            gc9a01_draw_image(button_id, image_data, DISPLAY_WIDTH, DISPLAY_HEIGHT);
+            s_display_cache[button_id] = image_data; // keep alive in PSRAM
         } else {
+            free(image_data);
             gc9a01_clear(button_id, COLOR_BLACK);
         }
         return;

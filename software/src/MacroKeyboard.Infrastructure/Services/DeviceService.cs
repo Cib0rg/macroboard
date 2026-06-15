@@ -1,5 +1,6 @@
 using MacroKeyboard.Core.Models;
 using MacroKeyboard.Core.Services;
+using MacroKeyboard.Core.Utilities;
 using MacroKeyboard.Communication.HidDevice;
 using MacroKeyboard.Communication.Commands;
 using MacroKeyboard.Communication.Protocol;
@@ -33,6 +34,10 @@ public class DeviceService : IDeviceService
     private readonly SetEncoderActionCommand _setEncoderActionCommand;
     private readonly SetButtonLongPressActionCommand _setButtonLongPressActionCommand;
     private readonly SetButtonLongPressNameCommand _setButtonLongPressNameCommand;
+    private readonly GetImageHashesCommand _getImageHashesCommand;
+
+    // CRC32 cache: (profileId, buttonId) → last-confirmed CRC on device
+    private readonly Dictionary<(byte, byte), uint> _imageHashCache = new();
 
     public event EventHandler<DeviceEventArgs>? DeviceConnected;
     public event EventHandler<DeviceEventArgs>? DeviceDisconnected;
@@ -72,6 +77,7 @@ public class DeviceService : IDeviceService
         _setEncoderActionCommand           = new SetEncoderActionCommand(_protocol, loggerFactory.CreateLogger<SetEncoderActionCommand>());
         _setButtonLongPressActionCommand   = new SetButtonLongPressActionCommand(_protocol, loggerFactory.CreateLogger<SetButtonLongPressActionCommand>());
         _setButtonLongPressNameCommand     = new SetButtonLongPressNameCommand(_protocol, loggerFactory.CreateLogger<SetButtonLongPressNameCommand>());
+        _getImageHashesCommand             = new GetImageHashesCommand(_protocol, loggerFactory.CreateLogger<GetImageHashesCommand>());
         
         // Подписаться на события устройства
         _deviceManager.DeviceConnected += OnDeviceConnected;
@@ -140,13 +146,38 @@ public class DeviceService : IDeviceService
     }
     
     public async Task<bool> SendButtonImageAsync(
-        byte profileId, 
-        byte buttonId, 
+        byte profileId,
+        byte buttonId,
         byte[] imageData,
         IProgress<int>? progress = null,
         CancellationToken cancellationToken = default)
     {
-        return await _imageTransferCommand.ExecuteAsync(profileId, buttonId, imageData, progress, cancellationToken);
+        var crc = Crc32.Calculate(imageData);
+        if (_imageHashCache.TryGetValue((profileId, buttonId), out var cached) && cached == crc)
+        {
+            _logger.LogDebug("Image for button {ButtonId} unchanged (CRC=0x{Crc:X8}), skipping transfer", buttonId, crc);
+            progress?.Report(100);
+            return true;
+        }
+
+        var result = await _imageTransferCommand.ExecuteAsync(profileId, buttonId, imageData, progress, cancellationToken);
+        if (result)
+            _imageHashCache[(profileId, buttonId)] = crc;
+        return result;
+    }
+
+    public async Task LoadImageHashCacheAsync(byte profileId, CancellationToken cancellationToken = default)
+    {
+        _imageHashCache.Clear();
+        var hashes = await _getImageHashesCommand.ExecuteAsync(profileId, cancellationToken);
+        if (hashes == null)
+        {
+            _logger.LogWarning("LoadImageHashCache: failed to load hashes for profile {ProfileId}", profileId);
+            return;
+        }
+        foreach (var kvp in hashes)
+            _imageHashCache[(profileId, kvp.Key)] = kvp.Value;
+        _logger.LogInformation("Image hash cache: {Count} entries loaded for profile {ProfileId}", hashes.Count, profileId);
     }
     
     public async Task<bool> SetButtonActionAsync(
@@ -193,6 +224,7 @@ public class DeviceService : IDeviceService
         LedConfig led, CancellationToken cancellationToken = default)
         => await _setFolderButtonLedCommand.ExecuteAsync(profileId, folderId, buttonId, led, cancellationToken);
 
+
     public async Task<bool> SaveProfileAsync(byte profileId, CancellationToken cancellationToken = default)
     {
         var payload = new byte[] { profileId };
@@ -207,11 +239,13 @@ public class DeviceService : IDeviceService
     public async Task<bool> SetEncoderActionAsync(byte slot, ActionConfig? action, CancellationToken cancellationToken = default)
         => await _setEncoderActionCommand.ExecuteAsync(slot, action, cancellationToken);
 
-    public async Task<bool> SetButtonLongPressActionAsync(byte buttonId, ActionConfig? action, CancellationToken cancellationToken = default)
-        => await _setButtonLongPressActionCommand.ExecuteAsync(buttonId, action, cancellationToken);
+    public async Task<bool> SetButtonLongPressActionAsync(byte profileId, byte buttonId, ActionConfig? action,
+        byte folderId = 0xFF, CancellationToken cancellationToken = default)
+        => await _setButtonLongPressActionCommand.ExecuteAsync(profileId, buttonId, action, folderId, cancellationToken);
 
-    public async Task<bool> SetButtonLongPressNameAsync(byte buttonId, string? name, CancellationToken cancellationToken = default)
-        => await _setButtonLongPressNameCommand.ExecuteAsync(buttonId, name, cancellationToken);
+    public async Task<bool> SetButtonLongPressNameAsync(byte profileId, byte buttonId, string? name,
+        byte folderId = 0xFF, CancellationToken cancellationToken = default)
+        => await _setButtonLongPressNameCommand.ExecuteAsync(profileId, buttonId, name, folderId, cancellationToken);
 
     public async Task<bool> RefreshDisplaysAsync(CancellationToken cancellationToken = default)
     {
@@ -240,6 +274,7 @@ public class DeviceService : IDeviceService
     private void OnDeviceDisconnected(object? sender, EventArgs e)
     {
         _logger.LogWarning("Device disconnected event");
+        _imageHashCache.Clear();
         DeviceDisconnected?.Invoke(this, new DeviceEventArgs());
     }
     

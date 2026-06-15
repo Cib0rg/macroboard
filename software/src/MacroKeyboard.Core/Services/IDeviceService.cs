@@ -124,8 +124,18 @@ public interface IDeviceService
     /// Установить действие для слота энкодера (0=CW, 1=CCW, 2=press, 3=long press)
     /// </summary>
     Task<bool> SetEncoderActionAsync(byte slot, ActionConfig? action, CancellationToken cancellationToken = default);
-    Task<bool> SetButtonLongPressActionAsync(byte buttonId, ActionConfig? action, CancellationToken cancellationToken = default);
-    Task<bool> SetButtonLongPressNameAsync(byte buttonId, string? name, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Установить long press action. folderId=0xFF → root buttons.
+    /// </summary>
+    Task<bool> SetButtonLongPressActionAsync(byte profileId, byte buttonId, ActionConfig? action,
+        byte folderId = 0xFF, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Установить имя long press. folderId=0xFF → root buttons.
+    /// </summary>
+    Task<bool> SetButtonLongPressNameAsync(byte profileId, byte buttonId, string? name,
+        byte folderId = 0xFF, CancellationToken cancellationToken = default);
     Task<bool> RefreshDisplaysAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -137,6 +147,12 @@ public interface IDeviceService
     /// Удалить профиль из энергонезависимой памяти устройства
     /// </summary>
     Task<bool> DeleteProfileFromDeviceAsync(byte profileId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Загрузить кэш CRC32 хешей изображений с устройства.
+    /// Последующие вызовы SendButtonImageAsync пропустят передачу, если хеш совпадает.
+    /// </summary>
+    Task LoadImageHashCacheAsync(byte profileId, CancellationToken cancellationToken = default);
     
     /// <summary>
     /// Получить действие кнопки с устройства
