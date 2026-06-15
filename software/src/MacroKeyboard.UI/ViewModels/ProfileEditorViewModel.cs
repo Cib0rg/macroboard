@@ -158,6 +158,15 @@ public partial class ProfileEditorViewModel : ViewModelBase
             if (e.PropertyName == nameof(DeviceCanvasViewModel.SelectedTile))
                 OnCanvasTileSelected(DeviceCanvas.SelectedTile);
         };
+
+        DeviceCanvas.ButtonsSwapped += (_, _) =>
+        {
+            ButtonConfigViewModel  = null;
+            LongPressConfigViewModel = null;
+            _longPressTempConfig   = null;
+            SelectedButtonHeader   = string.Empty;
+            HasUnsavedChanges      = true;
+        };
     }
 
     // ── Canvas selection ──────────────────────────────────────────────────────

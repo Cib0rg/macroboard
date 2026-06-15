@@ -30,9 +30,14 @@
         <Style Selector="Border.tile.plugin">
             <Setter Property="BorderBrush" Value="#8B5CF6" />
         </Style>
+        <Style Selector="Border.tile.drag-over">
+            <Setter Property="BorderBrush" Value="#FFD700" />
+            <Setter Property="BorderThickness" Value="2" />
+            <Setter Property="Background" Value="#1E2A10" />
+        </Style>
     </UserControl.Styles>
 
-    <ItemsControl ItemsSource="{Binding CurrentTiles}">
+    <ItemsControl x:Name="TilesControl" ItemsSource="{Binding CurrentTiles}">
         <ItemsControl.ItemsPanel>
             <ItemsPanelTemplate>
                 <UniformGrid Rows="2" />
@@ -46,8 +51,11 @@
                         Classes.back-slot="{Binding IsBackButton}"
                         Classes.folder="{Binding IsFolder}"
                         Classes.plugin="{Binding IsPluginAction}"
+                        Classes.drag-over="{Binding IsDragOver}"
                         Tag="{Binding}"
                         PointerPressed="OnTilePointerPressed"
+                        PointerMoved="OnTilePointerMoved"
+                        PointerReleased="OnTilePointerReleased"
                         DoubleTapped="OnTileDoubleTapped"
                         ToolTip.Tip="{Binding DisplayName}">
                     <Grid ClipToBounds="True">

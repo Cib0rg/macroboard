@@ -1,5 +1,6 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using MacroKeyboard.Core.Models;
+using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
@@ -80,6 +81,31 @@ public partial class DeviceCanvasViewModel : ViewModelBase
         NavDepth = _navStack.Count - 1;
         SelectedTile = null;
         RebuildTiles();
+    }
+
+    public event EventHandler? ButtonsSwapped;
+
+    public void SwapButtons(ButtonTileViewModel a, ButtonTileViewModel b)
+    {
+        if (a == b || a.IsBackButton || b.IsBackButton) return;
+
+        var ac = a.Button;
+        var bc = b.Button;
+
+        (ac.Name,            bc.Name)            = (bc.Name,            ac.Name);
+        (ac.Action,          bc.Action)          = (bc.Action,          ac.Action);
+        (ac.LongPressAction, bc.LongPressAction) = (bc.LongPressAction, ac.LongPressAction);
+        (ac.LongPressName,   bc.LongPressName)   = (bc.LongPressName,   ac.LongPressName);
+        (ac.ImagePath,       bc.ImagePath)       = (bc.ImagePath,       ac.ImagePath);
+        (ac.Led,             bc.Led)             = (bc.Led,             ac.Led);
+        (ac.FolderId,        bc.FolderId)        = (bc.FolderId,        ac.FolderId);
+        (ac.ImageOffset,     bc.ImageOffset)     = (bc.ImageOffset,     ac.ImageOffset);
+        (ac.ImageSize,       bc.ImageSize)       = (bc.ImageSize,       ac.ImageSize);
+        (ac.ImageFormat,     bc.ImageFormat)     = (bc.ImageFormat,     ac.ImageFormat);
+
+        DeselectAll();
+        Refresh();
+        ButtonsSwapped?.Invoke(this, EventArgs.Empty);
     }
 
     public void SelectTile(ButtonTileViewModel tile)

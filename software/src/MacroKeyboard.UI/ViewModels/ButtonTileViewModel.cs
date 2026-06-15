@@ -13,6 +13,9 @@ public partial class ButtonTileViewModel : ViewModelBase
     [ObservableProperty]
     private bool _isSelected;
 
+    [ObservableProperty]
+    private bool _isDragOver;
+
     public bool IsFolder       => Button.Action is FolderAction;
     public bool IsPluginAction => Button.Action is PluginActionConfig;
 
