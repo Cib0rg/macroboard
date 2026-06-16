@@ -263,7 +263,6 @@ public partial class App : Application
 
         // ViewModels
         services.AddSingleton<MainWindowViewModel>();
-        services.AddSingleton<DashboardViewModel>();
         services.AddSingleton<ProfileEditorViewModel>();
         services.AddSingleton<SettingsViewModel>();
 

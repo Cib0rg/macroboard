@@ -26,24 +26,21 @@ public partial class MainWindowViewModel : ViewModelBase
     [ObservableProperty]
     private bool _isConnected;
 
-    public DashboardViewModel DashboardViewModel { get; }
     public ProfileEditorViewModel ProfileEditorViewModel { get; }
     public SettingsViewModel SettingsViewModel { get; }
 
     public MainWindowViewModel(
         IpcClient ipcClient,
         ILogger<MainWindowViewModel> logger,
-        DashboardViewModel dashboardViewModel,
         ProfileEditorViewModel profileEditorViewModel,
         SettingsViewModel settingsViewModel)
     {
         _ipcClient = ipcClient;
         _logger = logger;
-        DashboardViewModel = dashboardViewModel;
         ProfileEditorViewModel = profileEditorViewModel;
         SettingsViewModel = settingsViewModel;
 
-        _currentPage = DashboardViewModel;
+        _currentPage = ProfileEditorViewModel;
 
         _ipcClient.Connected += OnIpcConnected;
         _ipcClient.Disconnected += OnIpcDisconnected;
@@ -55,9 +52,6 @@ public partial class MainWindowViewModel : ViewModelBase
         StatusText = "Connecting...";
         await TryConnectWithReconnectAsync(CancellationToken.None);
     }
-
-    [RelayCommand]
-    private void NavigateToDashboard() => CurrentPage = DashboardViewModel;
 
     [RelayCommand]
     private void NavigateToProfileEditor() => CurrentPage = ProfileEditorViewModel;

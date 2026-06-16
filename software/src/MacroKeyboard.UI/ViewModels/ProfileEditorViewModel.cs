@@ -56,6 +56,9 @@ public partial class ProfileEditorViewModel : ViewModelBase
     [ObservableProperty]
     private bool _hasUnsavedChanges;
 
+    [ObservableProperty]
+    private double _displayBrightness = 100;
+
     // ── Config panel ──────────────────────────────────────────────────────────
 
     /// <summary>Short press (and shared button metadata) config VM shown in right panel.</summary>
@@ -589,6 +592,24 @@ public partial class ProfileEditorViewModel : ViewModelBase
     }
 
     [RelayCommand]
+    private async Task SetDisplayBrightnessAsync()
+    {
+        if (!_ipcClient.IsConnected) { StatusMessage = "Not connected to Backend"; return; }
+        try
+        {
+            var msg = new IpcMessage
+            {
+                MessageType = IpcMessageTypes.SetDisplayBrightness,
+                Data = new { brightness = (byte)DisplayBrightness }
+            };
+            var resp = await _ipcClient.SendAndWaitAsync(msg, TimeSpan.FromSeconds(5));
+            StatusMessage = resp.Success ? $"Display brightness set to {(byte)DisplayBrightness}%" : $"Failed: {resp.Error}";
+        }
+        catch (OperationCanceledException) { StatusMessage = "⏱ Brightness request timed out"; }
+        catch (Exception ex) { _logger.LogError(ex, "Error setting display brightness"); StatusMessage = $"Error: {ex.Message}"; }
+    }
+
+    [RelayCommand]
     private async Task SendToDevice()
     {
         if (SelectedProfile == null || !_ipcClient.IsConnected)
@@ -684,8 +705,13 @@ public partial class ProfileEditorViewModel : ViewModelBase
                 Data = new { profileId, buttonId = button.ButtonId, name = button.Name ?? string.Empty } };
             await _ipcClient.SendAndWaitAsync(nameMsg, TimeSpan.FromSeconds(5));
 
+            var baseLed = button.Led ?? LedConfig.FromRgb(0, 0, 0);
+            bool isNone = button.Action == null || button.Action is NoneAction;
+            var effectiveLed = isNone
+                ? new LedConfig { R = baseLed.R, G = baseLed.G, B = baseLed.B, Brightness = 0, Effect = baseLed.Effect }
+                : baseLed;
             var ledMsg = new IpcMessage { MessageType = IpcMessageTypes.SetLedColor,
-                Data = new { profileId, buttonId = button.ButtonId, led = button.Led } };
+                Data = new { profileId, buttonId = button.ButtonId, led = effectiveLed } };
             await _ipcClient.SendAndWaitAsync(ledMsg, TimeSpan.FromSeconds(5));
 
             StatusMessage = $"Button {button.ButtonId + 1} synced";
