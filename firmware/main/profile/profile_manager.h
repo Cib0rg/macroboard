@@ -183,4 +183,10 @@ void profile_refresh_displays(void);
  */
 void profile_image_cache_invalidate(uint8_t button_id);
 
+/**
+ * @brief Invalidate the PSRAM folder display cache for one button slot.
+ *        Call after a new image is uploaded for a folder button.
+ */
+void profile_image_cache_invalidate_folder(uint8_t button_id);
+
 #endif // PROFILE_MANAGER_H

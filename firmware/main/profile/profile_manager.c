@@ -39,20 +39,40 @@ static uint8_t folder_stack_depth = 0;
 #define BTN_LED_BRIGHTNESS(btn) \
     ((btn)->action_type == ACTION_TYPE_NONE ? 0 : (btn)->led_brightness)
 
-// PSRAM display cache: raw RGB565 big-endian buffers, one per button (NULL = not cached).
-// Populated on first draw; freed on profile switch via display_cache_clear().
+// PSRAM display cache for root buttons (one per physical button slot).
 static uint8_t* s_display_cache[NUM_BUTTONS];
+
+// PSRAM display cache for folder buttons.
+// Survives folder exit so that re-entry into the same folder is instant.
+// Invalidated only when entering a DIFFERENT folder.
+static uint8_t* s_folder_display_cache[NUM_BUTTONS];
+static uint8_t  s_cached_folder_id = 0xFF; // 0xFF = no folder cached yet
+
+static void folder_display_cache_clear(void) {
+    for (int i = 0; i < NUM_BUTTONS; i++) {
+        if (s_folder_display_cache[i]) { free(s_folder_display_cache[i]); s_folder_display_cache[i] = NULL; }
+    }
+}
 
 static void display_cache_clear(void) {
     for (int i = 0; i < NUM_BUTTONS; i++) {
         if (s_display_cache[i]) { free(s_display_cache[i]); s_display_cache[i] = NULL; }
     }
+    // Also invalidate the folder cache on profile switch.
+    folder_display_cache_clear();
+    s_cached_folder_id = 0xFF;
 }
 
 void profile_image_cache_invalidate(uint8_t button_id) {
     if (button_id >= NUM_BUTTONS) return;
     if (s_display_cache[button_id]) { free(s_display_cache[button_id]); s_display_cache[button_id] = NULL; }
 }
+
+void profile_image_cache_invalidate_folder(uint8_t button_id) {
+    if (button_id >= NUM_BUTTONS) return;
+    if (s_folder_display_cache[button_id]) { free(s_folder_display_cache[button_id]); s_folder_display_cache[button_id] = NULL; }
+}
+
 static uint8_t folder_entry_button = 0xFF;  // Button that was used to enter current folder
 
 esp_err_t profile_manager_init(void) {
@@ -810,12 +830,21 @@ static void profile_update_button_display(uint8_t button_id, button_config_t* bt
 
         // ── Top SPLIT_SHORT_H px: short press content ──────────────────────
         if (btn->image_size > 0) {
+            uint8_t in_folder = profile_is_in_folder();
+            uint8_t cur_folder = in_folder ? profile_get_current_folder() : 0xFF;
+            uint8_t storage_bid = (cur_folder == 0xFF)
+                ? button_id
+                : (uint8_t)(NUM_BUTTONS + cur_folder * NUM_BUTTONS + button_id);
+            uint8_t** cache_slot = (cur_folder == 0xFF)
+                ? &s_display_cache[button_id]
+                : &s_folder_display_cache[button_id];
+
             // Get raw RGB565 from cache or load from storage
-            uint8_t* img = s_display_cache[button_id];
+            uint8_t* img = *cache_slot;
             if (img == NULL) {
                 size_t img_sz = 0;
-                if (image_storage_load(current_profile_id, button_id, &img, &img_sz) == ESP_OK && img != NULL) {
-                    s_display_cache[button_id] = img; // keep in cache
+                if (image_storage_load(current_profile_id, storage_bid, &img, &img_sz) == ESP_OK && img != NULL) {
+                    *cache_slot = img; // keep in cache
                 } else {
                     free(img);
                     img = NULL;
@@ -858,18 +887,30 @@ static void profile_update_button_display(uint8_t button_id, button_config_t* bt
 
     // ── Full-screen (no long press assigned) ──────────────────────────────
     if (btn->image_size > 0) {
-        // Serve from PSRAM cache when available (avoids SPIFFS read on folder enter/exit)
-        if (s_display_cache[button_id] != NULL) {
-            gc9a01_draw_image(button_id, s_display_cache[button_id], DISPLAY_WIDTH, DISPLAY_HEIGHT);
+        uint8_t in_folder = profile_is_in_folder();
+        uint8_t cur_folder = in_folder ? profile_get_current_folder() : 0xFF;
+
+        // Compute the synthetic storage key for this button in its context.
+        uint8_t storage_bid = (cur_folder == 0xFF)
+            ? button_id
+            : (uint8_t)(NUM_BUTTONS + cur_folder * NUM_BUTTONS + button_id);
+
+        // Choose the appropriate cache slot.
+        uint8_t** cache_slot = (cur_folder == 0xFF)
+            ? &s_display_cache[button_id]
+            : &s_folder_display_cache[button_id];
+
+        if (*cache_slot != NULL) {
+            gc9a01_draw_image(button_id, *cache_slot, DISPLAY_WIDTH, DISPLAY_HEIGHT);
             return;
         }
         // Load raw RGB565 from SPIFFS and cache it
         uint8_t* image_data = NULL;
         size_t image_size = 0;
-        if (image_storage_load(current_profile_id, button_id, &image_data, &image_size) == ESP_OK
+        if (image_storage_load(current_profile_id, storage_bid, &image_data, &image_size) == ESP_OK
             && image_data != NULL) {
             gc9a01_draw_image(button_id, image_data, DISPLAY_WIDTH, DISPLAY_HEIGHT);
-            s_display_cache[button_id] = image_data; // keep alive in PSRAM
+            *cache_slot = image_data; // keep alive in PSRAM
         } else {
             free(image_data);
             gc9a01_clear(button_id, COLOR_BLACK);
@@ -921,15 +962,31 @@ esp_err_t profile_folder_enter(uint8_t folder_id, uint8_t entry_button_id) {
 
     // Get folder configuration
     folder_t* folder = &current_profile.folders[folder_id];
-    
+
     ESP_LOGI(TAG, "Entering folder %d ('%s'), depth: %d",
              folder_id, folder->name, folder_stack_depth);
-    
+
+    // Only clear the folder image cache when switching to a different folder.
+    // Keeping it alive lets re-entry into the same folder skip SPIFFS reads.
+    if (s_cached_folder_id != folder_id) {
+        folder_display_cache_clear();
+        s_cached_folder_id = folder_id;
+    }
+
     // Update LEDs and displays with folder buttons
     for (int i = 0; i < NUM_BUTTONS; i++) {
         button_config_t* btn = &folder->buttons[i];
-        led_set_color(i, btn->led_r, btn->led_g, btn->led_b, BTN_LED_BRIGHTNESS(btn));
-        
+
+        // Back button slot: preserve root button LED color so the exit button
+        // keeps the same color as the folder opener button.
+        if (i == entry_button_id) {
+            button_config_t* root_btn = &current_profile.buttons[entry_button_id];
+            led_set_color(i, root_btn->led_r, root_btn->led_g, root_btn->led_b,
+                          BTN_LED_BRIGHTNESS(root_btn));
+        } else {
+            led_set_color(i, btn->led_r, btn->led_g, btn->led_b, BTN_LED_BRIGHTNESS(btn));
+        }
+
         // Update display: try to load button image, otherwise clear to black
         profile_update_button_display(i, btn);
     }
@@ -963,7 +1020,9 @@ esp_err_t profile_folder_exit(void) {
     uint8_t exited_folder = folder_stack[folder_stack_depth];
     
     ESP_LOGI(TAG, "Exiting folder %d, new depth: %d", exited_folder, folder_stack_depth);
-    
+
+    // Keep s_folder_display_cache alive — re-entry into the same folder will be instant.
+
     // Restore buttons from parent context
     button_config_t* buttons;
     if (folder_stack_depth == 0) {

@@ -23,12 +23,14 @@ public class ImageTransferCommand
     }
     
     /// <summary>
-    /// Отправить изображение на устройство
+    /// Отправить изображение на устройство.
+    /// folderId: 0xFF = root button, 0..N = folder button.
     /// </summary>
     public async Task<bool> ExecuteAsync(
-        byte profileId, 
-        byte buttonId, 
+        byte profileId,
+        byte buttonId,
         byte[] imageData,
+        byte folderId = 0xFF,
         IProgress<int>? progress = null,
         CancellationToken cancellationToken = default)
     {
@@ -42,7 +44,7 @@ public class ImageTransferCommand
                 buttonId, imageData.Length);
             
             // 1. Start transfer
-            var (startOk, transferId) = await StartTransferLockedAsync(profileId, buttonId, imageData, cancellationToken);
+            var (startOk, transferId) = await StartTransferLockedAsync(profileId, buttonId, imageData, folderId, cancellationToken);
             if (!startOk)
             {
                 _logger.LogError("Failed to start image transfer");
@@ -100,27 +102,29 @@ public class ImageTransferCommand
     }
     
     private async Task<(bool success, ushort transferId)> StartTransferLockedAsync(
-        byte profileId, 
-        byte buttonId, 
+        byte profileId,
+        byte buttonId,
         byte[] imageData,
+        byte folderId,
         CancellationToken cancellationToken)
     {
-        var payload = new byte[11];
+        var payload = new byte[12];
         payload[0] = profileId;
         payload[1] = buttonId;
-        
+
         var size = (uint)imageData.Length;
         payload[2] = (byte)(size & 0xFF);
         payload[3] = (byte)((size >> 8) & 0xFF);
         payload[4] = (byte)((size >> 16) & 0xFF);
         payload[5] = (byte)((size >> 24) & 0xFF);
-        
+
         payload[6] = 0x01; // Format: JPEG
-        
+
         payload[7] = 160;
         payload[8] = 0;
         payload[9] = 160;
         payload[10] = 0;
+        payload[11] = folderId; // 0xFF = root; 0..N = folder
         
         var response = await _protocol.SendCommandLockedAsync(
             ProtocolConstants.CMD_START_IMAGE_TRANSFER,

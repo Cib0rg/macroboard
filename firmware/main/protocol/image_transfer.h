@@ -12,13 +12,15 @@
 /**
  * @brief Start image transfer
  * @param profile_id Profile ID
- * @param button_id Button ID
+ * @param folder_id  Folder ID (0xFF = root button, 0-N = folder button)
+ * @param button_id  Button ID within the profile or folder
  * @param image_size Total image size
- * @param format Image format (0x01 = JPEG)
+ * @param format     Image format (0x01 = JPEG)
  * @return ESP_OK on success
  */
-esp_err_t image_transfer_start(uint8_t profile_id, uint8_t button_id, 
-                                uint32_t image_size, uint8_t format);
+esp_err_t image_transfer_start(uint8_t profile_id, uint8_t folder_id,
+                                uint8_t button_id, uint32_t image_size,
+                                uint8_t format);
 
 /**
  * @brief Receive image data chunk

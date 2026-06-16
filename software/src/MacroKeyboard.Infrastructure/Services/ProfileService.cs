@@ -305,6 +305,17 @@ public class ProfileService : IProfileService
                     await _deviceService.SetButtonLongPressNameAsync(
                         0, btnId, btn?.LongPressName ?? string.Empty, folder.FolderId, cancellationToken);
 
+                    // Send image for folder button (if configured)
+                    if (btn != null && !string.IsNullOrEmpty(btn.ImagePath) && File.Exists(btn.ImagePath))
+                    {
+                        var processedImage = await _imageService.ProcessImageForButtonAsync(btn.ImagePath, null);
+                        if (processedImage != null && processedImage.Length > 0)
+                        {
+                            await _deviceService.SendFolderButtonImageAsync(
+                                0, folder.FolderId, btnId, processedImage, null, cancellationToken);
+                        }
+                    }
+
                     await Task.Delay(50, cancellationToken);
                 }
             }

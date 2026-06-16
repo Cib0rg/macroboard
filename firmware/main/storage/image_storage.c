@@ -41,10 +41,11 @@ static const char* TAG = "IMG_STOR";
 #define IMAGE_MAP_MAGIC         0x494D4150  // "IMAP"
 #define IMAGE_MAP_VERSION       2           // v2: raw RGB565 big-endian instead of JPEG
 
-// Maximum unique images we can track (NUM_PROFILES * NUM_BUTTONS = 50 max,
-// but with folders it could be more; 64 is a safe upper bound for unique blobs)
+// Maximum unique images we can track
 #define MAX_UNIQUE_IMAGES       64
-#define MAX_MAPPINGS            (NUM_PROFILES * NUM_BUTTONS)
+// Root slots + folder slots: NUM_PROFILES * (NUM_BUTTONS + NUM_FOLDERS * NUM_BUTTONS)
+// Synthetic button_id encoding: root btn b → b; folder f btn b → NUM_BUTTONS + f*NUM_BUTTONS + b
+#define MAX_MAPPINGS            (NUM_PROFILES * NUM_BUTTONS * (1 + NUM_FOLDERS))
 
 // ============================================
 // In-memory data structures
@@ -364,8 +365,7 @@ esp_err_t image_storage_init(void) {
 esp_err_t image_storage_save(uint8_t profile_id, uint8_t button_id,
                               const uint8_t* image_data, size_t image_size,
                               uint32_t crc32) {
-    if (profile_id >= NUM_PROFILES || button_id >= NUM_BUTTONS ||
-        image_data == NULL || image_size == 0) {
+    if (profile_id >= NUM_PROFILES || image_data == NULL || image_size == 0) {
         return ESP_ERR_INVALID_ARG;
     }
 
@@ -460,8 +460,7 @@ esp_err_t image_storage_save(uint8_t profile_id, uint8_t button_id,
 
 esp_err_t image_storage_load(uint8_t profile_id, uint8_t button_id,
                               uint8_t** image_data, size_t* image_size) {
-    if (profile_id >= NUM_PROFILES || button_id >= NUM_BUTTONS ||
-        image_data == NULL || image_size == NULL) {
+    if (profile_id >= NUM_PROFILES || image_data == NULL || image_size == NULL) {
         return ESP_ERR_INVALID_ARG;
     }
 
@@ -516,7 +515,7 @@ esp_err_t image_storage_load(uint8_t profile_id, uint8_t button_id,
 }
 
 esp_err_t image_storage_delete(uint8_t profile_id, uint8_t button_id) {
-    if (profile_id >= NUM_PROFILES || button_id >= NUM_BUTTONS) {
+    if (profile_id >= NUM_PROFILES) {
         return ESP_ERR_INVALID_ARG;
     }
 

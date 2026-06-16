@@ -160,9 +160,21 @@ public class DeviceService : IDeviceService
             return true;
         }
 
-        var result = await _imageTransferCommand.ExecuteAsync(profileId, buttonId, imageData, progress, cancellationToken);
+        var result = await _imageTransferCommand.ExecuteAsync(profileId, buttonId, imageData, 0xFF, progress, cancellationToken);
         if (result)
             _imageHashCache[(profileId, buttonId)] = crc;
+        return result;
+    }
+
+    public async Task<bool> SendFolderButtonImageAsync(
+        byte profileId,
+        byte folderId,
+        byte buttonId,
+        byte[] imageData,
+        IProgress<int>? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await _imageTransferCommand.ExecuteAsync(profileId, buttonId, imageData, folderId, progress, cancellationToken);
         return result;
     }
 

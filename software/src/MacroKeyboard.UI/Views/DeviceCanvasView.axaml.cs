@@ -25,7 +25,8 @@ public partial class DeviceCanvasView : UserControl
         if (DataContext is not DeviceCanvasViewModel vm) return;
         if (tile.IsBackButton) return;
 
-        vm.SelectTile(tile);
+        // Don't open config panel here — defer to PointerReleased so that starting
+        // a drag doesn't replace the current open dialog with a fresh (unsaved-state-lost) one.
         _dragSource = tile;
         _dragStart  = e.GetPosition(this);
         _isDragging = false;
@@ -60,10 +61,16 @@ public partial class DeviceCanvasView : UserControl
     {
         try
         {
-            if (_isDragging && _dragSource != null && _dropTarget != null
-                && DataContext is DeviceCanvasViewModel vm)
+            if (DataContext is not DeviceCanvasViewModel vm) return;
+
+            if (_isDragging && _dragSource != null && _dropTarget != null)
             {
                 vm.SwapButtons(_dragSource, _dropTarget);
+            }
+            else if (!_isDragging && _dragSource != null)
+            {
+                // Plain click (no movement threshold crossed): open config panel now.
+                vm.SelectTile(_dragSource);
             }
         }
         finally

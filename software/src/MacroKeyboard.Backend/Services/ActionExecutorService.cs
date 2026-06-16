@@ -18,6 +18,9 @@ public class ActionExecutorService
     private readonly PluginManager _pluginManager;
     private readonly ILogger<ActionExecutorService> _logger;
 
+    // Tracks which folder the device is currently in (0xFF = root).
+    private volatile byte _currentFolderId = 0xFF;
+
     public ActionExecutorService(
         IDeviceService deviceService,
         IProfileService profileService,
@@ -32,6 +35,20 @@ public class ActionExecutorService
         _logger = logger;
 
         _deviceService.ButtonPressed += OnButtonPressed;
+        _deviceService.FolderEntered += (_, e) => _currentFolderId = e.FolderId;
+        _deviceService.FolderExited  += (_, e) => _currentFolderId = e.FolderDepth == 0 ? (byte)0xFF : e.ParentFolderId;
+    }
+
+    private ButtonConfig? FindButton(Profile? profile, byte buttonId)
+    {
+        if (profile == null) return null;
+        if (_currentFolderId != 0xFF)
+        {
+            var folder = profile.Folders.FirstOrDefault(f => f.FolderId == _currentFolderId);
+            var fb = folder?.Buttons.FirstOrDefault(b => b.ButtonId == buttonId);
+            if (fb != null) return fb;
+        }
+        return profile.Buttons.FirstOrDefault(b => b.ButtonId == buttonId);
     }
 
     private async void OnButtonPressed(object? sender, ButtonEventArgs e)
@@ -60,7 +77,7 @@ public class ActionExecutorService
     private async Task ExecuteLaunchAppAsync(byte profileId, byte buttonId)
     {
         var profile = await _profileService.GetProfileAsync(profileId);
-        var button = profile?.Buttons.FirstOrDefault(b => b.ButtonId == buttonId);
+        var button = FindButton(profile, buttonId);
 
         if (button?.Action is not LaunchAppAction action || string.IsNullOrWhiteSpace(action.ExecutablePath))
         {
@@ -84,7 +101,7 @@ public class ActionExecutorService
     private async Task ExecuteShellAsync(byte profileId, byte buttonId)
     {
         var profile = await _profileService.GetProfileAsync(profileId);
-        var button = profile?.Buttons.FirstOrDefault(b => b.ButtonId == buttonId);
+        var button = FindButton(profile, buttonId);
 
         if (button?.Action is not ShellAction action || string.IsNullOrWhiteSpace(action.Command))
         {
@@ -102,7 +119,7 @@ public class ActionExecutorService
         // Device always uses slot 0; map back to the database profile ID we last sent.
         var dbProfileId = _profileService.ActiveProfileId;
         var profile = await _profileService.GetProfileAsync(dbProfileId);
-        var button  = profile?.Buttons.FirstOrDefault(b => b.ButtonId == buttonId);
+        var button  = FindButton(profile, buttonId);
 
         if (button?.Action is not PluginActionConfig action)
         {

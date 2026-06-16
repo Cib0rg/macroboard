@@ -120,6 +120,9 @@ public interface IDeviceService
     Task<bool> SetFolderButtonLedAsync(byte profileId, byte folderId, byte buttonId, LedConfig led,
         CancellationToken cancellationToken = default);
 
+    Task<bool> SendFolderButtonImageAsync(byte profileId, byte folderId, byte buttonId, byte[] imageData,
+        IProgress<int>? progress = null, CancellationToken cancellationToken = default);
+
     /// <summary>
     /// Установить действие для слота энкодера (0=CW, 1=CCW, 2=press, 3=long press)
     /// </summary>

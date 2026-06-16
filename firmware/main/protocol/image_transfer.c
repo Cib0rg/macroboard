@@ -17,7 +17,9 @@ static const char* TAG = "IMG_XFER";
 typedef struct {
     bool active;
     uint8_t profile_id;
-    uint8_t button_id;
+    uint8_t folder_id;     // 0xFF = root button; 0..N = folder button
+    uint8_t button_id;     // physical button position
+    uint8_t storage_bid;   // synthetic button_id used as storage key
     uint32_t total_size;
     uint32_t received_size;
     uint8_t format;
@@ -27,19 +29,22 @@ typedef struct {
 
 static image_transfer_ctx_t transfer_ctx = {0};
 
-esp_err_t image_transfer_start(uint8_t profile_id, uint8_t button_id,
-                                uint32_t image_size, uint8_t format) {
+esp_err_t image_transfer_start(uint8_t profile_id, uint8_t folder_id,
+                                uint8_t button_id, uint32_t image_size,
+                                uint8_t format) {
     if (transfer_ctx.active) {
         ESP_LOGW(TAG, "Transfer already in progress, cancelling previous");
-        // Cancel previous transfer and free buffer
         if (transfer_ctx.buffer != NULL) {
             free(transfer_ctx.buffer);
             transfer_ctx.buffer = NULL;
         }
         transfer_ctx.active = false;
     }
-    
+
     if (profile_id >= NUM_PROFILES || button_id >= NUM_BUTTONS) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    if (folder_id != 0xFF && folder_id >= NUM_FOLDERS) {
         return ESP_ERR_INVALID_ARG;
     }
     
@@ -53,9 +58,17 @@ esp_err_t image_transfer_start(uint8_t profile_id, uint8_t button_id,
         return ESP_ERR_NO_MEM;
     }
     
+    // Compute the synthetic storage key: root buttons keep their id;
+    // folder buttons are offset by NUM_BUTTONS + folder_id * NUM_BUTTONS.
+    uint8_t storage_bid = (folder_id == 0xFF)
+        ? button_id
+        : (uint8_t)(NUM_BUTTONS + folder_id * NUM_BUTTONS + button_id);
+
     transfer_ctx.active = true;
     transfer_ctx.profile_id = profile_id;
+    transfer_ctx.folder_id = folder_id;
     transfer_ctx.button_id = button_id;
+    transfer_ctx.storage_bid = storage_bid;
     transfer_ctx.total_size = image_size;
     transfer_ctx.received_size = 0;
     transfer_ctx.format = format;
@@ -137,22 +150,37 @@ esp_err_t image_transfer_end(uint32_t* calculated_crc) {
 
     ESP_LOGI(TAG, "JPEG decoded to %dx%d", decoded_w, decoded_h);
 
-    // Save raw RGB565 to storage, keyed by JPEG CRC for deduplication
-    esp_err_t ret = image_storage_save(transfer_ctx.profile_id, transfer_ctx.button_id,
+    // Save raw RGB565 to storage using the synthetic storage key.
+    esp_err_t ret = image_storage_save(transfer_ctx.profile_id, transfer_ctx.storage_bid,
                                         rgb565_buf, DISPLAY_BUFFER_SIZE,
                                         *calculated_crc);
 
     if (ret == ESP_OK) {
         profile_t* prof = profile_get(transfer_ctx.profile_id);
-        if (prof != NULL && transfer_ctx.button_id < NUM_BUTTONS) {
-            prof->buttons[transfer_ctx.button_id].image_size = DISPLAY_BUFFER_SIZE;
+        if (prof != NULL) {
+            if (transfer_ctx.folder_id == 0xFF) {
+                prof->buttons[transfer_ctx.button_id].image_size = DISPLAY_BUFFER_SIZE;
+            } else if (transfer_ctx.folder_id < NUM_FOLDERS) {
+                prof->folders[transfer_ctx.folder_id].buttons[transfer_ctx.button_id].image_size = DISPLAY_BUFFER_SIZE;
+            }
         }
     }
 
     if (ret == ESP_OK && transfer_ctx.profile_id == profile_get_current_id()) {
-        profile_image_cache_invalidate(transfer_ctx.button_id);
-        gc9a01_draw_image(transfer_ctx.button_id, rgb565_buf, DISPLAY_WIDTH, DISPLAY_HEIGHT);
-        ESP_LOGI(TAG, "Image displayed on button %d", transfer_ctx.button_id);
+        if (transfer_ctx.folder_id == 0xFF) {
+            // Root button: update cache and display immediately.
+            profile_image_cache_invalidate(transfer_ctx.button_id);
+            gc9a01_draw_image(transfer_ctx.button_id, rgb565_buf, DISPLAY_WIDTH, DISPLAY_HEIGHT);
+            ESP_LOGI(TAG, "Image displayed on root button %d", transfer_ctx.button_id);
+        } else {
+            // Folder button: only draw if we're currently inside that folder.
+            profile_image_cache_invalidate_folder(transfer_ctx.button_id);
+            if (profile_get_current_folder() == transfer_ctx.folder_id) {
+                gc9a01_draw_image(transfer_ctx.button_id, rgb565_buf, DISPLAY_WIDTH, DISPLAY_HEIGHT);
+                ESP_LOGI(TAG, "Image displayed on folder %d button %d",
+                         transfer_ctx.folder_id, transfer_ctx.button_id);
+            }
+        }
     }
 
     free(rgb565_buf);

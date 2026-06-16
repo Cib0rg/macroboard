@@ -269,13 +269,15 @@ static esp_err_t handle_start_image_transfer(const uint8_t* payload, uint16_t le
     if (length < 11) {
         return ESP_ERR_INVALID_ARG;
     }
-    
+
     uint8_t button_id = payload[1];
     uint32_t image_size;
     memcpy(&image_size, &payload[2], 4);
     uint8_t format = payload[6];
+    // Byte 11 (optional): folder_id. 0xFF or absent means root button.
+    uint8_t folder_id = (length >= 12) ? payload[11] : 0xFF;
 
-    esp_err_t ret = image_transfer_start(0, button_id, image_size, format);
+    esp_err_t ret = image_transfer_start(0, folder_id, button_id, image_size, format);
 
     response[0] = (ret == ESP_OK) ? STATUS_OK : STATUS_ERROR;
     uint16_t transfer_id = button_id;
