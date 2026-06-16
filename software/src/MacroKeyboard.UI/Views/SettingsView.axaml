@@ -126,6 +126,39 @@
                 </StackPanel>
             </Border>
 
+            <!-- Backend Management -->
+            <Border Background="#0D1117" CornerRadius="8" Padding="20"
+                    BorderBrush="#FF8C00" BorderThickness="1">
+                <StackPanel Spacing="16">
+                    <TextBlock Text="BACKEND MANAGEMENT" FontSize="18" FontWeight="Bold" Foreground="#FF8C00" />
+                    <Separator />
+
+                    <StackPanel Spacing="6">
+                        <TextBlock Text="BACKEND EXECUTABLE PATH (empty = auto-detect):" Opacity="0.7" FontSize="11" />
+                        <TextBox Text="{Binding BackendExePath}"
+                                 PlaceholderText="e.g. C:\path\to\MacroKeyboard.Backend.exe" />
+                        <TextBlock Text="Auto-detect: same directory, then ../backend/"
+                                   FontSize="10" Opacity="0.45" />
+                    </StackPanel>
+
+                    <StackPanel Orientation="Horizontal" Spacing="12">
+                        <Button Content="↻ Reload Plugins"
+                                Command="{Binding ReloadPluginsCommand}"
+                                Background="#0A2A12" BorderBrush="#00FF41"
+                                ToolTip.Tip="Stop all plugins, rescan plugins directory, reload and start them. No restart needed." />
+                        <Button Content="⟳ Restart Backend"
+                                Command="{Binding RestartBackendCommand}"
+                                Background="#2A1A0A" BorderBrush="#FF8C00"
+                                ToolTip.Tip="Send shutdown signal to backend, then launch it again from the configured path." />
+                    </StackPanel>
+
+                    <TextBlock Text="{Binding BackendManagementStatus}"
+                               Foreground="#AAAAAA" FontSize="12"
+                               IsVisible="{Binding BackendManagementStatus,
+                                           Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                </StackPanel>
+            </Border>
+
             <!-- Actions -->
             <StackPanel Orientation="Horizontal" Spacing="12" HorizontalAlignment="Right">
                 <Button Content="↺ RESET DEFAULTS"

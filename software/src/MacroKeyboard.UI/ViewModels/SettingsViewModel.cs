@@ -3,8 +3,10 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using MacroKeyboard.Core.Models;
 using MacroKeyboard.Infrastructure.Persistence;
+using MacroKeyboard.Shared.IPC;
 using Microsoft.Extensions.Logging;
 using System;
+using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Text.Json;
@@ -18,6 +20,7 @@ namespace MacroKeyboard.UI.ViewModels;
 public partial class SettingsViewModel : ViewModelBase
 {
     private readonly ILogger<SettingsViewModel> _logger;
+    private readonly IpcClient _ipcClient;
     private const string SettingsFileName = "settings.json";
 
     [ObservableProperty]
@@ -53,11 +56,18 @@ public partial class SettingsViewModel : ViewModelBase
     [ObservableProperty]
     private bool _isDefaultColorPickerVisible = false;
 
+    [ObservableProperty]
+    private string _backendExePath = string.Empty;
+
+    [ObservableProperty]
+    private string _backendManagementStatus = string.Empty;
+
     private bool _isUpdatingDefaultColor = false;
 
-    public SettingsViewModel(ILogger<SettingsViewModel> logger)
+    public SettingsViewModel(ILogger<SettingsViewModel> logger, IpcClient ipcClient)
     {
         _logger = logger;
+        _ipcClient = ipcClient;
         _ = LoadSettingsAsync();
     }
 
@@ -89,6 +99,7 @@ public partial class SettingsViewModel : ViewModelBase
                 DefaultLedColorHex = settings.DefaultLedColor;
                 DefaultLedBrightness = settings.DefaultLedBrightness;
                 DefaultDisplayBrightness = settings.DefaultDisplayBrightness;
+                BackendExePath = settings.BackendExePath;
                 UpdateDefaultColorFromHex();
                 
                 _logger.LogInformation("Settings loaded successfully");
@@ -117,7 +128,8 @@ public partial class SettingsViewModel : ViewModelBase
                 PluginsDirectory = PluginsDirectory,
                 DefaultLedColor = DefaultLedColorHex,
                 DefaultLedBrightness = DefaultLedBrightness,
-                DefaultDisplayBrightness = DefaultDisplayBrightness
+                DefaultDisplayBrightness = DefaultDisplayBrightness,
+                BackendExePath = BackendExePath
             };
             
             var settingsPath = GetSettingsPath();
@@ -170,6 +182,67 @@ public partial class SettingsViewModel : ViewModelBase
         }
     }
     
+    [RelayCommand]
+    private async Task ReloadPlugins()
+    {
+        if (!_ipcClient.IsConnected) { BackendManagementStatus = "Not connected to backend"; return; }
+        try
+        {
+            BackendManagementStatus = "Reloading plugins...";
+            var msg = new IpcMessage { MessageType = IpcMessageTypes.PluginReload };
+            var resp = await _ipcClient.SendAndWaitAsync(msg, TimeSpan.FromSeconds(30));
+            BackendManagementStatus = resp.Success
+                ? $"Plugins reloaded successfully"
+                : $"Failed: {resp.Error}";
+        }
+        catch (OperationCanceledException) { BackendManagementStatus = "Timed out"; }
+        catch (Exception ex) { BackendManagementStatus = $"Error: {ex.Message}"; }
+    }
+
+    [RelayCommand]
+    private async Task RestartBackend()
+    {
+        try
+        {
+            BackendManagementStatus = "Sending restart signal...";
+            if (_ipcClient.IsConnected)
+            {
+                var msg = new IpcMessage { MessageType = IpcMessageTypes.SystemRestart };
+                try { await _ipcClient.SendAndWaitAsync(msg, TimeSpan.FromSeconds(3)); }
+                catch { /* backend may disconnect before responding */ }
+            }
+
+            await Task.Delay(800);
+
+            var exePath = FindBackendExe();
+            if (exePath == null)
+            {
+                BackendManagementStatus = "Backend exe not found. Set path in settings.";
+                return;
+            }
+
+            Process.Start(new ProcessStartInfo(exePath) { UseShellExecute = true });
+            BackendManagementStatus = "Backend restarting — reconnecting...";
+        }
+        catch (Exception ex) { BackendManagementStatus = $"Error: {ex.Message}"; }
+    }
+
+    private string? FindBackendExe()
+    {
+        if (!string.IsNullOrWhiteSpace(BackendExePath) && File.Exists(BackendExePath))
+            return BackendExePath;
+
+        var baseDir = AppContext.BaseDirectory;
+
+        var samedir = Path.Combine(baseDir, "MacroKeyboard.Backend.exe");
+        if (File.Exists(samedir)) return samedir;
+
+        var sibling = Path.GetFullPath(Path.Combine(baseDir, "..", "backend", "MacroKeyboard.Backend.exe"));
+        if (File.Exists(sibling)) return sibling;
+
+        return null;
+    }
+
     [RelayCommand]
     private void ToggleDefaultColorPicker()
     {

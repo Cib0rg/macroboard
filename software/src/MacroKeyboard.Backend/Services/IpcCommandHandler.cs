@@ -3,6 +3,7 @@ using MacroKeyboard.Core.Models;
 using MacroKeyboard.Core.Services;
 using MacroKeyboard.Shared.IPC;
 using MacroKeyboard.Shared.Plugin;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
@@ -19,6 +20,7 @@ public class IpcCommandHandler
     private readonly IProfileService _profileService;
     private readonly IIpcServer _ipcServer;
     private readonly PluginManager _pluginManager;
+    private readonly IHostApplicationLifetime _lifetime;
     private readonly ILogger<IpcCommandHandler> _logger;
 
     public IpcCommandHandler(
@@ -26,12 +28,14 @@ public class IpcCommandHandler
         IProfileService profileService,
         IIpcServer ipcServer,
         PluginManager pluginManager,
+        IHostApplicationLifetime lifetime,
         ILogger<IpcCommandHandler> logger)
     {
         _deviceService = deviceService;
         _profileService = profileService;
         _ipcServer = ipcServer;
         _pluginManager = pluginManager;
+        _lifetime = lifetime;
         _logger = logger;
 
         // Subscribe to incoming IPC messages
@@ -64,6 +68,8 @@ public class IpcCommandHandler
                 IpcMessageTypes.SetDisplayBrightness => await HandleSetDisplayBrightness(message),
                 IpcMessageTypes.PluginList => HandlePluginList(message),
                 IpcMessageTypes.PluginGetSettings => await HandlePluginGetSettings(message),
+                IpcMessageTypes.PluginReload => await HandlePluginReload(message),
+                IpcMessageTypes.SystemRestart => HandleSystemRestart(message),
                 _ => HandleUnknownCommand(message)
             };
 
@@ -473,6 +479,30 @@ public class IpcCommandHandler
             if (File.Exists(candidate)) return candidate;
         }
         return null;
+    }
+
+    private IpcResponse HandleSystemRestart(IpcMessage message)
+    {
+        _logger.LogInformation("Restart requested via IPC — shutting down in 500ms");
+        _ = Task.Delay(500).ContinueWith(_ => _lifetime.StopApplication());
+        return IpcResponse.Ok(message);
+    }
+
+    private async Task<IpcResponse> HandlePluginReload(IpcMessage message)
+    {
+        try
+        {
+            _logger.LogInformation("Plugin reload requested via IPC");
+            await _pluginManager.ReloadPluginsAsync();
+            var count = _pluginManager.GetPlugins().Count();
+            _logger.LogInformation("Plugin reload complete: {Count} plugins", count);
+            return IpcResponse.Ok(message, new { pluginCount = count });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error reloading plugins");
+            return IpcResponse.Fail(message, ex.Message);
+        }
     }
 
     private IpcResponse HandleUnknownCommand(IpcMessage message)

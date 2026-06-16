@@ -116,6 +116,7 @@ public static class IpcMessageTypes
     public const string Pong = "system.pong";
     public const string Shutdown = "system.shutdown";
     public const string Status = "system.status";
+    public const string SystemRestart = "system.restart";
     
     // Plugin messages
     public const string PluginRegistered = "plugin.registered";
@@ -123,6 +124,7 @@ public static class IpcMessageTypes
     public const string PluginAction = "plugin.action";
     public const string PluginList = "plugin.list";
     public const string PluginGetSettings = "plugin.getsettings";
+    public const string PluginReload = "plugin.reload";
 }
 
 /// <summary>

@@ -60,4 +60,9 @@ public class AppSettings
     /// Яркость подсветки дисплеев по умолчанию (0-100)
     /// </summary>
     public byte DefaultDisplayBrightness { get; set; } = 100;
+
+    /// <summary>
+    /// Путь к исполняемому файлу бэкенда (пусто = авто-поиск)
+    /// </summary>
+    public string BackendExePath { get; set; } = string.Empty;
 }

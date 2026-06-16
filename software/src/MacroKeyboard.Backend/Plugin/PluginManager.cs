@@ -275,6 +275,35 @@ public class PluginManager : IDisposable
         _logger.LogInformation("Plugin stopped: {Id}", pluginId);
     }
 
+    public async Task ReloadPluginsAsync(CancellationToken cancellationToken = default)
+    {
+        _logger.LogInformation("Reloading plugins...");
+
+        foreach (var (id, instance) in _plugins)
+        {
+            try { await instance.StopAsync(cancellationToken); }
+            catch (Exception ex) { _logger.LogWarning(ex, "Error stopping plugin {Id} before reload", id); }
+        }
+
+        _plugins.Clear();
+        _manifests.Clear();
+        _pluginDirectories.Clear();
+        _connectionToPlugin.Clear();
+        _piConnections.Clear();
+        _actionStates.Clear();
+        _contextToActionId.Clear();
+
+        await LoadPluginsAsync(cancellationToken);
+
+        foreach (var id in _plugins.Keys)
+        {
+            try { await StartPluginAsync(id, cancellationToken); }
+            catch (Exception ex) { _logger.LogWarning(ex, "Error starting plugin {Id} after reload", id); }
+        }
+
+        _logger.LogInformation("Plugin reload complete: {Count} plugins loaded", _plugins.Count);
+    }
+
     // ── Queries ───────────────────────────────────────────────────────────────
 
     public IEnumerable<PluginManifest> GetPlugins() => _manifests.Values;
