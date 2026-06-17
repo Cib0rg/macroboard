@@ -45,7 +45,7 @@
         </ItemsControl.ItemsPanel>
         <ItemsControl.ItemTemplate>
             <DataTemplate x:DataType="vm:ButtonTileViewModel">
-                <Border Width="84" Height="84" Margin="4"
+                <Border Width="80" Height="80" Margin="3"
                         Classes="tile"
                         Classes.selected="{Binding IsSelected}"
                         Classes.back-slot="{Binding IsBackButton}"

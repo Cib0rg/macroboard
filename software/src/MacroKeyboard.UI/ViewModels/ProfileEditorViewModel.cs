@@ -492,6 +492,13 @@ public partial class ProfileEditorViewModel : ViewModelBase
         if (SelectedProfile == null) return;
         try
         {
+            if (!string.IsNullOrEmpty(SelectedProfile.SourceFilePath))
+            {
+                // Write back to the original file the user loaded from.
+                var json = JsonConvert.SerializeObject(SelectedProfile, Formatting.Indented);
+                await File.WriteAllTextAsync(SelectedProfile.SourceFilePath, json);
+            }
+            // Always keep the AppData working copy up to date.
             await _profileService.UpdateProfileAsync(SelectedProfile);
             HasUnsavedChanges = false;
             StatusMessage = $"Saved: {SelectedProfile.Name}";
@@ -551,13 +558,17 @@ public partial class ProfileEditorViewModel : ViewModelBase
             var files = await _storageProvider.OpenFilePickerAsync(options);
             if (files == null || files.Count == 0) { StatusMessage = "Load cancelled"; return; }
 
-            var json    = await File.ReadAllTextAsync(files[0].Path.LocalPath);
+            var filePath = files[0].Path.LocalPath;
+            var json    = await File.ReadAllTextAsync(filePath);
             var profile = JsonConvert.DeserializeObject<Profile>(json);
             if (profile == null) { StatusMessage = "Invalid profile file"; return; }
+
+            profile.SourceFilePath = filePath;
 
             var existing = Profiles.FirstOrDefault(p => p.ProfileId == profile.ProfileId);
             if (existing != null) Profiles.Remove(existing);
 
+            // Save to AppData working copy so the backend and subsequent startups see it.
             await _profileService.UpdateProfileAsync(profile);
             Profiles.Add(profile);
             SelectedProfile = profile;

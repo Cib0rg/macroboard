@@ -25,6 +25,7 @@ static esp_err_t handle_ping(const uint8_t* payload, uint16_t length, uint8_t* r
 static esp_err_t handle_get_device_info(const uint8_t* payload, uint16_t length, uint8_t* response, uint16_t* response_len);
 static esp_err_t handle_set_profile(const uint8_t* payload, uint16_t length, uint8_t* response, uint16_t* response_len);
 static esp_err_t handle_get_profile_info(const uint8_t* payload, uint16_t length, uint8_t* response, uint16_t* response_len);
+static esp_err_t handle_get_folder_state(const uint8_t* payload, uint16_t length, uint8_t* response, uint16_t* response_len);
 static esp_err_t handle_start_image_transfer(const uint8_t* payload, uint16_t length, uint8_t* response, uint16_t* response_len);
 static esp_err_t handle_image_data_chunk(const uint8_t* payload, uint16_t length, uint8_t* response, uint16_t* response_len);
 static esp_err_t handle_end_image_transfer(const uint8_t* payload, uint16_t length, uint8_t* response, uint16_t* response_len);
@@ -57,6 +58,7 @@ static const command_entry_t command_table[] = {
     {CMD_GET_DEVICE_INFO, handle_get_device_info},
     {CMD_SET_PROFILE, handle_set_profile},
     {CMD_GET_PROFILE_INFO, handle_get_profile_info},
+    {CMD_GET_FOLDER_STATE, handle_get_folder_state},
     {CMD_START_IMAGE_TRANSFER, handle_start_image_transfer},
     {CMD_IMAGE_DATA_CHUNK, handle_image_data_chunk},
     {CMD_END_IMAGE_TRANSFER, handle_end_image_transfer},
@@ -261,6 +263,17 @@ static esp_err_t handle_get_profile_info(const uint8_t* payload, uint16_t length
     response[33] = 1; // Is configured
     
     *response_len = 34;
+    return ESP_OK;
+}
+
+static esp_err_t handle_get_folder_state(const uint8_t* payload, uint16_t length,
+                                          uint8_t* response, uint16_t* response_len) {
+    uint8_t folder_id = profile_get_current_folder(); // 0xFF if at root
+    uint8_t depth     = profile_is_in_folder() ? 1 : 0; // simplified: 0=root, 1=in folder
+    response[0] = STATUS_OK;
+    response[1] = folder_id;
+    response[2] = depth;
+    *response_len = 3;
     return ESP_OK;
 }
 

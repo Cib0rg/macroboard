@@ -79,12 +79,13 @@ public class ProfileRepository
         try
         {
             profile.Touch();
-            
+
             var filePath = GetProfileFilePath(profile.ProfileId);
             var json = JsonConvert.SerializeObject(profile, Formatting.Indented);
-            
+
             await File.WriteAllTextAsync(filePath, json);
-            
+            profile.SourceFilePath = filePath;
+
             _logger.LogInformation("Profile {ProfileId} saved", profile.ProfileId);
             return true;
         }
@@ -144,8 +145,11 @@ public class ProfileRepository
     {
         try
         {
-            var json = await File.ReadAllTextAsync(filePath);
-            return JsonConvert.DeserializeObject<Profile>(json);
+            var json    = await File.ReadAllTextAsync(filePath);
+            var profile = JsonConvert.DeserializeObject<Profile>(json);
+            if (profile != null)
+                profile.SourceFilePath = filePath;
+            return profile;
         }
         catch (Exception ex)
         {

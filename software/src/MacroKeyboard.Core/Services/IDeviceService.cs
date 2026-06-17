@@ -71,6 +71,11 @@ public interface IDeviceService
     /// Получить информацию о профиле с устройства (CMD_GET_PROFILE_INFO 0x11)
     /// </summary>
     Task<ProfileInfoResult?> GetProfileInfoAsync(byte profileId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Получить текущее состояние папки: (folderId=0xFF, depth=0) если в корне.
+    /// </summary>
+    Task<(byte FolderId, byte Depth)> GetFolderStateAsync(CancellationToken cancellationToken = default);
     
     /// <summary>
     /// Проверить связь с устройством (ping)

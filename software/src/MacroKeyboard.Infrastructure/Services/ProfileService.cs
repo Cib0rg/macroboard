@@ -360,26 +360,28 @@ public class ProfileService : IProfileService
                 return null;
             }
             
-            // Создать профиль
-            var profile = Profile.CreateEmpty(profileId, $"Profile {profileId}");
-            
-            // Загрузить конфигурацию каждой кнопки
-            for (byte buttonId = 0; buttonId < profile.Buttons.Count; buttonId++)
+            // Start from the existing stored profile so folders/images/names are preserved.
+            // The device only knows about root-button actions and LEDs — everything else
+            // (folders, ImagePath, custom names) lives on the PC side only.
+            var profile = await _repository.GetByIdAsync(profileId)
+                          ?? Profile.CreateEmpty(profileId, $"Profile {profileId}");
+
+            // Merge root-button actions and LEDs from device into the stored profile.
+            for (byte buttonId = 0; buttonId < 10; buttonId++)
             {
                 if (cancellationToken.IsCancellationRequested)
                     return null;
-                
-                var button = profile.Buttons[buttonId];
-                
-                // Получить действие кнопки
+
+                var button = profile.Buttons.FirstOrDefault(b => b.ButtonId == buttonId);
+                if (button == null) continue;
+
                 var action = await _deviceService.GetButtonActionAsync(profileId, buttonId, cancellationToken);
                 if (action != null)
                 {
                     button.Action = action;
                     _logger.LogDebug("Loaded action for button {ButtonId}: {ActionType}", buttonId, action.ActionType);
                 }
-                
-                // Получить цвет LED
+
                 var led = await _deviceService.GetLedColorAsync(profileId, buttonId, cancellationToken);
                 if (led != null)
                 {
@@ -387,13 +389,8 @@ public class ProfileService : IProfileService
                     _logger.LogDebug("Loaded LED for button {ButtonId}: RGB({R},{G},{B})",
                         buttonId, led.R, led.G, led.B);
                 }
-                
-                // Примечание: Изображения не загружаются, так как они могут быть большими
-                // и требуют отдельной реализации потоковой передачи.
-                // Пользователь может загрузить изображения отдельно или использовать существующие.
             }
-            
-            // Сохранить профиль локально
+
             await _repository.SaveAsync(profile);
             
             _logger.LogInformation("Profile {ProfileId} loaded from device successfully", profileId);

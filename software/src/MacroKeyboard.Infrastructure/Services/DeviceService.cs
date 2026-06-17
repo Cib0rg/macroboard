@@ -103,6 +103,25 @@ public class DeviceService : IDeviceService
         return info ?? new DeviceInfo { IsConnected = false };
     }
     
+    public async Task<(byte FolderId, byte Depth)> GetFolderStateAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var response = await _protocol.SendCommandAsync(
+                ProtocolConstants.CMD_GET_FOLDER_STATE,
+                Array.Empty<byte>(),
+                cancellationToken: cancellationToken);
+
+            if (response != null && response.Payload.Length >= 3 && response.Payload[0] == ProtocolConstants.STATUS_OK)
+                return (response.Payload[1], response.Payload[2]);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "GetFolderState failed, assuming root");
+        }
+        return (0xFF, 0);
+    }
+
     public async Task<ProfileInfoResult?> GetProfileInfoAsync(byte profileId, CancellationToken cancellationToken = default)
     {
         try

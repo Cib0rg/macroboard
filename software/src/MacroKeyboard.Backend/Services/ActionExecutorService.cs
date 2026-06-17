@@ -34,9 +34,27 @@ public class ActionExecutorService
         _pluginManager = pluginManager;
         _logger = logger;
 
-        _deviceService.ButtonPressed += OnButtonPressed;
-        _deviceService.FolderEntered += (_, e) => _currentFolderId = e.FolderId;
-        _deviceService.FolderExited  += (_, e) => _currentFolderId = e.FolderDepth == 0 ? (byte)0xFF : e.ParentFolderId;
+        _deviceService.ButtonPressed    += OnButtonPressed;
+        _deviceService.FolderEntered    += (_, e) => _currentFolderId = e.FolderId;
+        _deviceService.FolderExited     += (_, e) => _currentFolderId = e.FolderDepth == 0 ? (byte)0xFF : e.ParentFolderId;
+        _deviceService.DeviceConnected  += OnDeviceConnected;
+    }
+
+    private async void OnDeviceConnected(object? sender, DeviceEventArgs e)
+    {
+        try
+        {
+            await Task.Delay(300); // wait for device to be ready after connect
+            var (folderId, depth) = await _deviceService.GetFolderStateAsync();
+            _currentFolderId = depth > 0 ? folderId : (byte)0xFF;
+            _logger.LogInformation("Device connected: folder state restored — folderId={FolderId}, depth={Depth}",
+                folderId, depth);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to restore folder state on connect, assuming root");
+            _currentFolderId = 0xFF;
+        }
     }
 
     private ButtonConfig? FindButton(Profile? profile, byte buttonId)
@@ -76,7 +94,8 @@ public class ActionExecutorService
 
     private async Task ExecuteLaunchAppAsync(byte profileId, byte buttonId)
     {
-        var profile = await _profileService.GetProfileAsync(profileId);
+        var dbProfileId = _profileService.ActiveProfileId;
+        var profile = await _profileService.GetProfileAsync(dbProfileId);
         var button = FindButton(profile, buttonId);
 
         if (button?.Action is not LaunchAppAction action || string.IsNullOrWhiteSpace(action.ExecutablePath))
@@ -100,7 +119,8 @@ public class ActionExecutorService
 
     private async Task ExecuteShellAsync(byte profileId, byte buttonId)
     {
-        var profile = await _profileService.GetProfileAsync(profileId);
+        var dbProfileId = _profileService.ActiveProfileId;
+        var profile = await _profileService.GetProfileAsync(dbProfileId);
         var button = FindButton(profile, buttonId);
 
         if (button?.Action is not ShellAction action || string.IsNullOrWhiteSpace(action.Command))

@@ -10,6 +10,7 @@
 #include "utils/crc.h"
 #include "utils/jpeg_decode_util.h"
 #include "profile/profile_manager.h"
+#include "storage/profile_storage.h"
 #include "config.h"
 
 static const char* TAG = "IMG_XFER";
@@ -163,6 +164,8 @@ esp_err_t image_transfer_end(uint32_t* calculated_crc) {
             } else if (transfer_ctx.folder_id < NUM_FOLDERS) {
                 prof->folders[transfer_ctx.folder_id].buttons[transfer_ctx.button_id].image_size = DISPLAY_BUFFER_SIZE;
             }
+            // Persist updated image_size so GC doesn't remove the mapping on next boot.
+            profile_storage_save(transfer_ctx.profile_id, prof);
         }
     }
 

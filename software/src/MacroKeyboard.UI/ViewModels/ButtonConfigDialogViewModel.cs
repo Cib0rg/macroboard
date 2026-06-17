@@ -1110,6 +1110,7 @@ public partial class ButtonConfigDialogViewModel : ViewModelBase
         OnPropertyChanged(nameof(IsProfileSwitchAction));
         OnPropertyChanged(nameof(IsFolderAction));
         OnPropertyChanged(nameof(IsCustomHidAction));
+        OnPropertyChanged(nameof(IsMediaAction));
         OnPropertyChanged(nameof(IsShellAction));
         OnPropertyChanged(nameof(IsLaunchAppAction));
         OnPropertyChanged(nameof(IsSequenceAction));

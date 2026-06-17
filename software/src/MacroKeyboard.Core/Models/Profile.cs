@@ -47,6 +47,12 @@ public class Profile
     /// </summary>
     [JsonIgnore]
     public uint Crc32 { get; set; }
+
+    /// <summary>
+    /// Путь к файлу, из которого был загружен профиль. Если задан — Save пишет сюда, а не в AppData.
+    /// </summary>
+    [JsonIgnore]
+    public string? SourceFilePath { get; set; }
     
     /// <summary>
     /// Создать новый профиль с пустыми кнопками

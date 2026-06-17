@@ -26,6 +26,7 @@ public static class ProtocolConstants
     public const byte CMD_GET_DEVICE_INFO = 0x02;
     public const byte CMD_SET_PROFILE = 0x10;
     public const byte CMD_GET_PROFILE_INFO = 0x11;
+    public const byte CMD_GET_FOLDER_STATE = 0x12;
     public const byte CMD_START_IMAGE_TRANSFER = 0x20;
     public const byte CMD_IMAGE_DATA_CHUNK = 0x21;
     public const byte CMD_END_IMAGE_TRANSFER = 0x22;
