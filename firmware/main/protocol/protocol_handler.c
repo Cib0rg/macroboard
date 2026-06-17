@@ -8,6 +8,7 @@
 #include "packet_parser.h"
 #include "protocol_types.h"
 #include "image_transfer.h"
+#include "text_transfer.h"
 #include "config.h"
 #include "profile/profile_manager.h"
 #include "storage/profile_storage.h"
@@ -37,6 +38,9 @@ static esp_err_t handle_set_encoder_action(const uint8_t* payload, uint16_t leng
 static esp_err_t handle_set_button_long_press_action(const uint8_t* payload, uint16_t length, uint8_t* response, uint16_t* response_len);
 static esp_err_t handle_set_button_long_press_name(const uint8_t* payload, uint16_t length, uint8_t* response, uint16_t* response_len);
 static esp_err_t handle_set_button_name(const uint8_t* payload, uint16_t length, uint8_t* response, uint16_t* response_len);
+static esp_err_t handle_set_button_text_start(const uint8_t* payload, uint16_t length, uint8_t* response, uint16_t* response_len);
+static esp_err_t handle_set_button_text_chunk(const uint8_t* payload, uint16_t length, uint8_t* response, uint16_t* response_len);
+static esp_err_t handle_set_button_text_end(const uint8_t* payload, uint16_t length, uint8_t* response, uint16_t* response_len);
 static esp_err_t handle_set_folder_button_action(const uint8_t* payload, uint16_t length, uint8_t* response, uint16_t* response_len);
 static esp_err_t handle_set_folder_button_name(const uint8_t* payload, uint16_t length, uint8_t* response, uint16_t* response_len);
 static esp_err_t handle_set_folder_button_led(const uint8_t* payload, uint16_t length, uint8_t* response, uint16_t* response_len);
@@ -79,6 +83,9 @@ static const command_entry_t command_table[] = {
     {CMD_SAVE_PROFILE, handle_save_profile},
     {CMD_DELETE_PROFILE, handle_delete_profile},
     {CMD_REFRESH_DISPLAYS, handle_refresh_displays},
+    {CMD_SET_BUTTON_TEXT_START, handle_set_button_text_start},
+    {CMD_SET_BUTTON_TEXT_CHUNK, handle_set_button_text_chunk},
+    {CMD_SET_BUTTON_TEXT_END,   handle_set_button_text_end},
 };
 
 esp_err_t protocol_handler_init(void) {
@@ -668,6 +675,49 @@ static esp_err_t handle_get_button_image(const uint8_t* payload, uint16_t length
     response[9] = button->image_format;
     *response_len = 10;
 
+    return ESP_OK;
+}
+
+// Text transfer handlers — CMD 0x38 / 0x39 / 0x3A
+
+static esp_err_t handle_set_button_text_start(const uint8_t* payload, uint16_t length,
+                                               uint8_t* response, uint16_t* response_len) {
+    // Payload: [profile_id(1)][folder_id(1)][button_id(1)][text_size(4 LE)]
+    if (length < 7) { response[0] = STATUS_ERROR; *response_len = 1; return ESP_OK; }
+    uint8_t  profile_id = payload[0];
+    uint8_t  folder_id  = payload[1];
+    uint8_t  button_id  = payload[2];
+    uint32_t text_size;
+    memcpy(&text_size, &payload[3], 4);
+    esp_err_t ret = text_transfer_start(profile_id, folder_id, button_id, text_size);
+    response[0] = (ret == ESP_OK) ? STATUS_OK : STATUS_ERROR;
+    uint16_t max_chunk = 54; // PayloadSize(56) - chunkNum(2)
+    memcpy(&response[1], &max_chunk, 2);
+    *response_len = 3;
+    return ESP_OK;
+}
+
+static esp_err_t handle_set_button_text_chunk(const uint8_t* payload, uint16_t length,
+                                               uint8_t* response, uint16_t* response_len) {
+    // Payload: [chunk_num(2 LE)][data...]
+    if (length < 2) { response[0] = STATUS_ERROR; *response_len = 1; return ESP_OK; }
+    uint16_t chunk_num;
+    memcpy(&chunk_num, &payload[0], 2);
+    uint16_t data_len = length - 2;
+    esp_err_t ret = text_transfer_chunk(&payload[2], data_len, chunk_num);
+    response[0] = (ret == ESP_OK) ? STATUS_OK : STATUS_ERROR;
+    uint16_t next_chunk = chunk_num + 1;
+    memcpy(&response[1], &next_chunk, 2);
+    *response_len = 3;
+    return ESP_OK;
+}
+
+static esp_err_t handle_set_button_text_end(const uint8_t* payload, uint16_t length,
+                                             uint8_t* response, uint16_t* response_len) {
+    (void)payload; (void)length;
+    esp_err_t ret = text_transfer_end();
+    response[0] = (ret == ESP_OK) ? STATUS_OK : STATUS_ERROR;
+    *response_len = 1;
     return ESP_OK;
 }
 

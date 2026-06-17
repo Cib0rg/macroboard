@@ -10,6 +10,7 @@
 #include "protocol/protocol_handler.h"
 #include "protocol/protocol_types.h"
 #include "hardware/night_mode.h"
+#include "storage/text_storage.h"
 #include "config.h"
 
 static const char* TAG = "ACTION";
@@ -37,6 +38,30 @@ static esp_err_t execute_single_action(action_type_t type, const uint8_t* data, 
                 
                 if (keycode != 0) {
                     usb_hid_keyboard_press(modifier, keycode);
+                } else if (data_len >= 3 && data[2] == 0x01) {
+                    // Long text stored in SPIFFS — load and type
+                    uint8_t folder = profile_get_current_folder();
+                    uint8_t storage_bid = (folder == 0xFF)
+                        ? button_id
+                        : (uint8_t)(NUM_BUTTONS + folder * NUM_BUTTONS + button_id);
+                    char* text_buf = malloc(4096 + 1);
+                    if (text_buf != NULL) {
+                        size_t text_len = 0;
+                        esp_err_t r = text_storage_load(profile_get_current_id(),
+                                                        storage_bid, text_buf, 4096, &text_len);
+                        if (r == ESP_OK) {
+                            text_buf[text_len] = '\0';
+                            ESP_LOGI(TAG, "Typing SPIFFS text: %d chars (bid=%d)",
+                                     (int)text_len, storage_bid);
+                            usb_hid_keyboard_type_text(text_buf);
+                        } else {
+                            ESP_LOGE(TAG, "SPIFFS text load failed (bid=%d): %s",
+                                     storage_bid, esp_err_to_name(r));
+                        }
+                        free(text_buf);
+                    } else {
+                        ESP_LOGE(TAG, "malloc failed for SPIFFS text buffer");
+                    }
                 } else if (data_len > 7) {
                     char text_buf[ACTION_DATA_MAX_LEN - 7 + 1];
                     uint16_t text_len = data_len - 7;
@@ -45,7 +70,7 @@ static esp_err_t execute_single_action(action_type_t type, const uint8_t* data, 
                     }
                     memcpy(text_buf, &data[7], text_len);
                     text_buf[text_len] = '\0';
-                    
+
                     ESP_LOGI(TAG, "Typing text: '%s' (%d chars)", text_buf, text_len);
                     usb_hid_keyboard_type_text(text_buf);
                 } else {

@@ -278,6 +278,91 @@ public class DeviceService : IDeviceService
         byte folderId = 0xFF, CancellationToken cancellationToken = default)
         => await _setButtonLongPressNameCommand.ExecuteAsync(profileId, buttonId, name, folderId, cancellationToken);
 
+    public async Task<bool> SetButtonLongTextAsync(
+        byte profileId, byte folderId, byte buttonId, string text,
+        IProgress<int>? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var textBytes = System.Text.Encoding.UTF8.GetBytes(text);
+            uint textSize = (uint)textBytes.Length;
+
+            const int TextChunkSize = 54; // PayloadSize(56) - chunkNum(2)
+
+            // START: [profileId][folderId][buttonId][textSize(4 LE)]
+            var startPayload = new byte[7];
+            startPayload[0] = profileId;
+            startPayload[1] = folderId;
+            startPayload[2] = buttonId;
+            startPayload[3] = (byte)(textSize & 0xFF);
+            startPayload[4] = (byte)((textSize >> 8) & 0xFF);
+            startPayload[5] = (byte)((textSize >> 16) & 0xFF);
+            startPayload[6] = (byte)((textSize >> 24) & 0xFF);
+
+            var startResp = await _protocol.SendCommandAsync(
+                ProtocolConstants.CMD_SET_BUTTON_TEXT_START,
+                startPayload,
+                cancellationToken: cancellationToken);
+
+            if (startResp == null || startResp.Payload.Length < 1 ||
+                startResp.Payload[0] != ProtocolConstants.STATUS_OK)
+            {
+                _logger.LogError("Text transfer START failed for button {ButtonId}", buttonId);
+                return false;
+            }
+
+            // CHUNKs
+            int offset = 0;
+            ushort chunkNum = 0;
+            while (offset < textBytes.Length)
+            {
+                if (cancellationToken.IsCancellationRequested) return false;
+
+                int chunkLen = Math.Min(TextChunkSize, textBytes.Length - offset);
+                var chunkPayload = new byte[2 + chunkLen];
+                chunkPayload[0] = (byte)(chunkNum & 0xFF);
+                chunkPayload[1] = (byte)((chunkNum >> 8) & 0xFF);
+                Array.Copy(textBytes, offset, chunkPayload, 2, chunkLen);
+
+                var chunkResp = await _protocol.SendCommandAsync(
+                    ProtocolConstants.CMD_SET_BUTTON_TEXT_CHUNK,
+                    chunkPayload,
+                    cancellationToken: cancellationToken);
+
+                if (chunkResp == null || chunkResp.Payload.Length < 1 ||
+                    chunkResp.Payload[0] != ProtocolConstants.STATUS_OK)
+                {
+                    _logger.LogError("Text CHUNK {Num} failed for button {ButtonId}", chunkNum, buttonId);
+                    return false;
+                }
+
+                offset += chunkLen;
+                chunkNum++;
+                progress?.Report((int)(100.0 * offset / textBytes.Length));
+            }
+
+            // END
+            var endResp = await _protocol.SendCommandAsync(
+                ProtocolConstants.CMD_SET_BUTTON_TEXT_END,
+                Array.Empty<byte>(),
+                cancellationToken: cancellationToken);
+
+            var ok = endResp != null && endResp.Payload.Length >= 1 &&
+                     endResp.Payload[0] == ProtocolConstants.STATUS_OK;
+            if (ok)
+                _logger.LogInformation("Long text ({Bytes}B) → button {ButtonId}", textBytes.Length, buttonId);
+            else
+                _logger.LogError("Text transfer END failed for button {ButtonId}", buttonId);
+            return ok;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "SetButtonLongTextAsync failed for button {ButtonId}", buttonId);
+            return false;
+        }
+    }
+
     public async Task<bool> RefreshDisplaysAsync(CancellationToken cancellationToken = default)
     {
         // Refreshing all 10 displays can take a few seconds (JPEG decode + SPI per button)

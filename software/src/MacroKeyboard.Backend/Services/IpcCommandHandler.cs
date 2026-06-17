@@ -273,7 +273,17 @@ public class IpcCommandHandler
             return IpcResponse.Fail(message, "Invalid action data");
         }
 
-        var success = await _deviceService.SetButtonActionAsync(profileId, buttonId, action);
+        bool success;
+        if (action is KeyboardAction lka && lka.KeyCode == 0 &&
+            System.Text.Encoding.UTF8.GetByteCount(lka.Text ?? "") > 44)
+        {
+            success = await _deviceService.SetButtonLongTextAsync(
+                profileId, 0xFF, buttonId, lka.Text!);
+        }
+        else
+        {
+            success = await _deviceService.SetButtonActionAsync(profileId, buttonId, action);
+        }
         
         return success 
             ? IpcResponse.Ok(message) 

@@ -241,11 +241,19 @@ public class ProfileService : IProfileService
 
                 // Отправить действие (null → NoneAction чтобы очистить предыдущую конфигурацию на устройстве)
                 var actionToSend = button.Action ?? new NoneAction();
-                await _deviceService.SetButtonActionAsync(
-                    0,
-                    button.ButtonId,
-                    actionToSend,
-                    cancellationToken);
+                if (actionToSend is MacroKeyboard.Core.Models.KeyboardAction ka &&
+                    ka.KeyCode == 0 &&
+                    System.Text.Encoding.UTF8.GetByteCount(ka.Text ?? "") > 44)
+                {
+                    await _deviceService.SetButtonLongTextAsync(
+                        0, 0xFF, button.ButtonId, ka.Text!,
+                        null, cancellationToken);
+                }
+                else
+                {
+                    await _deviceService.SetButtonActionAsync(
+                        0, button.ButtonId, actionToSend, cancellationToken);
+                }
 
                 // Отправить имя кнопки (пустая строка — firmware сгенерирует имя из типа команды)
                 await _deviceService.SetButtonNameAsync(
@@ -288,8 +296,19 @@ public class ProfileService : IProfileService
                     byte btnId = btn != null ? btn.ButtonId : (byte)i;
 
                     var folderAction = btn?.Action ?? new NoneAction();
-                    await _deviceService.SetFolderButtonActionAsync(
-                        0, folder.FolderId, btnId, folderAction, cancellationToken);
+                    if (folderAction is MacroKeyboard.Core.Models.KeyboardAction fka &&
+                        fka.KeyCode == 0 &&
+                        System.Text.Encoding.UTF8.GetByteCount(fka.Text ?? "") > 44)
+                    {
+                        await _deviceService.SetButtonLongTextAsync(
+                            0, folder.FolderId, btnId, fka.Text!,
+                            null, cancellationToken);
+                    }
+                    else
+                    {
+                        await _deviceService.SetFolderButtonActionAsync(
+                            0, folder.FolderId, btnId, folderAction, cancellationToken);
+                    }
 
                     await _deviceService.SetFolderButtonNameAsync(
                         0, folder.FolderId, btnId,

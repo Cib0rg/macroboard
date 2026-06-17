@@ -147,6 +147,13 @@ public interface IDeviceService
     Task<bool> RefreshDisplaysAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Передать длинный текст для действия Keyboard через SPIFFS (для текстов > 44 байт).
+    /// folderId=0xFF — корневая кнопка.
+    /// </summary>
+    Task<bool> SetButtonLongTextAsync(byte profileId, byte folderId, byte buttonId, string text,
+        IProgress<int>? progress = null, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Сохранить профиль в энергонезависимую память
     /// </summary>
     Task<bool> SaveProfileAsync(byte profileId, CancellationToken cancellationToken = default);

@@ -40,6 +40,9 @@ public static class ProtocolConstants
     public const byte CMD_SET_ENCODER_ACTION        = 0x35;
     public const byte CMD_SET_BUTTON_LONG_PRESS_ACTION = 0x36;
     public const byte CMD_SET_BUTTON_LONG_PRESS_NAME   = 0x37;
+    public const byte CMD_SET_BUTTON_TEXT_START        = 0x38;
+    public const byte CMD_SET_BUTTON_TEXT_CHUNK        = 0x39;
+    public const byte CMD_SET_BUTTON_TEXT_END          = 0x3A;
     public const byte CMD_SET_LED_COLOR             = 0x40;
     public const byte CMD_SET_BACKLIGHT             = 0x41;
     public const byte CMD_GET_LED_COLOR             = 0x42;
