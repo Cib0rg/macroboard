@@ -7,10 +7,10 @@
 #include "image_transfer.h"
 #include "storage/image_storage.h"
 #include "hardware/gc9a01.h"
+#include "hardware/display_task.h"
 #include "utils/crc.h"
 #include "utils/jpeg_decode_util.h"
 #include "profile/profile_manager.h"
-#include "storage/profile_storage.h"
 #include "config.h"
 
 static const char* TAG = "IMG_XFER";
@@ -107,10 +107,12 @@ esp_err_t image_transfer_chunk(const uint8_t* data, uint16_t size, uint16_t chun
 }
 
 esp_err_t image_transfer_end(uint32_t* calculated_crc) {
+    *calculated_crc = 0;  // initialise so the caller can safely use it on any return path
+
     if (!transfer_ctx.active) {
         return ESP_ERR_INVALID_STATE;
     }
-    
+
     if (transfer_ctx.received_size != transfer_ctx.total_size) {
         ESP_LOGE(TAG, "Incomplete transfer: %lu/%lu bytes",
                  transfer_ctx.received_size, transfer_ctx.total_size);
@@ -118,7 +120,7 @@ esp_err_t image_transfer_end(uint32_t* calculated_crc) {
         transfer_ctx.active = false;
         return ESP_ERR_INVALID_SIZE;
     }
-    
+
     // CRC over JPEG bytes — transport integrity check and content-address key
     *calculated_crc = crc32_calculate(transfer_ctx.buffer, transfer_ctx.total_size);
 
@@ -152,11 +154,13 @@ esp_err_t image_transfer_end(uint32_t* calculated_crc) {
     ESP_LOGI(TAG, "JPEG decoded to %dx%d", decoded_w, decoded_h);
 
     // Save raw RGB565 to storage using the synthetic storage key.
-    esp_err_t ret = image_storage_save(transfer_ctx.profile_id, transfer_ctx.storage_bid,
-                                        rgb565_buf, DISPLAY_BUFFER_SIZE,
-                                        *calculated_crc);
+    esp_err_t save_ret = image_storage_save(transfer_ctx.profile_id, transfer_ctx.storage_bid,
+                                             rgb565_buf, DISPLAY_BUFFER_SIZE,
+                                             *calculated_crc);
 
-    if (ret == ESP_OK) {
+    if (save_ret == ESP_OK) {
+        // Update in-memory image_size so the profile knows this button has an image.
+        // CMD_SAVE_PROFILE (0x50) will persist it to flash.
         profile_t* prof = profile_get(transfer_ctx.profile_id);
         if (prof != NULL) {
             if (transfer_ctx.folder_id == 0xFF) {
@@ -164,30 +168,43 @@ esp_err_t image_transfer_end(uint32_t* calculated_crc) {
             } else if (transfer_ctx.folder_id < NUM_FOLDERS) {
                 prof->folders[transfer_ctx.folder_id].buttons[transfer_ctx.button_id].image_size = DISPLAY_BUFFER_SIZE;
             }
-            // Persist updated image_size so GC doesn't remove the mapping on next boot.
-            profile_storage_save(transfer_ctx.profile_id, prof);
         }
+    } else {
+        // SPIFFS save failed — image will not survive a reboot, but the display is
+        // still updated below.  Do NOT set image_size so the profile stays consistent
+        // (image_size=0 means text-mode on reboot, which is a safe fallback).
+        ESP_LOGW(TAG, "Image save to SPIFFS failed (%s) — display updated but not persisted",
+                 esp_err_to_name(save_ret));
     }
 
-    if (ret == ESP_OK && transfer_ctx.profile_id == profile_get_current_id()) {
+    // Always draw decoded image to display (CRC verified, decode succeeded).
+    // A SPIFFS save failure must NOT prevent the screen from showing the new image.
+    // Buffer ownership is transferred to the display_task (Core 1); it frees it
+    // after the SPI write.  If draw is not required we free it here instead.
+    bool draw_posted = false;
+    if (transfer_ctx.profile_id == profile_get_current_id()) {
+        bool should_draw = false;
         if (transfer_ctx.folder_id == 0xFF) {
-            // Root button: update cache and display immediately.
             profile_image_cache_invalidate(transfer_ctx.button_id);
-            gc9a01_draw_image(transfer_ctx.button_id, rgb565_buf, DISPLAY_WIDTH, DISPLAY_HEIGHT);
-            ESP_LOGI(TAG, "Image displayed on root button %d", transfer_ctx.button_id);
+            should_draw = true;
         } else {
-            // Folder button: only draw if we're currently inside that folder.
             profile_image_cache_invalidate_folder(transfer_ctx.button_id);
             if (profile_get_current_folder() == transfer_ctx.folder_id) {
-                gc9a01_draw_image(transfer_ctx.button_id, rgb565_buf, DISPLAY_WIDTH, DISPLAY_HEIGHT);
-                ESP_LOGI(TAG, "Image displayed on folder %d button %d",
-                         transfer_ctx.folder_id, transfer_ctx.button_id);
+                should_draw = true;
             }
         }
+        if (should_draw) {
+            draw_posted = (display_post_draw(transfer_ctx.button_id, rgb565_buf) == ESP_OK);
+            ESP_LOGI(TAG, "Draw queued for button %d (folder=%d)",
+                     transfer_ctx.button_id, transfer_ctx.folder_id);
+        }
     }
-
-    free(rgb565_buf);
+    if (!draw_posted) {
+        free(rgb565_buf);
+    }
     transfer_ctx.active = false;
 
-    return ret;
+    // Return OK regardless of SPIFFS outcome: the image was decoded and displayed.
+    // The protocol handler will send STATUS_OK + the correct CRC to the host.
+    return ESP_OK;
 }

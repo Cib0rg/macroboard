@@ -366,10 +366,11 @@ public class PluginActionConfig : ActionConfig
 
     public override byte[] ToBytes()
     {
+        // Only PluginId + ActionId needed on firmware (opaque blob, action routed by PC from in-memory profile).
+        // Settings stay in PC-side profile JSON — no need to round-trip through firmware.
         var pluginIdBytes = System.Text.Encoding.UTF8.GetBytes(PluginId + "\0");
         var actionIdBytes = System.Text.Encoding.UTF8.GetBytes(ActionId + "\0");
-        var settingsBytes = System.Text.Encoding.UTF8.GetBytes((Settings ?? "") + "\0");
-        return [..pluginIdBytes, ..actionIdBytes, ..settingsBytes];
+        return [..pluginIdBytes, ..actionIdBytes];
     }
 }
 

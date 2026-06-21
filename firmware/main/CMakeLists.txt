@@ -4,6 +4,7 @@ idf_component_register(
         "hardware/gc9a01.c"
         "hardware/gc9a01_backlight.c"
         "hardware/display_mux.c"
+        "hardware/display_task.c"
         "hardware/buttons.c"
         "hardware/encoder.c"
         "hardware/leds.c"

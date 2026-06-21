@@ -81,7 +81,12 @@ public interface IDeviceService
     /// Проверить связь с устройством (ping)
     /// </summary>
     Task<bool> PingAsync(CancellationToken cancellationToken = default);
-    
+
+    /// <summary>
+    /// Перезагрузить устройство (ESP32 soft reboot)
+    /// </summary>
+    Task<bool> RebootDeviceAsync(CancellationToken cancellationToken = default);
+
     /// <summary>
     /// Установить активный профиль
     /// </summary>
@@ -104,7 +109,13 @@ public interface IDeviceService
     /// </summary>
     Task<bool> SetButtonNameAsync(byte profileId, byte buttonId, string? name,
         CancellationToken cancellationToken = default);
-    
+
+    /// <summary>
+    /// Clear stored image for a button (sets image_size=0), switching it to text-render mode.
+    /// </summary>
+    Task<bool> ClearButtonImageAsync(byte profileId, byte buttonId,
+        CancellationToken cancellationToken = default);
+
     /// <summary>
     /// Установить цвет LED для кнопки
     /// </summary>

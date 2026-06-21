@@ -73,6 +73,11 @@ void profile_image_cache_invalidate_folder(uint8_t button_id) {
     if (s_folder_display_cache[button_id]) { free(s_folder_display_cache[button_id]); s_folder_display_cache[button_id] = NULL; }
 }
 
+void profile_refresh_button_display(uint8_t button_id) {
+    if (button_id >= NUM_BUTTONS) return;
+    profile_update_button_display(button_id, &current_profile.buttons[button_id]);
+}
+
 static uint8_t folder_entry_button = 0xFF;  // Button that was used to enter current folder
 
 esp_err_t profile_manager_init(void) {

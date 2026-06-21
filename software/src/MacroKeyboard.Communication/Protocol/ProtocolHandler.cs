@@ -154,6 +154,37 @@ public class ProtocolHandler
     }
     
     /// <summary>
+    /// Write a packet while the lock is already held, without waiting for a response.
+    /// Used for streaming image chunks where only the final END command needs an ACK.
+    /// Caller must hold the lock via AcquireLockAsync.
+    /// </summary>
+    public async Task<bool> WriteLockedAsync(
+        byte commandId,
+        byte[] payload,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var actualPayloadLength = Math.Min(payload.Length, ProtocolConstants.PayloadSize);
+            var packet = new ProtocolPacket
+            {
+                CommandId      = commandId,
+                PayloadLength  = (ushort)actualPayloadLength,
+                SequenceNumber = _sequenceNumber++,
+                Payload        = new byte[ProtocolConstants.PayloadSize]
+            };
+            Array.Copy(payload, 0, packet.Payload, 0, actualPayloadLength);
+            return await _deviceManager.WriteAsync(packet.ToBytes());
+        }
+        catch (OperationCanceledException) { return false; }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error writing command 0x{CommandId:X2}", commandId);
+            return false;
+        }
+    }
+
+    /// <summary>
     /// Отправить команду без ожидания ответа.
     /// </summary>
     public async Task<bool> SendCommandNoResponseAsync(

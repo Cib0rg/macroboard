@@ -44,14 +44,19 @@ void usb_vendor_rx_task(void* arg) {
 
     while (1) {
         if (tud_mounted() && tud_vendor_n_available(0)) {
+            // Drain all buffered packets without yielding — a 1 ms delay per packet
+            // caused 122 ms latency for a 122-chunk image transfer (vs ~6 ms on the host),
+            // overflowing the TinyUSB FIFO and dropping chunks.
             uint32_t count = tud_vendor_n_read(0, rx_buf, sizeof(rx_buf));
             if (count > 0) {
                 ESP_LOGD(TAG, "Vendor received %lu bytes", (unsigned long)count);
-                // Forward to protocol handler
                 protocol_handle_packet(rx_buf, count);
             }
+            // Loop immediately — more packets may be waiting
+        } else {
+            // FIFO empty: yield for 1 ms so other tasks can run
+            vTaskDelay(pdMS_TO_TICKS(1));
         }
-        vTaskDelay(pdMS_TO_TICKS(1));
     }
 }
 

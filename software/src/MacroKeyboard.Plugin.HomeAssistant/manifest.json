@@ -1,0 +1,26 @@
+{
+  "Id": "com.macrokeyboard.homeassistant",
+  "Name": "Home Assistant",
+  "Description": "Control Home Assistant entities from your MacroKeyboard",
+  "Version": "1.0.0",
+  "Author": "MacroKeyboard",
+  "Icon": "images/icon",
+  "Category": ["Smart Home"],
+  "Type": "executable",
+  "EntryPoint": "MacroKeyboard.Plugin.HomeAssistant.exe",
+  "PropertyInspectorPath": "pi.html",
+  "MinimumBackendVersion": "1.0.0",
+  "Actions": [
+    {
+      "Id": "toggle",
+      "Name": "Toggle Entity",
+      "Icon": "images/icon",
+      "Tooltip": "Toggle a Home Assistant entity on or off",
+      "PropertyInspector": "pi.html",
+      "States": [
+        { "State": 0, "Name": "Off" },
+        { "State": 1, "Name": "On" }
+      ]
+    }
+  ]
+}

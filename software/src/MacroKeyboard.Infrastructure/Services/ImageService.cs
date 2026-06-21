@@ -137,6 +137,47 @@ public class ImageService
         return ToJpegBytesAsync(image);
     }
 
+    /// <summary>
+    /// Create a 160×160 plugin-button image: purple ring + centered text (entity name / state).
+    /// </summary>
+    public Task<byte[]> CreatePluginStateImageAsync(string text)
+    {
+        var purple = Color.FromRgb(0x8B, 0x5C, 0xF6);
+
+        using var image = new Image<Rgba32>(DisplaySize, DisplaySize);
+        image.Mutate(ctx => ctx.BackgroundColor(Color.Black));
+
+        if (!string.IsNullOrEmpty(text))
+        {
+            try
+            {
+                FontFamily fontFamily;
+                try        { fontFamily = SystemFonts.Get("Arial"); }
+                catch      { try { fontFamily = SystemFonts.Get("DejaVu Sans"); }
+                             catch { fontFamily = SystemFonts.Families.First(); } }
+
+                var font = fontFamily.CreateFont(22, FontStyle.Bold);
+                var opts = new RichTextOptions(font)
+                {
+                    Origin              = new PointF(DisplaySize / 2f, DisplaySize / 2f),
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                    VerticalAlignment   = VerticalAlignment.Center,
+                    WrappingLength      = DisplaySize - 32,
+                    TextAlignment       = TextAlignment.Center
+                };
+                image.Mutate(ctx => ctx.DrawText(opts, text, Color.White));
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to render text on plugin state image");
+            }
+        }
+
+        ApplyCircularMask(image);
+        DrawRing(image, purple);
+        return ToJpegBytesAsync(image);
+    }
+
     private static void DrawRing(Image<Rgba32> image, Color color)
     {
         var ring = new SixLabors.ImageSharp.Drawing.EllipsePolygon(

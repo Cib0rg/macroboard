@@ -23,4 +23,33 @@
     <ProjectReference Include="..\MacroKeyboard.Communication\MacroKeyboard.Communication.csproj" />
     <ProjectReference Include="..\MacroKeyboard.Infrastructure\MacroKeyboard.Infrastructure.csproj" />
   </ItemGroup>
+
+  <!--
+    After the backend builds, package the HA native plugin as a ZIP file and place it in
+    the plugins/ directory. PluginManager auto-extracts it on startup and re-extracts
+    whenever the ZIP is newer than the previously extracted directory.
+
+    Flow: dotnet publish → temp dir → ZipDirectory → plugins/com.macrokeyboard.homeassistant.zip
+    No .NET runtime is bundled — the plugin is framework-dependent and uses the host's runtime.
+  -->
+  <Target Name="PackageHaPlugin" AfterTargets="Build">
+    <PropertyGroup>
+      <HaPluginCsproj>$(MSBuildThisFileDirectory)..\MacroKeyboard.Plugin.HomeAssistant\MacroKeyboard.Plugin.HomeAssistant.csproj</HaPluginCsproj>
+      <!-- Trailing backslash omitted — a \ before &quot; escapes it and breaks the command -->
+      <HaPluginTmp>$(OutputPath)plugins\_ha_tmp</HaPluginTmp>
+      <HaPluginZip>$(OutputPath)plugins\com.macrokeyboard.homeassistant.zip</HaPluginZip>
+    </PropertyGroup>
+
+    <MakeDir Directories="$(OutputPath)plugins" />
+    <RemoveDir Directories="$(HaPluginTmp)" ContinueOnError="true" />
+
+    <Exec Command="dotnet publish &quot;$(HaPluginCsproj)&quot; -o &quot;$(HaPluginTmp)&quot; -v minimal"
+          ConsoleToMSBuild="true"
+          ContinueOnError="true" />
+
+    <Delete Files="$(HaPluginZip)" ContinueOnError="true" />
+    <ZipDirectory SourceDirectory="$(HaPluginTmp)" DestinationFile="$(HaPluginZip)" Overwrite="true" />
+    <RemoveDir Directories="$(HaPluginTmp)" ContinueOnError="true" />
+  </Target>
+
 </Project>

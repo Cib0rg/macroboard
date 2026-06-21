@@ -15,6 +15,7 @@
 #include "storage/image_storage.h"
 #include "usb/usb_vendor.h"
 #include "esp_spiffs.h"
+#include "esp_system.h"
 
 static const char* TAG = "PROTOCOL";
 
@@ -32,6 +33,7 @@ static esp_err_t handle_image_data_chunk(const uint8_t* payload, uint16_t length
 static esp_err_t handle_end_image_transfer(const uint8_t* payload, uint16_t length, uint8_t* response, uint16_t* response_len);
 static esp_err_t handle_get_button_image(const uint8_t* payload, uint16_t length, uint8_t* response, uint16_t* response_len);
 static esp_err_t handle_get_image_hashes(const uint8_t* payload, uint16_t length, uint8_t* response, uint16_t* response_len);
+static esp_err_t handle_clear_button_image(const uint8_t* payload, uint16_t length, uint8_t* response, uint16_t* response_len);
 static esp_err_t handle_set_button_action(const uint8_t* payload, uint16_t length, uint8_t* response, uint16_t* response_len);
 static esp_err_t handle_get_button_action(const uint8_t* payload, uint16_t length, uint8_t* response, uint16_t* response_len);
 static esp_err_t handle_set_encoder_action(const uint8_t* payload, uint16_t length, uint8_t* response, uint16_t* response_len);
@@ -50,6 +52,7 @@ static esp_err_t handle_set_backlight(const uint8_t* payload, uint16_t length, u
 static esp_err_t handle_save_profile(const uint8_t* payload, uint16_t length, uint8_t* response, uint16_t* response_len);
 static esp_err_t handle_delete_profile(const uint8_t* payload, uint16_t length, uint8_t* response, uint16_t* response_len);
 static esp_err_t handle_refresh_displays(const uint8_t* payload, uint16_t length, uint8_t* response, uint16_t* response_len);
+static esp_err_t handle_factory_reset(const uint8_t* payload, uint16_t length, uint8_t* response, uint16_t* response_len);
 
 // Command handler table
 typedef struct {
@@ -68,6 +71,7 @@ static const command_entry_t command_table[] = {
     {CMD_END_IMAGE_TRANSFER, handle_end_image_transfer},
     {CMD_GET_BUTTON_IMAGE, handle_get_button_image},
     {CMD_GET_IMAGE_HASHES, handle_get_image_hashes},
+    {CMD_CLEAR_BUTTON_IMAGE, handle_clear_button_image},
     {CMD_SET_BUTTON_ACTION, handle_set_button_action},
     {CMD_SET_ENCODER_ACTION, handle_set_encoder_action},
     {CMD_SET_BUTTON_LONG_PRESS_ACTION, handle_set_button_long_press_action},
@@ -86,12 +90,13 @@ static const command_entry_t command_table[] = {
     {CMD_SET_BUTTON_TEXT_START, handle_set_button_text_start},
     {CMD_SET_BUTTON_TEXT_CHUNK, handle_set_button_text_chunk},
     {CMD_SET_BUTTON_TEXT_END,   handle_set_button_text_end},
+    {CMD_FACTORY_RESET,         handle_factory_reset},
 };
 
 esp_err_t protocol_handler_init(void) {
     ESP_LOGI(TAG, "Initializing protocol handler");
     
-    protocol_cmd_queue = xQueueCreate(5, sizeof(protocol_packet_t));
+    protocol_cmd_queue = xQueueCreate(32, sizeof(protocol_packet_t));
     if (protocol_cmd_queue == NULL) {
         ESP_LOGE(TAG, "Failed to create protocol command queue");
         return ESP_FAIL;
@@ -157,14 +162,16 @@ void protocol_task(void* arg) {
             if (handler != NULL) {
                 // Execute handler
                 response_len = 0;
-                esp_err_t ret = handler(packet.payload, packet.payload_length, 
+                esp_err_t ret = handler(packet.payload, packet.payload_length,
                                         response_payload, &response_len);
-                
+
                 if (ret == ESP_OK) {
-                    // Send response
-                    protocol_send_response(packet.command_id, response_payload, response_len);
-                } else {
-                    // Send error response
+                    // response_len == 0 means "no response" (e.g. streaming image chunks)
+                    if (response_len > 0) {
+                        protocol_send_response(packet.command_id, response_payload, response_len);
+                    }
+                } else if (response_len > 0) {
+                    // Send error response (only when handler expected to reply)
                     response_payload[0] = STATUS_ERROR;
                     protocol_send_response(packet.command_id, response_payload, 1);
                 }
@@ -302,7 +309,7 @@ static esp_err_t handle_start_image_transfer(const uint8_t* payload, uint16_t le
     response[0] = (ret == ESP_OK) ? STATUS_OK : STATUS_ERROR;
     uint16_t transfer_id = button_id;
     memcpy(&response[1], &transfer_id, 2);
-    uint16_t max_chunk = 50;
+    uint16_t max_chunk = 52;
     memcpy(&response[3], &max_chunk, 2);
     
     *response_len = 5;
@@ -311,33 +318,32 @@ static esp_err_t handle_start_image_transfer(const uint8_t* payload, uint16_t le
 
 static esp_err_t handle_image_data_chunk(const uint8_t* payload, uint16_t length,
                                           uint8_t* response, uint16_t* response_len) {
-    if (length < 6) {
+    // Compact streaming layout: [tid u8][chunkNum u16 LE][dataLen u8][data…]
+    if (length < 4) {
         return ESP_ERR_INVALID_ARG;
     }
-    
+
+    // payload[0] = transfer_id (u8, ignored — single transfer at a time)
     uint16_t chunk_num;
-    uint16_t chunk_size;
-    memcpy(&chunk_num, &payload[2], 2);
-    memcpy(&chunk_size, &payload[4], 2);
-    
-    esp_err_t ret = image_transfer_chunk(&payload[6], chunk_size, chunk_num);
-    
-    response[0] = (ret == ESP_OK) ? STATUS_OK : STATUS_ERROR;
-    uint16_t next_chunk = chunk_num + 1;
-    memcpy(&response[1], &next_chunk, 2);
-    
-    *response_len = 3;
-    return ESP_OK;
+    memcpy(&chunk_num, &payload[1], 2);
+    uint16_t chunk_size = payload[3];  // u8 → u16
+
+    esp_err_t ret = image_transfer_chunk(&payload[4], chunk_size, chunk_num);
+
+    // No per-chunk ACK — streaming mode. On error the END handler will catch it via CRC.
+    *response_len = 0;
+    return ret;
 }
 
 static esp_err_t handle_end_image_transfer(const uint8_t* payload, uint16_t length,
                                             uint8_t* response, uint16_t* response_len) {
-    if (length < 10) {
+    // Compact END layout: [tid u8][totalChunks u32 LE][crc32 u32 LE] = 9 bytes
+    if (length < 9) {
         return ESP_ERR_INVALID_ARG;
     }
-    
+
     uint32_t expected_crc;
-    memcpy(&expected_crc, &payload[6], 4);
+    memcpy(&expected_crc, &payload[5], 4);  // was at [6] with u16 tid
     
     uint32_t calculated_crc;
     esp_err_t ret = image_transfer_end(&calculated_crc);
@@ -748,4 +754,58 @@ static esp_err_t handle_get_image_hashes(const uint8_t* payload, uint16_t length
     *response_len = 2 + (uint16_t)count * 5;
     ESP_LOGI(TAG, "GET_IMAGE_HASHES profile=%d: %d entries", profile_id, count);
     return ESP_OK;
+}
+
+// payload: [profile_id][button_id]
+// Clears the stored image for a root button (sets image_size = 0) and refreshes the display
+// so the button falls back to text rendering via profile_update_button_display.
+static esp_err_t handle_clear_button_image(const uint8_t* payload, uint16_t length,
+                                            uint8_t* response, uint16_t* response_len) {
+    if (length < 2) {
+        response[0] = STATUS_ERROR;
+        *response_len = 1;
+        return ESP_OK;
+    }
+
+    uint8_t profile_id = payload[0];
+    uint8_t button_id  = payload[1];
+
+    if (profile_id >= NUM_PROFILES || button_id >= NUM_BUTTONS) {
+        response[0] = STATUS_ERROR;
+        *response_len = 1;
+        return ESP_OK;
+    }
+
+    profile_t* prof = profile_get(profile_id);
+    if (prof == NULL) {
+        response[0] = STATUS_ERROR;
+        *response_len = 1;
+        return ESP_OK;
+    }
+
+    prof->buttons[button_id].image_size = 0;
+    profile_image_cache_invalidate(button_id);
+    // Release the stored image blob (decrement refcount, delete if unreferenced).
+    // Without this, the SPIFFS file stays allocated until the next image_storage_gc().
+    image_storage_delete(profile_id, button_id);
+
+    if (profile_id == profile_get_current_id()) {
+        profile_refresh_button_display(button_id);
+    }
+
+    ESP_LOGI(TAG, "Cleared image for profile=%d button=%d", profile_id, button_id);
+    response[0] = STATUS_OK;
+    *response_len = 1;
+    return ESP_OK;
+}
+
+static esp_err_t handle_factory_reset(const uint8_t* payload, uint16_t length,
+                                      uint8_t* response, uint16_t* response_len) {
+    ESP_LOGW(TAG, "Reboot requested via CMD_FACTORY_RESET — restarting in 100 ms");
+    response[0] = STATUS_OK;
+    *response_len = 1;
+    // Small delay so the ACK packet can be flushed before we disappear
+    vTaskDelay(pdMS_TO_TICKS(100));
+    esp_restart();
+    return ESP_OK; // unreachable
 }

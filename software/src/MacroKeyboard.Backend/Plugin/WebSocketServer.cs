@@ -18,7 +18,16 @@ public class WebSocketServer : IDisposable
     private readonly int _port;
     private HttpListener? _listener;
     private CancellationTokenSource? _cts;
-    private readonly ConcurrentDictionary<string, WebSocket> _connections = new();
+    // WebSocket.SendAsync does not support concurrent calls on the same instance.
+    // PluginConnection wraps the socket with a SemaphoreSlim that serialises all sends.
+    private sealed class PluginConnection(WebSocket ws) : IDisposable
+    {
+        public readonly WebSocket   WebSocket = ws;
+        public readonly SemaphoreSlim SendLock = new(1, 1);
+        public void Dispose() { SendLock.Dispose(); WebSocket.Dispose(); }
+    }
+
+    private readonly ConcurrentDictionary<string, PluginConnection> _connections = new();
     private bool _isRunning;
 
     /// <summary>
@@ -75,11 +84,11 @@ public class WebSocketServer : IDisposable
         _cts?.Cancel();
         _listener?.Stop();
 
-        foreach (var ws in _connections.Values)
+        foreach (var conn in _connections.Values)
         {
-            if (ws.State == WebSocketState.Open)
-                await ws.CloseAsync(WebSocketCloseStatus.NormalClosure, "Server shutting down", cancellationToken);
-            ws.Dispose();
+            if (conn.WebSocket.State == WebSocketState.Open)
+                await conn.WebSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "Server shutting down", cancellationToken);
+            conn.Dispose();
         }
         _connections.Clear();
 
@@ -106,9 +115,9 @@ public class WebSocketServer : IDisposable
     public async Task SendToConnectionAsync(string connectionId, PluginMessage message,
         CancellationToken cancellationToken = default)
     {
-        if (!_connections.TryGetValue(connectionId, out var ws)) return;
+        if (!_connections.TryGetValue(connectionId, out var conn)) return;
         var buffer = Serialize(message);
-        if (!await TrySendAsync(connectionId, ws, buffer, cancellationToken))
+        if (!await TrySendAsync(connectionId, conn, buffer, cancellationToken))
             RemoveConnection(connectionId);
     }
 
@@ -118,13 +127,14 @@ public class WebSocketServer : IDisposable
             NullValueHandling = NullValueHandling.Ignore
         }));
 
-    private async Task<bool> TrySendAsync(string connectionId, WebSocket ws, byte[] buffer,
+    private async Task<bool> TrySendAsync(string connectionId, PluginConnection conn, byte[] buffer,
         CancellationToken ct)
     {
-        if (ws.State != WebSocketState.Open) return false;
+        if (conn.WebSocket.State != WebSocketState.Open) return false;
+        await conn.SendLock.WaitAsync(ct);
         try
         {
-            await ws.SendAsync(new ArraySegment<byte>(buffer), WebSocketMessageType.Text, true, ct);
+            await conn.WebSocket.SendAsync(new ArraySegment<byte>(buffer), WebSocketMessageType.Text, true, ct);
             return true;
         }
         catch (Exception ex)
@@ -132,12 +142,16 @@ public class WebSocketServer : IDisposable
             _logger.LogError(ex, "Error sending to connection {ConnectionId}", connectionId);
             return false;
         }
+        finally
+        {
+            conn.SendLock.Release();
+        }
     }
 
     private void RemoveConnection(string connectionId)
     {
-        if (_connections.TryRemove(connectionId, out var ws))
-            ws.Dispose();
+        if (_connections.TryRemove(connectionId, out var conn))
+            conn.Dispose();
     }
 
     private async Task AcceptConnectionsAsync(CancellationToken cancellationToken)
@@ -156,10 +170,11 @@ public class WebSocketServer : IDisposable
                     var ua     = context.Request.Headers["User-Agent"] ?? "(none)";
                     var wsContext = await context.AcceptWebSocketAsync(null);
                     var connectionId = Guid.NewGuid().ToString("N");
-                    _connections[connectionId] = wsContext.WebSocket;
+                    var conn = new PluginConnection(wsContext.WebSocket);
+                    _connections[connectionId] = conn;
                     _logger.LogInformation("WS connected: id={ConnectionId} origin={Origin} ua={UA}",
                         connectionId, origin, ua);
-                    _ = Task.Run(() => HandleConnectionAsync(connectionId, wsContext.WebSocket, cancellationToken), cancellationToken);
+                    _ = Task.Run(() => HandleConnectionAsync(connectionId, conn.WebSocket, cancellationToken), cancellationToken);
                 }
                 else
                 {
@@ -182,39 +197,59 @@ public class WebSocketServer : IDisposable
     private async Task HandleConnectionAsync(string connectionId, WebSocket webSocket,
         CancellationToken cancellationToken)
     {
-        var buffer = new byte[65536];
+        var buffer    = new byte[65536];
+        var msgBuffer = new MemoryStream();
 
         try
         {
             while (!cancellationToken.IsCancellationRequested && webSocket.State == WebSocketState.Open)
             {
-                var result = await webSocket.ReceiveAsync(new ArraySegment<byte>(buffer), cancellationToken);
+                // Accumulate all frames of one logical WebSocket message before parsing.
+                // A single plugin message can span multiple ReceiveAsync calls when the
+                // payload exceeds the TCP receive window (e.g. large entity-list JSON).
+                msgBuffer.SetLength(0);
+                bool closed = false;
 
-                if (result.MessageType == WebSocketMessageType.Close)
+                while (true)
                 {
-                    await webSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "Closing", cancellationToken);
-                    break;
+                    WebSocketReceiveResult result;
+                    try { result = await webSocket.ReceiveAsync(new ArraySegment<byte>(buffer), cancellationToken); }
+                    catch (OperationCanceledException) { goto done; }
+
+                    if (result.MessageType == WebSocketMessageType.Close)
+                    {
+                        await webSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "Closing", cancellationToken);
+                        closed = true;
+                        break;
+                    }
+
+                    if (result.MessageType == WebSocketMessageType.Text)
+                        msgBuffer.Write(buffer, 0, result.Count);
+
+                    if (result.EndOfMessage) break;
                 }
 
-                if (result.MessageType == WebSocketMessageType.Text)
+                if (closed) break;
+                if (msgBuffer.Length == 0) continue;
+
+                var json = Encoding.UTF8.GetString(msgBuffer.GetBuffer(), 0, (int)msgBuffer.Length);
+                try
                 {
-                    var json = Encoding.UTF8.GetString(buffer, 0, result.Count);
-                    try
+                    var msg = JsonConvert.DeserializeObject<PluginMessage>(json);
+                    if (msg != null)
                     {
-                        var msg = JsonConvert.DeserializeObject<PluginMessage>(json);
-                        if (msg != null)
-                        {
-                            _logger.LogInformation("WS← [{ConnectionId}] event={Event} ctx={Context}",
-                                connectionId[..8], msg.Event, msg.EffectiveContext ?? "-");
-                            MessageReceived?.Invoke(this, new PluginMessageEventArgs(connectionId, msg));
-                        }
+                        _logger.LogInformation("WS← [{ConnectionId}] event={Event} ctx={Context}",
+                            connectionId[..8], msg.Event, msg.EffectiveContext ?? "-");
+                        MessageReceived?.Invoke(this, new PluginMessageEventArgs(connectionId, msg));
                     }
-                    catch (Exception ex)
-                    {
-                        _logger.LogError(ex, "Error parsing message from {ConnectionId}", connectionId);
-                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error parsing message from {ConnectionId} ({Bytes} bytes)",
+                        connectionId, msgBuffer.Length);
                 }
             }
+            done:;
         }
         catch (OperationCanceledException) { }
         catch (Exception ex)
@@ -234,8 +269,8 @@ public class WebSocketServer : IDisposable
         _cts?.Cancel();
         _cts?.Dispose();
         _listener?.Stop();
-        foreach (var ws in _connections.Values)
-            ws.Dispose();
+        foreach (var conn in _connections.Values)
+            conn.Dispose();
         _connections.Clear();
     }
 }

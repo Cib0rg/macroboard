@@ -63,6 +63,7 @@ public class IpcCommandHandler
                 IpcMessageTypes.GetButtonAction => await HandleGetButtonAction(message),
                 IpcMessageTypes.SetButtonName   => await HandleSetButtonName(message),
                 IpcMessageTypes.SetButtonImage  => await HandleSetButtonImage(message),
+                IpcMessageTypes.ClearButtonImage => await HandleClearButtonImage(message),
                 IpcMessageTypes.SetLedColor => await HandleSetLedColor(message),
                 IpcMessageTypes.GetLedColor => await HandleGetLedColor(message),
                 IpcMessageTypes.SetDisplayBrightness => await HandleSetDisplayBrightness(message),
@@ -194,9 +195,34 @@ public class IpcCommandHandler
             profile.ProfileId, profile.Name);
 
         var success = await _profileService.SendProfileToDeviceAsync(profile);
-        
-        return success 
-            ? IpcResponse.Ok(message, new { ProfileId = profile.ProfileId, ProfileName = profile.Name }) 
+
+        if (success)
+        {
+            // Notify plugins of willAppear for each plugin-action button.
+            // Fire-and-forget with a small delay so the device can settle and
+            // the plugin can react to the new button layout without blocking the response.
+            var buttonsSnapshot = profile.Buttons.ToList();
+            _ = Task.Run(async () =>
+            {
+                await Task.Delay(800);
+                foreach (var button in buttonsSnapshot)
+                {
+                    if (button.Action is not PluginActionConfig pa) continue;
+                    try
+                    {
+                        await _pluginManager.NotifyWillAppearAsync(
+                            pa.PluginId, pa.ActionId, pa.Settings, button.ButtonId);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "willAppear dispatch failed for button {Id}", button.ButtonId);
+                    }
+                }
+            });
+        }
+
+        return success
+            ? IpcResponse.Ok(message, new { ProfileId = profile.ProfileId, ProfileName = profile.Name })
             : IpcResponse.Fail(message, "Failed to send profile to device");
     }
 
@@ -333,6 +359,24 @@ public class IpcCommandHandler
         return success
             ? IpcResponse.Ok(message)
             : IpcResponse.Fail(message, "Failed to send button image to device");
+    }
+
+    private async Task<IpcResponse> HandleClearButtonImage(IpcMessage message)
+    {
+        if (!_deviceService.IsConnected)
+            return IpcResponse.Fail(message, "Device not connected");
+
+        var data = message.GetDataAsDictionary();
+        if (data == null)
+            return IpcResponse.Fail(message, "Invalid data");
+
+        var profileId = Convert.ToByte(data.GetValueOrDefault("profileId", (byte)0));
+        var buttonId  = Convert.ToByte(data.GetValueOrDefault("buttonId",  (byte)0));
+
+        var success = await _deviceService.ClearButtonImageAsync(profileId, buttonId);
+        return success
+            ? IpcResponse.Ok(message)
+            : IpcResponse.Fail(message, "Failed to clear button image on device");
     }
 
     private async Task<IpcResponse> HandleGetButtonAction(IpcMessage message)

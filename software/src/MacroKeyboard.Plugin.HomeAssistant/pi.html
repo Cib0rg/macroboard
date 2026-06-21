@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Home Assistant</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 13px;
+      background: #1e1e1e;
+      color: #d4d4d4;
+      padding: 12px;
+    }
+
+    section { margin-bottom: 16px; }
+
+    h3 {
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #888;
+      margin-bottom: 8px;
+      padding-bottom: 4px;
+      border-bottom: 1px solid #333;
+    }
+
+    label {
+      display: block;
+      font-size: 11px;
+      color: #aaa;
+      margin-bottom: 3px;
+    }
+
+    input[type="text"],
+    input[type="password"],
+    input[type="url"] {
+      width: 100%;
+      padding: 6px 8px;
+      background: #2d2d2d;
+      border: 1px solid #404040;
+      border-radius: 4px;
+      color: #e0e0e0;
+      font-size: 12px;
+      margin-bottom: 8px;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    input:focus { border-color: #8b5cf6; }
+
+    button {
+      padding: 6px 14px;
+      border: none;
+      border-radius: 4px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.15s;
+    }
+    button:hover { opacity: 0.85; }
+
+    .btn-save { background: #8b5cf6; color: #fff; }
+    .btn-test {
+      background: #2d2d2d;
+      color: #d4d4d4;
+      border: 1px solid #555;
+      margin-left: 6px;
+    }
+
+    .row-buttons { display: flex; align-items: center; margin-top: 4px; }
+
+    .status {
+      display: inline-block;
+      font-size: 11px;
+      padding: 3px 8px;
+      border-radius: 10px;
+      margin-left: 8px;
+      font-weight: 500;
+    }
+    .status-ok      { background: rgba(46,204,113,0.15); color: #2ecc71; }
+    .status-error   { background: rgba(231,76,60,0.15);  color: #e74c3c; }
+    .status-pending { background: rgba(255,255,255,0.05); color: #888; }
+
+    .hint {
+      font-size: 10px;
+      color: #666;
+      margin-top: -6px;
+      margin-bottom: 8px;
+    }
+
+    /* ── Entity picker ── */
+    .picker-wrap { position: relative; margin-bottom: 8px; }
+
+    .picker-search-row {
+      display: flex;
+      gap: 4px;
+      align-items: center;
+    }
+    .picker-search-row input {
+      flex: 1;
+      margin-bottom: 0;
+    }
+    .btn-refresh {
+      padding: 6px 9px;
+      background: #2d2d2d;
+      color: #aaa;
+      border: 1px solid #404040;
+      border-radius: 4px;
+      font-size: 14px;
+      line-height: 1;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+    .btn-refresh:hover { color: #e0e0e0; border-color: #666; }
+
+    .picker-dropdown {
+      position: absolute;
+      z-index: 100;
+      left: 0; right: 0;
+      background: #252526;
+      border: 1px solid #404040;
+      border-radius: 4px;
+      max-height: 180px;
+      overflow-y: auto;
+      margin-top: 2px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+    }
+    .picker-dropdown.hidden { display: none; }
+
+    .picker-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 8px;
+      cursor: pointer;
+      border-bottom: 1px solid #333;
+      font-size: 12px;
+    }
+    .picker-item:last-child { border-bottom: none; }
+    .picker-item:hover { background: #2a2d2e; }
+    .picker-item.active { background: #37373d; }
+
+    .domain-pill {
+      font-size: 9px;
+      font-weight: 700;
+      padding: 2px 5px;
+      border-radius: 3px;
+      background: #37373d;
+      color: #aaa;
+      flex-shrink: 0;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    /* domain colours */
+    .dp-light   { background: rgba(255,200,50,0.15);  color: #ffc832; }
+    .dp-switch  { background: rgba(80,180,255,0.15);  color: #50b4ff; }
+    .dp-cover   { background: rgba(160,120,255,0.15); color: #a078ff; }
+    .dp-climate { background: rgba(255,140,80,0.15);  color: #ff8c50; }
+    .dp-media-player { background: rgba(46,204,113,0.15); color: #2ecc71; }
+    .dp-fan     { background: rgba(100,210,230,0.15); color: #64d2e6; }
+    .dp-lock    { background: rgba(255,100,100,0.15); color: #ff6464; }
+    .dp-scene   { background: rgba(200,160,255,0.15); color: #c8a0ff; }
+    .dp-script  { background: rgba(200,160,255,0.15); color: #c8a0ff; }
+    .dp-input-boolean { background: rgba(80,180,255,0.15); color: #50b4ff; }
+    .dp-sensor  { background: rgba(150,150,150,0.12); color: #999; }
+    .dp-binary-sensor { background: rgba(150,150,150,0.12); color: #999; }
+
+    .item-name { flex: 1; color: #e0e0e0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .item-id   { font-size: 10px; color: #666; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 120px; }
+    .item-state {
+      font-size: 10px;
+      font-weight: 600;
+      flex-shrink: 0;
+      padding: 1px 5px;
+      border-radius: 8px;
+    }
+    .item-state.on  { background: rgba(46,204,113,0.2); color: #2ecc71; }
+    .item-state.off { background: rgba(255,255,255,0.05); color: #666; }
+
+    .picker-empty {
+      padding: 10px 8px;
+      font-size: 11px;
+      color: #666;
+      text-align: center;
+    }
+
+    /* Selected entity display */
+    .entity-selected {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 8px;
+      background: #2a2d2e;
+      border: 1px solid #404040;
+      border-radius: 4px;
+      margin-bottom: 6px;
+      font-size: 12px;
+    }
+    .entity-selected.hidden { display: none; }
+    .selected-name { flex: 1; color: #e0e0e0; font-weight: 500; }
+    .selected-id   { font-size: 10px; color: #777; }
+    .btn-clear {
+      background: none;
+      border: none;
+      color: #666;
+      font-size: 16px;
+      line-height: 1;
+      padding: 0 2px;
+      cursor: pointer;
+      font-weight: 300;
+    }
+    .btn-clear:hover { color: #e74c3c; opacity: 1; }
+
+    details summary {
+      font-size: 11px;
+      color: #666;
+      cursor: pointer;
+      user-select: none;
+      margin-bottom: 6px;
+    }
+    details summary:hover { color: #aaa; }
+    details[open] summary { color: #aaa; margin-bottom: 8px; }
+  </style>
+</head>
+<body>
+
+  <!-- ── Global settings ─────────────────────────────── -->
+  <section>
+    <h3>Home Assistant Connection</h3>
+
+    <label for="haUrl">URL</label>
+    <input type="url" id="haUrl" placeholder="http://homeassistant.local:8123">
+
+    <label for="haToken">Long-lived access token</label>
+    <input type="password" id="haToken" placeholder="eyJ0eXAiOiJKV1QiLCJhbGci…">
+    <p class="hint">Profile → Security → Long-lived access tokens → Create token</p>
+
+    <div class="row-buttons">
+      <button class="btn-save" onclick="saveGlobal()">Save connection</button>
+      <button class="btn-test" onclick="testConnection()">Test</button>
+      <span id="connStatus" class="status status-pending">—</span>
+    </div>
+  </section>
+
+  <!-- ── Per-button settings ─────────────────────────── -->
+  <section>
+    <h3>Button</h3>
+
+    <!-- Entity picker -->
+    <label>Entity</label>
+
+    <div id="entitySelected" class="entity-selected hidden">
+      <span id="entityDomainPill" class="domain-pill"></span>
+      <span id="entitySelName" class="selected-name"></span>
+      <span id="entitySelId"   class="selected-id"></span>
+      <button class="btn-clear" onclick="clearEntity()">×</button>
+    </div>
+
+    <div class="picker-wrap">
+      <div class="picker-search-row">
+        <input type="text" id="pickerSearch" placeholder="Search entities…"
+               autocomplete="off" onfocus="openDropdown()" oninput="filterDropdown()">
+        <button class="btn-refresh" title="Refresh entity list" onclick="requestEntities()">↻</button>
+      </div>
+
+      <div id="pickerDropdown" class="picker-dropdown hidden">
+        <div id="pickerList"></div>
+        <div id="pickerEmpty" class="picker-empty">Connect to HA and press ↻ to load entities</div>
+      </div>
+    </div>
+
+    <!-- Hidden field carrying the selected entityId -->
+    <input type="hidden" id="entityId">
+
+    <label for="btnLabel">Display label <span style="color:#666">(optional — defaults to friendly name)</span></label>
+    <input type="text" id="btnLabel" placeholder="Living Room">
+
+    <details id="svcOverride">
+      <summary>▸ Custom service override</summary>
+      <label for="serviceDomain">Service domain <span style="color:#555">(default: homeassistant)</span></label>
+      <input type="text" id="serviceDomain" placeholder="homeassistant">
+      <label for="service">Service <span style="color:#555">(default: toggle)</span></label>
+      <input type="text" id="service" placeholder="toggle">
+    </details>
+
+    <button class="btn-save" style="margin-top:8px" onclick="saveAction()">Save button</button>
+  </section>
+
+<script>
+  var ws      = null;
+  var uuid    = null;
+  var allEntities = [];  // full list received from plugin
+  var dropdownOpen = false;
+
+  // Called by the injected auto-connect script (PropertyInspectorServer)
+  function connectElgatoStreamDeckSocket(port, pluginUUID, registerEvent, info, actionInfo) {
+    uuid = pluginUUID;
+    ws   = new WebSocket('ws://localhost:' + port);
+
+    ws.onopen = function () {
+      send({ event: registerEvent, uuid: pluginUUID });
+    };
+
+    ws.onmessage = function (evt) {
+      var msg = JSON.parse(evt.data);
+
+      if (msg.event === 'didReceiveSettings') {
+        var s = (msg.payload && msg.payload.settings) ? msg.payload.settings : {};
+        applyButtonSettings(s);
+      }
+
+      if (msg.event === 'didReceiveGlobalSettings') {
+        var g = (msg.payload && msg.payload.settings) ? msg.payload.settings : {};
+        id('haUrl').value   = g.haUrl   || '';
+        id('haToken').value = g.haToken || '';
+      }
+
+      if (msg.event === 'sendToPropertyInspector') {
+        var p = msg.payload || {};
+
+        if (p.action === 'connectionStatus') {
+          if (p.status === 'connected') {
+            // Persist so the plugin reconnects automatically on next backend start.
+            send({ event: 'setGlobalSettings', context: uuid,
+                   payload: { haUrl: id('haUrl').value.trim(), haToken: id('haToken').value.trim() } });
+            setStatus('ok', 'Connected — settings saved');
+            // Entity list arrives via separate 'entities' message
+          } else {
+            setStatus('error', p.message || 'Not connected');
+          }
+        }
+
+        if (p.action === 'entities') {
+          if (p.entities && p.entities.length > 0) {
+            allEntities = p.entities;
+            renderDropdown(allEntities);
+          } else {
+            allEntities = [];
+            showEmpty(p.reason === 'not connected'
+              ? 'Connect to HA first, then press ↻'
+              : 'No entities found');
+          }
+        }
+      }
+    };
+
+    ws.onerror = function () { setStatus('error', 'WS error'); };
+  }
+
+  // ── Connection ──────────────────────────────────────
+
+  function saveGlobal() {
+    send({ event: 'setGlobalSettings', context: uuid,
+           payload: { haUrl: id('haUrl').value.trim(), haToken: id('haToken').value.trim() } });
+    setStatus('pending', 'Saved — reconnecting…');
+  }
+
+  function testConnection() {
+    var haUrl   = id('haUrl').value.trim();
+    var haToken = id('haToken').value.trim();
+    if (!haUrl || !haToken) { setStatus('error', 'Enter URL and token first'); return; }
+    setStatus('pending', 'Connecting…');
+    send({ event: 'sendToPlugin', context: uuid,
+           payload: { action: 'testConnection', haUrl: haUrl, haToken: haToken } });
+  }
+
+  // ── Entity picker ───────────────────────────────────
+
+  function requestEntities() {
+    showEmpty('Loading…');
+    openDropdown();
+    send({ event: 'sendToPlugin', context: uuid, payload: { action: 'getEntities' } });
+  }
+
+  function openDropdown() {
+    id('pickerDropdown').classList.remove('hidden');
+    dropdownOpen = true;
+    if (allEntities.length > 0)
+      filterDropdown();
+    else
+      showEmpty('Press ↻ to load entities');
+  }
+
+  function closeDropdown() {
+    id('pickerDropdown').classList.add('hidden');
+    dropdownOpen = false;
+  }
+
+  function filterDropdown() {
+    var q = id('pickerSearch').value.trim().toLowerCase();
+    if (!allEntities.length) return;
+    var filtered = q
+      ? allEntities.filter(function(e) {
+          return e.name.toLowerCase().indexOf(q) >= 0 ||
+                 e.id.toLowerCase().indexOf(q) >= 0   ||
+                 e.domain.toLowerCase().indexOf(q) >= 0;
+        })
+      : allEntities;
+    renderDropdown(filtered);
+  }
+
+  function renderDropdown(entities) {
+    var list = id('pickerList');
+    id('pickerEmpty').classList.add('hidden');
+    if (!entities || entities.length === 0) {
+      list.innerHTML = '';
+      showEmpty('No matching entities');
+      return;
+    }
+
+    var selectedId = id('entityId').value;
+    var html = '';
+    entities.forEach(function(e) {
+      var stateClass = (e.state === 'on' || e.state === 'open' || e.state === 'playing') ? 'on' : 'off';
+      var domClass   = 'dp-' + e.domain.replace(/_/g, '-');
+      var activeClass = (e.id === selectedId) ? ' active' : '';
+      html +=
+        '<div class="picker-item' + activeClass + '" onclick="pickEntity(\'' +
+        esc(e.id) + '\',\'' + esc(e.name) + '\',\'' + esc(e.domain) + '\')">' +
+        '<span class="domain-pill ' + domClass + '">' + esc(e.domain.replace(/_/g,' ')) + '</span>' +
+        '<span class="item-name">' + esc(e.name) + '</span>' +
+        '<span class="item-id">'  + esc(e.id)   + '</span>' +
+        '<span class="item-state ' + stateClass + '">' + esc(e.state) + '</span>' +
+        '</div>';
+    });
+    list.innerHTML = html;
+  }
+
+  function showEmpty(msg) {
+    id('pickerList').innerHTML = '';
+    var el = id('pickerEmpty');
+    el.textContent = msg;
+    el.classList.remove('hidden');
+  }
+
+  function pickEntity(entityId, name, domain) {
+    id('entityId').value = entityId;
+
+    // Show selected display
+    var pill = id('entityDomainPill');
+    pill.textContent = domain.replace(/_/g,' ');
+    pill.className   = 'domain-pill dp-' + domain.replace(/_/g,'-');
+    id('entitySelName').textContent = name;
+    id('entitySelId').textContent   = entityId;
+    id('entitySelected').classList.remove('hidden');
+
+    // Auto-fill label if empty
+    if (!id('btnLabel').value.trim())
+      id('btnLabel').value = name;
+
+    // Auto-fill default service based on domain
+    var svc = defaultService(domain);
+    id('serviceDomain').value = svc.domain;
+    id('service').value       = svc.service;
+
+    // Clear search, close dropdown
+    id('pickerSearch').value = '';
+    closeDropdown();
+  }
+
+  function clearEntity() {
+    id('entityId').value = '';
+    id('entitySelected').classList.add('hidden');
+  }
+
+  function defaultService(domain) {
+    switch (domain) {
+      case 'scene':      return { domain: 'scene',        service: 'turn_on' };
+      case 'script':     return { domain: 'script',       service: 'turn_on' };
+      case 'automation': return { domain: 'automation',   service: 'trigger' };
+      default:           return { domain: 'homeassistant', service: 'toggle' };
+    }
+  }
+
+  // ── Button settings ─────────────────────────────────
+
+  function applyButtonSettings(s) {
+    id('entityId').value      = s.entityId      || '';
+    id('btnLabel').value      = s.label          || '';
+    id('serviceDomain').value = s.serviceDomain  || '';
+    id('service').value       = s.service        || '';
+
+    if (s.entityId) {
+      // Restore selected entity display using cached entity list or just the ID
+      var entity = allEntities.find(function(e) { return e.id === s.entityId; });
+      if (entity) {
+        pickEntityDisplay(entity.id, entity.name, entity.domain);
+      } else {
+        // Entity list not loaded yet — show ID only
+        id('entityDomainPill').textContent = '';
+        id('entityDomainPill').className   = 'domain-pill';
+        id('entitySelName').textContent    = s.entityId;
+        id('entitySelId').textContent      = '';
+        id('entitySelected').classList.remove('hidden');
+      }
+    } else {
+      id('entitySelected').classList.add('hidden');
+    }
+
+    // Show service override section if non-default values are set
+    if (s.serviceDomain || s.service) {
+      id('svcOverride').setAttribute('open', '');
+    }
+  }
+
+  function pickEntityDisplay(entityId, name, domain) {
+    var pill = id('entityDomainPill');
+    pill.textContent = domain.replace(/_/g,' ');
+    pill.className   = 'domain-pill dp-' + domain.replace(/_/g,'-');
+    id('entitySelName').textContent = name;
+    id('entitySelId').textContent   = entityId;
+    id('entitySelected').classList.remove('hidden');
+  }
+
+  function saveAction() {
+    send({ event: 'setSettings', context: uuid,
+           payload: {
+             entityId:      id('entityId').value.trim(),
+             label:         id('btnLabel').value.trim(),
+             serviceDomain: id('serviceDomain').value.trim(),
+             service:       id('service').value.trim()
+           }
+    });
+  }
+
+  // ── Helpers ─────────────────────────────────────────
+
+  function setStatus(type, text) {
+    var el = id('connStatus');
+    el.textContent = text;
+    el.className = 'status status-' + type;
+  }
+
+  function send(obj) {
+    if (ws && ws.readyState === 1) ws.send(JSON.stringify(obj));
+  }
+
+  function id(i) { return document.getElementById(i); }
+
+  function esc(s) {
+    return String(s)
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+      .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+  }
+
+  // Close dropdown when clicking outside
+  document.addEventListener('mousedown', function(e) {
+    var wrap = document.querySelector('.picker-wrap');
+    if (wrap && !wrap.contains(e.target))
+      closeDropdown();
+  });
+</script>
+</body>
+</html>

@@ -39,6 +39,10 @@ public class DeviceService : IDeviceService
     // CRC32 cache: (profileId, buttonId) → last-confirmed CRC on device
     private readonly Dictionary<(byte, byte), uint> _imageHashCache = new();
 
+    // Serialises all device command executions — prevents concurrent image transfer
+    // and LED commands from interleaving bytes in the HID protocol stream.
+    private readonly SemaphoreSlim _commandLock = new(1, 1);
+
     public event EventHandler<DeviceEventArgs>? DeviceConnected;
     public event EventHandler<DeviceEventArgs>? DeviceDisconnected;
     public event EventHandler<ButtonEventArgs>? ButtonPressed;
@@ -159,6 +163,32 @@ public class DeviceService : IDeviceService
         return response != null;
     }
     
+    public async Task<bool> RebootDeviceAsync(CancellationToken cancellationToken = default)
+    {
+        _logger.LogInformation("Sending reboot command to device (CMD_FACTORY_RESET)");
+        await _commandLock.WaitAsync(cancellationToken);
+        try
+        {
+            var response = await _protocol.SendCommandAsync(
+                ProtocolConstants.CMD_FACTORY_RESET,
+                Array.Empty<byte>(),
+                cancellationToken: cancellationToken);
+            // Device restarts immediately after ACK — treat any response as success
+            _imageHashCache.Clear();
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "RebootDeviceAsync: no ACK received (device may have restarted)");
+            _imageHashCache.Clear();
+            return true; // device is restarting regardless
+        }
+        finally
+        {
+            _commandLock.Release();
+        }
+    }
+
     public async Task<bool> SetProfileAsync(byte profileId, CancellationToken cancellationToken = default)
     {
         return await _setProfileCommand.ExecuteAsync(profileId, cancellationToken);
@@ -172,17 +202,26 @@ public class DeviceService : IDeviceService
         CancellationToken cancellationToken = default)
     {
         var crc = Crc32.Calculate(imageData);
-        if (_imageHashCache.TryGetValue((profileId, buttonId), out var cached) && cached == crc)
-        {
-            _logger.LogDebug("Image for button {ButtonId} unchanged (CRC=0x{Crc:X8}), skipping transfer", buttonId, crc);
-            progress?.Report(100);
-            return true;
-        }
 
-        var result = await _imageTransferCommand.ExecuteAsync(profileId, buttonId, imageData, 0xFF, progress, cancellationToken);
-        if (result)
-            _imageHashCache[(profileId, buttonId)] = crc;
-        return result;
+        await _commandLock.WaitAsync(cancellationToken);
+        try
+        {
+            if (_imageHashCache.TryGetValue((profileId, buttonId), out var cached) && cached == crc)
+            {
+                _logger.LogDebug("Image for button {ButtonId} unchanged (CRC=0x{Crc:X8}), skipping transfer", buttonId, crc);
+                progress?.Report(100);
+                return true;
+            }
+
+            var result = await _imageTransferCommand.ExecuteAsync(profileId, buttonId, imageData, 0xFF, progress, cancellationToken);
+            if (result)
+                _imageHashCache[(profileId, buttonId)] = crc;
+            return result;
+        }
+        finally
+        {
+            _commandLock.Release();
+        }
     }
 
     public async Task<bool> SendFolderButtonImageAsync(
@@ -230,12 +269,14 @@ public class DeviceService : IDeviceService
     }
     
     public async Task<bool> SetLedColorAsync(
-        byte profileId, 
-        byte buttonId, 
+        byte profileId,
+        byte buttonId,
         LedConfig led,
         CancellationToken cancellationToken = default)
     {
-        return await _setLedColorCommand.ExecuteAsync(profileId, buttonId, led, cancellationToken);
+        await _commandLock.WaitAsync(cancellationToken);
+        try   { return await _setLedColorCommand.ExecuteAsync(profileId, buttonId, led, cancellationToken); }
+        finally { _commandLock.Release(); }
     }
     
     public async Task<byte?> SetDisplayBrightnessAsync(byte brightness, CancellationToken cancellationToken = default)
@@ -255,6 +296,17 @@ public class DeviceService : IDeviceService
         LedConfig led, CancellationToken cancellationToken = default)
         => await _setFolderButtonLedCommand.ExecuteAsync(profileId, folderId, buttonId, led, cancellationToken);
 
+
+    public async Task<bool> ClearButtonImageAsync(byte profileId, byte buttonId,
+        CancellationToken cancellationToken = default)
+    {
+        var payload = new byte[] { profileId, buttonId };
+        var response = await _protocol.SendCommandAsync(
+            ProtocolConstants.CMD_CLEAR_BUTTON_IMAGE,
+            payload,
+            cancellationToken: cancellationToken);
+        return response != null && response.Payload.Length >= 1 && response.Payload[0] == ProtocolConstants.STATUS_OK;
+    }
 
     public async Task<bool> SaveProfileAsync(byte profileId, CancellationToken cancellationToken = default)
     {
@@ -524,6 +576,8 @@ public class DeviceService : IDeviceService
     
     public async Task<LedConfig?> GetLedColorAsync(byte profileId, byte buttonId, CancellationToken cancellationToken = default)
     {
-        return await _getLedColorCommand.ExecuteAsync(profileId, buttonId, cancellationToken);
+        await _commandLock.WaitAsync(cancellationToken);
+        try   { return await _getLedColorCommand.ExecuteAsync(profileId, buttonId, cancellationToken); }
+        finally { _commandLock.Release(); }
     }
 }

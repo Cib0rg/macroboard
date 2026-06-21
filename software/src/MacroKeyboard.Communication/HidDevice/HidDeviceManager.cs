@@ -204,7 +204,7 @@ public class HidDeviceManager : IDisposable
 
         try
         {
-            _logger.LogDebug("WriteAsync: Sending {Length} bytes via Vendor Bulk OUT", data.Length);
+            _logger.LogTrace("WriteAsync: Sending {Length} bytes via Vendor Bulk OUT", data.Length);
 
             // Pad to 64 bytes if needed (firmware expects fixed-size packets)
             var packet = new byte[ProtocolConstants.PacketSize];
@@ -236,7 +236,7 @@ public class HidDeviceManager : IDisposable
                 return false;
             }
 
-            _logger.LogDebug("Sent {Length} bytes to device successfully", data.Length);
+            _logger.LogTrace("Sent {Length} bytes to device successfully", data.Length);
             return true;
         }
         catch (Exception ex)

@@ -170,6 +170,12 @@ public partial class ProfileEditorViewModel : ViewModelBase
             SelectedButtonHeader   = string.Empty;
             HasUnsavedChanges      = true;
         };
+
+        // Plugin list is fetched after IPC connects. The view often attaches before
+        // the connection is ready, so subscribing here covers both first-connect and
+        // reconnect cases without relying on LoadProfilesAsync timing.
+        _ipcClient.Connected += (_, _) =>
+            Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(LoadPluginActionsAsync);
     }
 
     // ── Canvas selection ──────────────────────────────────────────────────────
@@ -773,15 +779,21 @@ public partial class ProfileEditorViewModel : ViewModelBase
         {
             imageBytes = await _imageService.CreateBlankImageAsync();
         }
+        else if (button.Action is PluginActionConfig)
+        {
+            // Plugin button display is managed entirely by the plugin via mkSetButtonDisplay.
+            // Do not touch the image here — the plugin will send its own image (purple ring +
+            // entity state) on the next HA state update, overwriting whatever is on screen.
+            return;
+        }
         else if (ringColor.HasValue)
         {
+            // Folder button with no custom image: show ring placeholder with label.
             var label = !string.IsNullOrEmpty(button.Name) ? button.Name
                 : button.Action switch
                 {
-                    FolderAction       => "Folder",
-                    PluginActionConfig pa when !string.IsNullOrEmpty(pa.ActionName) => pa.ActionName,
-                    PluginActionConfig => "Plugin",
-                    _                  => null
+                    FolderAction => "Folder",
+                    _             => null
                 };
             imageBytes = await _imageService.CreateRingPlaceholderAsync(ringColor.Value, label);
         }

@@ -189,4 +189,10 @@ void profile_image_cache_invalidate(uint8_t button_id);
  */
 void profile_image_cache_invalidate_folder(uint8_t button_id);
 
+/**
+ * @brief Refresh the display for one root button from current profile state.
+ *        If image_size == 0, renders text; otherwise loads image from SPIFFS.
+ */
+void profile_refresh_button_display(uint8_t button_id);
+
 #endif // PROFILE_MANAGER_H

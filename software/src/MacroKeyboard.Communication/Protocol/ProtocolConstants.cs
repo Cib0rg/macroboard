@@ -32,6 +32,7 @@ public static class ProtocolConstants
     public const byte CMD_END_IMAGE_TRANSFER = 0x22;
     public const byte CMD_GET_BUTTON_IMAGE = 0x23;
     public const byte CMD_GET_IMAGE_HASHES = 0x24;
+    public const byte CMD_CLEAR_BUTTON_IMAGE = 0x25;
     public const byte CMD_SET_BUTTON_ACTION         = 0x30;
     public const byte CMD_GET_BUTTON_ACTION         = 0x31;
     public const byte CMD_SET_BUTTON_NAME           = 0x32;
@@ -77,6 +78,6 @@ public static class ProtocolConstants
     public const int DefaultTimeout = 3000; // мс (increased from 1000 to handle FreeRTOS queue latency)
     public const int ImageTransferTimeout = 30000; // мс
     
-    // Размер фрагмента изображения
-    public const int ImageChunkSize = 50;
+    // Размер фрагмента изображения (compact CHUNK layout: tid u8 + chunkNum u16 + len u8 = 4 bytes overhead → 52 bytes payload)
+    public const int ImageChunkSize = 52;
 }

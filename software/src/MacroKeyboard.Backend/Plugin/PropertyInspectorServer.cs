@@ -235,7 +235,7 @@ public class PropertyInspectorServer : IDisposable
 (function() {
   var p = new URLSearchParams(window.location.search);
   var port       = p.get('port');
-  var uuid       = p.get('propertyInspectorUUID');
+  var uuid       = p.get('pluginUUID') || p.get('propertyInspectorUUID');
   var evt        = p.get('registerEvent');
   var info       = p.get('info');
   var actionInfo = p.get('actionInfo');

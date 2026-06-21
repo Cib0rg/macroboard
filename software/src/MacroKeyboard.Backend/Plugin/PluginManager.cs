@@ -81,11 +81,12 @@ public class PluginManager : IDisposable
             return;
         }
 
-        // Extract any .streamDeckPlugin archives that haven't been unpacked yet.
-        // Track which directories came from archives so the directory scan below doesn't double-load them.
+        // Extract plugin archives (.streamDeckPlugin or .zip) that haven't been unpacked yet,
+        // or that are newer than their previously extracted directory (dev rebuild scenario).
         var loadedFromArchive = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var archivePath in Directory.GetFiles(_pluginsDirectory)
-                     .Where(f => f.EndsWith(".streamDeckPlugin", StringComparison.OrdinalIgnoreCase)))
+                     .Where(f => f.EndsWith(".streamDeckPlugin", StringComparison.OrdinalIgnoreCase)
+                               || f.EndsWith(".zip", StringComparison.OrdinalIgnoreCase)))
         {
             try
             {
@@ -143,10 +144,12 @@ public class PluginManager : IDisposable
         }
         else
         {
-            // Files are at the archive root — create a directory from the archive name.
-            var baseName = archiveFileName.EndsWith(".streamDeckPlugin", StringComparison.OrdinalIgnoreCase)
-                ? archiveFileName[..^".streamDeckPlugin".Length]
-                : Path.GetFileNameWithoutExtension(archiveFileName);
+            // Files are at the archive root — derive the directory name from the archive name.
+            string baseName;
+            if (archiveFileName.EndsWith(".streamDeckPlugin", StringComparison.OrdinalIgnoreCase))
+                baseName = archiveFileName[..^".streamDeckPlugin".Length];
+            else
+                baseName = Path.GetFileNameWithoutExtension(archiveFileName);
             pluginDirName = baseName + ".sdPlugin";
         }
 
@@ -154,8 +157,16 @@ public class PluginManager : IDisposable
 
         if (Directory.Exists(targetDir))
         {
-            _logger.LogDebug("Plugin archive already extracted: {Archive} → {Dir}", archiveFileName, pluginDirName);
-            return targetDir;
+            // Re-extract when the archive is newer than the directory (e.g. after a dev rebuild).
+            var archiveTime = File.GetLastWriteTimeUtc(archivePath);
+            var dirTime     = Directory.GetLastWriteTimeUtc(targetDir);
+            if (archiveTime <= dirTime)
+            {
+                _logger.LogDebug("Plugin archive up to date, skipping extraction: {Archive}", archiveFileName);
+                return targetDir;
+            }
+            _logger.LogInformation("Plugin archive is newer — re-extracting: {Archive}", archiveFileName);
+            Directory.Delete(targetDir, recursive: true);
         }
 
         _logger.LogInformation("Extracting plugin archive: {Archive} → {Dir}", archiveFileName, pluginDirName);
@@ -484,8 +495,9 @@ public class PluginManager : IDisposable
         switch (msg.Event)
         {
             case "registerPlugin":     await HandleRegisterPluginAsync(connectionId, msg); break;
-            case "setTitle":           await HandleSetTitleAsync(msg); break;
-            case "setImage":           await HandleSetImageAsync(msg); break;
+            case "setTitle":              await HandleSetTitleAsync(msg); break;
+            case "setImage":              await HandleSetImageAsync(msg); break;
+            case "mkSetButtonDisplay":    await HandleSetButtonDisplayAsync(msg); break;
             case "showAlert":          await HandleShowAlertAsync(msg); break;
             case "showOk":             await HandleShowOkAsync(msg); break;
             case "setState":           HandleSetState(msg); break;
@@ -598,7 +610,11 @@ public class PluginManager : IDisposable
             var rawBytes = Convert.FromBase64String(image);
             var pluginRing = SixLabors.ImageSharp.Color.FromRgb(0x8B, 0x5C, 0xF6); // #8B5CF6 purple
             var processed  = await _imageService.ProcessImageBytesForButtonAsync(rawBytes, pluginRing);
-            if (processed == null) return;
+            if (processed == null)
+            {
+                _logger.LogWarning("setImage: ProcessImageBytesForButtonAsync returned null for button {Idx} ({Bytes} raw bytes)", buttonIndex, rawBytes.Length);
+                return;
+            }
             await _deviceService.SendButtonImageAsync(0, (byte)buttonIndex, processed, null);
         }
         catch (Exception ex)
@@ -607,18 +623,40 @@ public class PluginManager : IDisposable
         }
     }
 
+    private async Task HandleSetButtonDisplayAsync(PluginMessage msg)
+    {
+        if (!TryParseButtonContext(msg.Context, out _, out var buttonIndex)) return;
+        var payload = ParsePayload(msg.Payload);
+        if (payload == null) return;
+
+        var text = payload.GetValueOrDefault("text")?.ToString() ?? string.Empty;
+
+        try
+        {
+            var imageBytes = await _imageService.CreatePluginStateImageAsync(text);
+            await _deviceService.SendButtonImageAsync(0, (byte)buttonIndex, imageBytes, null);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "mkSetButtonDisplay: failed to generate/send image for button {Idx}", buttonIndex);
+        }
+    }
+
     private async Task HandleShowAlertAsync(PluginMessage msg)
     {
         if (!TryParseButtonContext(msg.Context, out _, out var buttonIndex)) return;
-        // Two orange flashes
         await FlashLedAsync((byte)buttonIndex, r: 255, g: 165, b: 0, onMs: 200, offMs: 100, times: 2);
     }
 
     private async Task HandleShowOkAsync(PluginMessage msg)
     {
         if (!TryParseButtonContext(msg.Context, out _, out var buttonIndex)) return;
-        // Single green flash
-        await FlashLedAsync((byte)buttonIndex, r: 0, g: 220, b: 0, onMs: 500, offMs: 0, times: 1);
+        // Flash green, then restore whatever LED color the profile had set
+        var prev = await _deviceService.GetLedColorAsync(0, (byte)buttonIndex);
+        await _deviceService.SetLedColorAsync(0, (byte)buttonIndex, new LedConfig { R = 0, G = 220, B = 0, Brightness = 100 });
+        await Task.Delay(350);
+        await _deviceService.SetLedColorAsync(0, (byte)buttonIndex,
+            prev ?? new LedConfig { R = 0, G = 0, B = 0, Brightness = 0 });
     }
 
     private void HandleSetState(PluginMessage msg)
@@ -1019,6 +1057,108 @@ public class ExecutablePluginInstance : PluginInstance
             }
         });
 
+        // HTML plugins are designed to run inside Elgato's built-in Chromium WebView.
+        // We serve them through PropertyInspectorServer (port 8787) and launch a
+        // headless Edge/Chrome process — no visible window, runs in background.
+        if (Path.GetExtension(entryPointPath).Equals(".html", StringComparison.OrdinalIgnoreCase))
+        {
+            var entryFile = Path.GetFileName(entryPointPath);
+            var httpUrl = string.Concat(
+                $"http://localhost:{PropertyInspectorServer.HttpPort}/plugins/",
+                Uri.EscapeDataString(Manifest.Id), "/", entryFile,
+                "?port=28196",
+                "&pluginUUID=",    Uri.EscapeDataString(Manifest.Id),
+                "&registerEvent=", Uri.EscapeDataString("registerPlugin"),
+                "&info=",          Uri.EscapeDataString(infoJson));
+
+            var browserExe = FindChromiumExe();
+            if (browserExe != null)
+            {
+                Logger.LogInformation("[{Id}] HTML plugin — launching headless Chromium: {Exe}", Manifest.Id, browserExe);
+
+                // Each plugin gets its own isolated profile dir so multiple plugins
+                // can run simultaneously without profile-lock conflicts.
+                // Wipe the dir before each start to remove stale SingletonLock files
+                // left by a previous crash or un-graceful shutdown.
+                var userDataDir = Path.Combine(Path.GetTempPath(), "mk-plugins", Manifest.Id);
+                if (Directory.Exists(userDataDir))
+                    Directory.Delete(userDataDir, recursive: true);
+                Directory.CreateDirectory(userDataDir);
+
+                var hInfo = new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName               = browserExe,
+                    WorkingDirectory       = PluginDirectory,
+                    UseShellExecute        = false,
+                    CreateNoWindow         = true,
+                    RedirectStandardOutput = false,
+                    RedirectStandardError  = true,   // capture JS console errors
+                };
+                hInfo.ArgumentList.Add("--headless=new");
+                hInfo.ArgumentList.Add("--disable-gpu");
+                hInfo.ArgumentList.Add("--no-sandbox");
+                hInfo.ArgumentList.Add("--no-first-run");
+                hInfo.ArgumentList.Add("--no-default-browser-check");
+                hInfo.ArgumentList.Add("--disable-extensions");
+                hInfo.ArgumentList.Add("--disable-background-mode");
+                hInfo.ArgumentList.Add($"--user-data-dir={userDataDir}");
+                hInfo.ArgumentList.Add(httpUrl);
+
+                _process = new System.Diagnostics.Process
+                {
+                    StartInfo           = hInfo,
+                    EnableRaisingEvents = true
+                };
+                _process.Exited += (_, _) =>
+                {
+                    IsRunning = false;
+                    Logger.LogInformation("[{Id}] Headless browser process exited", Manifest.Id);
+                };
+
+                try
+                {
+                    _process.Start();
+                }
+                catch (Exception ex)
+                {
+                    Logger.LogError(ex, "[{Id}] Failed to start headless browser: {Exe}", Manifest.Id, browserExe);
+                    throw;
+                }
+
+                // Drain stderr in background so the pipe buffer never blocks the browser.
+                // Lines are forwarded to the backend log for diagnosing JS/WS errors.
+                var pluginId = Manifest.Id;
+                _ = Task.Run(async () =>
+                {
+                    string? line;
+                    while ((line = await _process.StandardError.ReadLineAsync()) != null)
+                        if (line.Length > 0)
+                            Logger.LogDebug("[{Id}:browser] {Line}", pluginId, line);
+                });
+
+                IsRunning = true;
+                Logger.LogInformation("[{Id}] HTML plugin running headlessly (PID {Pid})", Manifest.Id, _process.Id);
+            }
+            else
+            {
+                // No Chromium found — fall back to a visible browser tab with a clear warning.
+                Logger.LogWarning(
+                    "[{Id}] No Edge/Chrome installation found for headless execution. " +
+                    "Opening plugin.html in the default browser instead — plugin will stop working when the tab is closed. " +
+                    "Install Microsoft Edge or Google Chrome to run HTML plugins in the background.",
+                    Manifest.Id);
+
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName        = httpUrl,
+                    UseShellExecute = true
+                });
+
+                IsRunning = true;
+            }
+            return;
+        }
+
         var startInfo = new System.Diagnostics.ProcessStartInfo
         {
             WorkingDirectory       = PluginDirectory,
@@ -1119,7 +1259,9 @@ public class ExecutablePluginInstance : PluginInstance
         {
             if (!_process.HasExited)
             {
-                _process.Kill();
+                // Kill entire process tree — Chrome/Edge spawns renderer/GPU child
+                // processes that would otherwise become orphans on Windows.
+                _process.Kill(entireProcessTree: true);
                 await _process.WaitForExitAsync(cancellationToken);
             }
         }
@@ -1133,6 +1275,72 @@ public class ExecutablePluginInstance : PluginInstance
     }
 
     public override void Dispose() => StopAsync().GetAwaiter().GetResult();
+
+    private static string? FindChromiumExe()
+    {
+        // Check common Edge and Chrome install paths on Windows.
+        // On non-Windows we rely on PATH entries (edge / google-chrome).
+        var candidates = new List<string>();
+
+        if (OperatingSystem.IsWindows())
+        {
+            var programFiles  = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
+            var programFilesX = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86);
+            var localAppData  = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+
+            candidates.AddRange(new[]
+            {
+                // Edge (usually pre-installed on Windows 10/11)
+                Path.Combine(programFiles,  "Microsoft", "Edge", "Application", "msedge.exe"),
+                Path.Combine(programFilesX, "Microsoft", "Edge", "Application", "msedge.exe"),
+                // Chrome stable
+                Path.Combine(programFiles,  "Google", "Chrome", "Application", "chrome.exe"),
+                Path.Combine(programFilesX, "Google", "Chrome", "Application", "chrome.exe"),
+                // Chrome per-user install
+                Path.Combine(localAppData,  "Google", "Chrome", "Application", "chrome.exe"),
+            });
+        }
+        else if (OperatingSystem.IsMacOS())
+        {
+            candidates.AddRange(new[]
+            {
+                "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
+                "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+            });
+        }
+        else
+        {
+            // Linux: look for executables on PATH
+            candidates.AddRange(new[] { "microsoft-edge", "google-chrome", "google-chrome-stable", "chromium-browser", "chromium" });
+        }
+
+        foreach (var path in candidates)
+        {
+            if (File.Exists(path))
+                return path;
+
+            // For PATH-based entries (Linux) check via `which`-equivalent
+            if (!path.Contains(Path.DirectorySeparatorChar))
+            {
+                try
+                {
+                    var result = System.Diagnostics.Process.Start(
+                        new System.Diagnostics.ProcessStartInfo("which", path)
+                        {
+                            RedirectStandardOutput = true,
+                            UseShellExecute        = false,
+                            CreateNoWindow         = true
+                        });
+                    var resolved = result?.StandardOutput.ReadToEnd().Trim();
+                    if (!string.IsNullOrEmpty(resolved) && File.Exists(resolved))
+                        return resolved;
+                }
+                catch { /* ignore */ }
+            }
+        }
+
+        return null;
+    }
 }
 
 // ── Managed plugin (.NET DLL) ─────────────────────────────────────────────────
@@ -1219,7 +1427,15 @@ internal sealed class StringOrArrayConverter : JsonConverter<string[]>
         string[]? existingValue, bool hasExistingValue, JsonSerializer serializer)
     {
         if (reader.TokenType == JsonToken.StartArray)
-            return serializer.Deserialize<string[]>(reader) ?? Array.Empty<string>();
+        {
+            // Read manually — calling serializer.Deserialize<string[]> here would re-enter
+            // this converter and cause a stack overflow.
+            var items = new List<string>();
+            while (reader.Read() && reader.TokenType != JsonToken.EndArray)
+                if (reader.Value?.ToString() is { } s)
+                    items.Add(s);
+            return items.ToArray();
+        }
 
         if (reader.TokenType == JsonToken.Null)
             return Array.Empty<string>();
