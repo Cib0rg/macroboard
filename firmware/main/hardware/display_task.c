@@ -16,7 +16,7 @@
 #include "freertos/queue.h"
 #include "esp_log.h"
 
-#define DISPLAY_QUEUE_DEPTH  8
+#define DISPLAY_QUEUE_DEPTH  16
 
 static const char* TAG = "DISP_TASK";
 

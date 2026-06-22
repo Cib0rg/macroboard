@@ -19,6 +19,7 @@
 #include "storage/nvs_manager.h"
 #include "storage/profile_storage.h"
 #include "storage/image_storage.h"
+#include "storage/save_task.h"
 #include "profile/profile_manager.h"
 
 static const char* TAG = "MAIN";
@@ -68,6 +69,14 @@ void app_main(void) {
         ESP_LOGW(TAG, "Image storage init failed: %s (non-fatal)", esp_err_to_name(ret));
     }
     ESP_LOGI(TAG, "✓ Image storage initialized");
+
+    // 1.5 Initialize async save queue (must be before any task creation)
+    ret = save_task_init();
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Save task init failed: %s", esp_err_to_name(ret));
+        return;
+    }
+    ESP_LOGI(TAG, "✓ Save task initialized");
     
     // ============================================
     // PHASE 2: Hardware Initialization
@@ -244,6 +253,11 @@ void app_main(void) {
     xTaskCreatePinnedToCore(led_task, "led", STACK_SIZE_LED, NULL,
                             TASK_PRIORITY_LED, NULL, 1);
     ESP_LOGI(TAG, "✓ LED task created");
+
+    // 6.5b Save task (Core 0) — async SPIFFS writes, lower priority than protocol
+    xTaskCreatePinnedToCore(save_task_fn, "save", STACK_SIZE_SAVE, NULL,
+                            TASK_PRIORITY_SAVE, NULL, 0);
+    ESP_LOGI(TAG, "✓ Save task created (Core 0)");
 
     // 6.6 Create display task (Core 1) — SPI draws run independently of protocol_task
     xTaskCreatePinnedToCore(display_task, "display", STACK_SIZE_DISPLAY, NULL,

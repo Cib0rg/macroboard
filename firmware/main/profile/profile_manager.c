@@ -75,6 +75,15 @@ void profile_image_cache_invalidate_folder(uint8_t button_id) {
 
 void profile_refresh_button_display(uint8_t button_id) {
     if (button_id >= NUM_BUTTONS) return;
+    // When inside a folder, use the folder button config so the display reflects
+    // the folder content, not the root-level config at the same physical position.
+    if (profile_is_in_folder()) {
+        uint8_t folder_id = profile_get_current_folder();
+        if (folder_id < NUM_FOLDERS) {
+            profile_update_button_display(button_id, &current_profile.folders[folder_id].buttons[button_id]);
+            return;
+        }
+    }
     profile_update_button_display(button_id, &current_profile.buttons[button_id]);
 }
 

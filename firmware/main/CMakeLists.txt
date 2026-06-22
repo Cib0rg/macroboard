@@ -20,6 +20,7 @@ idf_component_register(
         "storage/text_storage.c"
         "storage/profile_storage.c"
         "storage/image_storage.c"
+        "storage/save_task.c"
         "profile/profile_manager.c"
         "profile/action_executor.c"
         "utils/logger.c"

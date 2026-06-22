@@ -13,6 +13,7 @@
 #include "profile/profile_manager.h"
 #include "storage/profile_storage.h"
 #include "storage/image_storage.h"
+#include "storage/save_task.h"
 #include "usb/usb_vendor.h"
 #include "esp_spiffs.h"
 #include "esp_system.h"
@@ -563,7 +564,11 @@ static esp_err_t handle_save_profile(const uint8_t* payload, uint16_t length,
     }
     
     uint8_t profile_id = payload[0];
-    
+
+    // Ensure all async SPIFFS image writes are complete before persisting the
+    // profile.  Without this, image_size fields could be stale in the saved binary.
+    save_task_drain();
+
     esp_err_t ret = profile_save_to_storage(profile_id);
 
     if (ret == ESP_OK) {

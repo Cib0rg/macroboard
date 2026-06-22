@@ -6,6 +6,7 @@
 #include "common.h"
 #include "image_transfer.h"
 #include "storage/image_storage.h"
+#include "storage/save_task.h"
 #include "hardware/gc9a01.h"
 #include "hardware/display_task.h"
 #include "utils/crc.h"
@@ -153,29 +154,14 @@ esp_err_t image_transfer_end(uint32_t* calculated_crc) {
 
     ESP_LOGI(TAG, "JPEG decoded to %dx%d", decoded_w, decoded_h);
 
-    // Save raw RGB565 to storage using the synthetic storage key.
-    esp_err_t save_ret = image_storage_save(transfer_ctx.profile_id, transfer_ctx.storage_bid,
-                                             rgb565_buf, DISPLAY_BUFFER_SIZE,
-                                             *calculated_crc);
-
-    if (save_ret == ESP_OK) {
-        // Update in-memory image_size so the profile knows this button has an image.
-        // CMD_SAVE_PROFILE (0x50) will persist it to flash.
-        profile_t* prof = profile_get(transfer_ctx.profile_id);
-        if (prof != NULL) {
-            if (transfer_ctx.folder_id == 0xFF) {
-                prof->buttons[transfer_ctx.button_id].image_size = DISPLAY_BUFFER_SIZE;
-            } else if (transfer_ctx.folder_id < NUM_FOLDERS) {
-                prof->folders[transfer_ctx.folder_id].buttons[transfer_ctx.button_id].image_size = DISPLAY_BUFFER_SIZE;
-            }
-        }
-    } else {
-        // SPIFFS save failed — image will not survive a reboot, but the display is
-        // still updated below.  Do NOT set image_size so the profile stays consistent
-        // (image_size=0 means text-mode on reboot, which is a safe fallback).
-        ESP_LOGW(TAG, "Image save to SPIFFS failed (%s) — display updated but not persisted",
-                 esp_err_to_name(save_ret));
-    }
+    // Queue the SPIFFS write asynchronously so CMD 0x22 can respond to the host
+    // as soon as decode finishes (~50ms) rather than waiting for SPIFFS (~2.5s).
+    // Falls back to a blocking write if the queue is near capacity (see save_task.h).
+    // save_task updates image_size in the profile on success; save_task_drain() in
+    // handle_save_profile() ensures all writes complete before the profile is persisted.
+    save_task_save_image(transfer_ctx.profile_id, transfer_ctx.folder_id,
+                         transfer_ctx.button_id, transfer_ctx.storage_bid,
+                         rgb565_buf, *calculated_crc);
 
     // Always draw decoded image to display (CRC verified, decode succeeded).
     // A SPIFFS save failure must NOT prevent the screen from showing the new image.
@@ -186,7 +172,11 @@ esp_err_t image_transfer_end(uint32_t* calculated_crc) {
         bool should_draw = false;
         if (transfer_ctx.folder_id == 0xFF) {
             profile_image_cache_invalidate(transfer_ctx.button_id);
-            should_draw = true;
+            // Only draw if the device is currently at root level.  When inside a
+            // folder, root-button images must not overwrite the folder-button displays
+            // at the same physical positions.  The cache is already invalidated above,
+            // so the image will be drawn correctly when the user exits the folder.
+            should_draw = (profile_get_current_folder() == 0xFF);
         } else {
             profile_image_cache_invalidate_folder(transfer_ctx.button_id);
             if (profile_get_current_folder() == transfer_ctx.folder_id) {
@@ -194,13 +184,15 @@ esp_err_t image_transfer_end(uint32_t* calculated_crc) {
             }
         }
         if (should_draw) {
-            draw_posted = (display_post_draw(transfer_ctx.button_id, rgb565_buf) == ESP_OK);
+            display_post_draw(transfer_ctx.button_id, rgb565_buf);
+            rgb565_buf = NULL;  // ownership always transfers: task frees on success, display_post_draw frees on queue-full
+            draw_posted = true;
             ESP_LOGI(TAG, "Draw queued for button %d (folder=%d)",
                      transfer_ctx.button_id, transfer_ctx.folder_id);
         }
     }
     if (!draw_posted) {
-        free(rgb565_buf);
+        free(rgb565_buf);  // only reached when should_draw was false; rgb565_buf is still valid here
     }
     transfer_ctx.active = false;
 

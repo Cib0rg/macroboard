@@ -17,7 +17,13 @@ public class ProfileService : IProfileService
     private readonly ILogger<ProfileService> _logger;
 
     public byte ActiveProfileId { get; private set; }
-    
+
+    // Diff cache: (profileId, folderId, buttonId) → fingerprint of last successfully sent state.
+    // folderId = 0xFF for root buttons; folderId = 0xFE + buttonId = 0xFF is the encoder slot.
+    // Cleared on device disconnect or profile switch.
+    private readonly Dictionary<(byte profileId, byte folderId, byte buttonId), string> _sentConfigCache = new();
+    private byte _lastSentProfileId = 0xFF;
+
     public ProfileService(
         ProfileRepository repository,
         IDeviceService deviceService,
@@ -28,29 +34,81 @@ public class ProfileService : IProfileService
         _deviceService = deviceService;
         _imageService = imageService;
         _logger = logger;
+
+        _deviceService.DeviceDisconnected += (_, _) =>
+        {
+            _sentConfigCache.Clear();
+            _lastSentProfileId = 0xFF;
+            _logger.LogInformation("Device disconnected — diff cache cleared");
+        };
     }
-    
+
+    // ── Fingerprint helpers ──────────────────────────────────────────────────
+
+    /// <summary>
+    /// Produces a stable string that captures everything we send to the device for one button.
+    /// Image identity is represented by file path + last-write timestamp so we skip JPEG
+    /// processing entirely when the file hasn't changed.
+    /// </summary>
+    private static string ComputeButtonFingerprint(ButtonConfig btn)
+    {
+        string imagePart = "none";
+        if (!string.IsNullOrEmpty(btn.ImagePath))
+        {
+            imagePart = File.Exists(btn.ImagePath)
+                ? $"{btn.ImagePath}\x01{File.GetLastWriteTimeUtc(btn.ImagePath).Ticks}"
+                : $"missing\x01{btn.ImagePath}";
+        }
+
+        string actionPart   = ActionFingerprint(btn.Action);
+        string lpActionPart = ActionFingerprint(btn.LongPressAction);
+        string ledPart      = $"{btn.Led?.R ?? 0},{btn.Led?.G ?? 0},{btn.Led?.B ?? 0},{btn.Led?.Brightness ?? 0}";
+
+        return string.Join("\x1F",
+            imagePart,
+            btn.Name ?? "",
+            actionPart,
+            lpActionPart,
+            btn.LongPressName ?? "",
+            ledPart);
+    }
+
+    private static string ComputeEncoderFingerprint(EncoderConfig? enc)
+    {
+        if (enc == null) return "null";
+        return string.Join("\x1F",
+            ActionFingerprint(enc.RotateCwAction),
+            ActionFingerprint(enc.RotateCcwAction),
+            ActionFingerprint(enc.PressAction),
+            ActionFingerprint(enc.LongPressAction));
+    }
+
+    // Include the concrete type name so NoneAction{} ≠ FolderAction{} even if both serialize to "{}".
+    private static string ActionFingerprint(ActionConfig? action) =>
+        action == null
+            ? "null"
+            : $"{action.GetType().Name}:{Newtonsoft.Json.JsonConvert.SerializeObject(action)}";
+
+    // ── Profile CRUD ─────────────────────────────────────────────────────────
+
     public async Task<List<Profile>> GetAllProfilesAsync(CancellationToken cancellationToken = default)
     {
         return await _repository.GetAllAsync();
     }
-    
+
     public async Task<Profile?> GetProfileAsync(byte profileId, CancellationToken cancellationToken = default)
     {
         return await _repository.GetByIdAsync(profileId);
     }
-    
+
     public async Task<Profile> CreateProfileAsync(string name, CancellationToken cancellationToken = default)
     {
-        // Найти свободный ID
         var existingProfiles = await _repository.GetAllAsync();
-        
+
         if (existingProfiles.Count >= 5)
-        {
             throw new InvalidOperationException(
                 "Maximum number of profiles (5) reached. Delete an existing profile before creating a new one.");
-        }
-        
+
         byte profileId = 0;
         for (byte i = 0; i < 5; i++)
         {
@@ -60,59 +118,55 @@ public class ProfileService : IProfileService
                 break;
             }
         }
-        
+
         var profile = Profile.CreateEmpty(profileId, name);
         await _repository.SaveAsync(profile);
-        
+
         _logger.LogInformation("Profile {ProfileId} created: {Name}", profileId, name);
-        
         return profile;
     }
-    
+
     public async Task<bool> UpdateProfileAsync(Profile profile, CancellationToken cancellationToken = default)
     {
         return await _repository.SaveAsync(profile);
     }
-    
+
     public async Task<bool> DeleteProfileAsync(byte profileId, CancellationToken cancellationToken = default)
     {
         return await _repository.DeleteAsync(profileId);
     }
-    
+
     public async Task<Profile> DuplicateProfileAsync(byte profileId, CancellationToken cancellationToken = default)
     {
         var source = await _repository.GetByIdAsync(profileId);
         if (source == null)
             throw new InvalidOperationException($"Profile {profileId} not found");
-        
+
         var duplicate = await CreateProfileAsync($"{source.Name} (Copy)", cancellationToken);
-        
-        // Копировать кнопки
+
         for (int i = 0; i < source.Buttons.Count; i++)
         {
             duplicate.Buttons[i].Action = source.Buttons[i].Action;
-            duplicate.Buttons[i].Led = source.Buttons[i].Led;
-            
-            // Копировать изображение
+            duplicate.Buttons[i].Led    = source.Buttons[i].Led;
+
             if (!string.IsNullOrEmpty(source.Buttons[i].ImagePath) && File.Exists(source.Buttons[i].ImagePath))
             {
-                var sourceImagePath = source.Buttons[i].ImagePath;
                 var targetImagePath = Path.Combine(
                     AppDataManager.GetProfileImagesPath(duplicate.ProfileId),
                     $"button_{i}.jpg");
-                
-                File.Copy(sourceImagePath, targetImagePath, overwrite: true);
+                File.Copy(source.Buttons[i].ImagePath!, targetImagePath, overwrite: true);
                 duplicate.Buttons[i].ImagePath = targetImagePath;
             }
         }
-        
+
         await _repository.SaveAsync(duplicate);
-        
         return duplicate;
     }
-    
+
+    // ── Send profile to device (diff-based) ──────────────────────────────────
+
     public async Task<bool> SendProfileToDeviceAsync(
-        Profile profile, 
+        Profile profile,
         IProgress<int>? progress = null,
         CancellationToken cancellationToken = default)
     {
@@ -120,17 +174,29 @@ public class ProfileService : IProfileService
         {
             _logger.LogInformation("Sending profile {ProfileId} ({Name}) to device, {ButtonCount} buttons",
                 profile.ProfileId, profile.Name, profile.Buttons.Count);
-            
+
             for (int b = 0; b < profile.Buttons.Count; b++)
             {
                 var btn = profile.Buttons[b];
                 _logger.LogInformation("  Button {Id}: Action={Action}, ImagePath={ImagePath}",
                     btn.ButtonId, btn.Action?.ActionType, btn.ImagePath ?? "(null)");
             }
-            
+
             ActiveProfileId = profile.ProfileId;
 
-            // 1. Установить профиль (device always uses slot 0)
+            // The device holds one profile slot. If we're now sending a different profile than
+            // last time, every cached state on the device is stale — force a full resync.
+            if (_lastSentProfileId != profile.ProfileId)
+            {
+                if (_lastSentProfileId != 0xFF)
+                    _logger.LogInformation(
+                        "Profile changed ({Old}→{New}) — clearing diff cache for full resync",
+                        _lastSentProfileId, profile.ProfileId);
+                _sentConfigCache.Clear();
+                _lastSentProfileId = profile.ProfileId;
+            }
+
+            // 1. Switch device to profile slot 0 (always — cheap, ensures device is in sync)
             var profileSet = await _deviceService.SetProfileAsync(0, cancellationToken);
             if (!profileSet)
             {
@@ -139,20 +205,21 @@ public class ProfileService : IProfileService
             }
 
             progress?.Report(10);
+            bool anythingSent = false;
 
-            // 2a. Resolve missing LaunchApp icons from cache (happens when profile JSON
-            //     was saved before icon extraction, e.g. after a profile reset)
+            // 2a. Resolve missing LaunchApp icons from the icon cache BEFORE fingerprinting,
+            //     so the fingerprint already captures the resolved path.
             foreach (var btn in profile.Buttons)
             {
                 if (!string.IsNullOrEmpty(btn.ImagePath)) continue;
                 if (btn.Action is not MacroKeyboard.Core.Models.LaunchAppAction la) continue;
                 if (string.IsNullOrEmpty(la.ExecutablePath)) continue;
 
-                var iconDir = Path.Combine(
+                var iconPath = Path.Combine(
                     Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                    "MacroKeyboard", "icons");
-                var iconPath = Path.Combine(iconDir,
+                    "MacroKeyboard", "icons",
                     Path.GetFileNameWithoutExtension(la.ExecutablePath) + ".png");
+
                 if (File.Exists(iconPath))
                 {
                     btn.ImagePath = iconPath;
@@ -162,201 +229,116 @@ public class ProfileService : IProfileService
                 }
             }
 
-            // 2. Отправить конфигурацию каждой кнопки
+            // 2. Root buttons — send only those that changed since the last send.
             for (int i = 0; i < profile.Buttons.Count; i++)
             {
-                if (cancellationToken.IsCancellationRequested)
-                    return false;
+                if (cancellationToken.IsCancellationRequested) return false;
 
-                var button = profile.Buttons[i];
+                var button      = profile.Buttons[i];
+                var key         = (profile.ProfileId, (byte)0xFF, button.ButtonId);
+                var fingerprint = ComputeButtonFingerprint(button);
 
-                // Отправить изображение (обработать через ImageService → 160x160 JPEG)
-                var ringColor = button.Action switch
+                if (_sentConfigCache.TryGetValue(key, out var cachedFp) && cachedFp == fingerprint)
                 {
-                    FolderAction       => (SixLabors.ImageSharp.Color?)SixLabors.ImageSharp.Color.FromRgb(0xFF, 0xA5, 0x00),
-                    PluginActionConfig => (SixLabors.ImageSharp.Color?)SixLabors.ImageSharp.Color.FromRgb(0x8B, 0x5C, 0xF6),
-                    _                  => null
-                };
-
-                if (!string.IsNullOrEmpty(button.ImagePath) && File.Exists(button.ImagePath))
-                {
-                    _logger.LogInformation("Processing image for button {ButtonId}: {Path}",
-                        button.ButtonId, button.ImagePath);
-
-                    var processedImage = await _imageService.ProcessImageForButtonAsync(button.ImagePath, ringColor);
-                    if (processedImage != null && processedImage.Length > 0)
-                    {
-                        var imageProgress = new Progress<int>(p =>
-                            progress?.Report(10 + (i * 70 / profile.Buttons.Count) + (p * 70 / profile.Buttons.Count / 100)));
-
-                        _logger.LogInformation("Sending processed image for button {ButtonId}: {Size} bytes (JPEG)",
-                            button.ButtonId, processedImage.Length);
-
-                        var imageSent = await _deviceService.SendButtonImageAsync(
-                            0,
-                            button.ButtonId,
-                            processedImage,
-                            imageProgress,
-                            cancellationToken);
-
-                        if (!imageSent)
-                        {
-                            _logger.LogWarning("Failed to send image for button {ButtonId}", button.ButtonId);
-                        }
-                    }
-                    else
-                    {
-                        _logger.LogWarning("Failed to process image for button {ButtonId}: {Path}",
-                            button.ButtonId, button.ImagePath);
-                    }
-                }
-                else if (!string.IsNullOrEmpty(button.ImagePath))
-                {
-                    _logger.LogWarning("Image file not found for button {ButtonId}: {Path}",
-                        button.ButtonId, button.ImagePath);
-                }
-                else if (button.Action == null || button.Action is NoneAction)
-                {
-                    // Explicitly clear the display so a previously-sent image doesn't persist.
-                    var blank = await _imageService.CreateBlankImageAsync();
-                    await _deviceService.SendButtonImageAsync(0, button.ButtonId, blank, null, cancellationToken);
-                }
-                else if (ringColor.HasValue)
-                {
-                    // No custom image but this button type needs a ring indicator —
-                    // send a black circle with text + ring so the device shows both.
-                    var placeholderLabel = !string.IsNullOrEmpty(button.Name) ? button.Name
-                        : button.Action switch
-                        {
-                            FolderAction       => "Folder",
-                            PluginActionConfig pa when !string.IsNullOrEmpty(pa.ActionName) => pa.ActionName,
-                            PluginActionConfig => "Plugin",
-                            _                  => null
-                        };
-                    _logger.LogInformation("Sending ring placeholder for button {ButtonId} label='{Label}'",
-                        button.ButtonId, placeholderLabel);
-                    var placeholder = await _imageService.CreateRingPlaceholderAsync(ringColor.Value, placeholderLabel);
-                    await _deviceService.SendButtonImageAsync(0, button.ButtonId, placeholder, null, cancellationToken);
+                    _logger.LogDebug("Root button {ButtonId}: unchanged, skipping", button.ButtonId);
+                    progress?.Report(10 + ((i + 1) * 40 / profile.Buttons.Count));
+                    continue;
                 }
 
-                // Отправить действие (null → NoneAction чтобы очистить предыдущую конфигурацию на устройстве)
-                var actionToSend = button.Action ?? new NoneAction();
-                if (actionToSend is MacroKeyboard.Core.Models.KeyboardAction ka &&
-                    ka.KeyCode == 0 &&
-                    System.Text.Encoding.UTF8.GetByteCount(ka.Text ?? "") > 44)
-                {
-                    await _deviceService.SetButtonLongTextAsync(
-                        0, 0xFF, button.ButtonId, ka.Text!,
-                        null, cancellationToken);
-                }
-                else
-                {
-                    await _deviceService.SetButtonActionAsync(
-                        0, button.ButtonId, actionToSend, cancellationToken);
-                }
+                _logger.LogInformation("Root button {ButtonId}: changed, sending", button.ButtonId);
 
-                // Отправить имя кнопки (пустая строка — firmware сгенерирует имя из типа команды)
-                await _deviceService.SetButtonNameAsync(
-                    0,
-                    button.ButtonId,
-                    button.Name ?? string.Empty,
-                    cancellationToken);
+                await SendRootButtonAsync(profile, button, i, progress, cancellationToken);
 
-                // Отправить LED
-                await _deviceService.SetLedColorAsync(
-                    0,
-                    button.ButtonId,
-                    button.Led,
-                    cancellationToken);
-
-                // Отправить действие long press
-                await _deviceService.SetButtonLongPressActionAsync(
-                    0, button.ButtonId, button.LongPressAction,
-                    cancellationToken: cancellationToken);
-
-                // Отправить имя long press (пустая строка — firmware сгенерирует из типа действия)
-                await _deviceService.SetButtonLongPressNameAsync(
-                    0, button.ButtonId, button.LongPressName ?? string.Empty,
-                    cancellationToken: cancellationToken);
-
-                progress?.Report(10 + ((i + 1) * 70 / profile.Buttons.Count));
-
-                // Small delay between buttons to let firmware process commands
+                _sentConfigCache[key] = fingerprint;
+                anythingSent = true;
+                progress?.Report(10 + ((i + 1) * 40 / profile.Buttons.Count));
                 await Task.Delay(50, cancellationToken);
             }
 
-            // 3. Отправить кнопки внутри папок
+            // 3. Folder buttons — send only changed ones.
             foreach (var folder in profile.Folders)
             {
                 for (int i = 0; i < 10; i++)
                 {
                     if (cancellationToken.IsCancellationRequested) return false;
 
-                    var btn = folder.Buttons.Count > i ? folder.Buttons[i] : null;
+                    var btn   = folder.Buttons.Count > i ? folder.Buttons[i] : null;
                     byte btnId = btn != null ? btn.ButtonId : (byte)i;
 
-                    var folderAction = btn?.Action ?? new NoneAction();
-                    if (folderAction is MacroKeyboard.Core.Models.KeyboardAction fka &&
-                        fka.KeyCode == 0 &&
-                        System.Text.Encoding.UTF8.GetByteCount(fka.Text ?? "") > 44)
+                    // Resolve LaunchApp icon before fingerprinting (same as root above).
+                    if (btn != null && string.IsNullOrEmpty(btn.ImagePath) &&
+                        btn.Action is MacroKeyboard.Core.Models.LaunchAppAction fla &&
+                        !string.IsNullOrEmpty(fla.ExecutablePath))
                     {
-                        await _deviceService.SetButtonLongTextAsync(
-                            0, folder.FolderId, btnId, fka.Text!,
-                            null, cancellationToken);
-                    }
-                    else
-                    {
-                        await _deviceService.SetFolderButtonActionAsync(
-                            0, folder.FolderId, btnId, folderAction, cancellationToken);
+                        var iconPath = Path.Combine(
+                            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                            "MacroKeyboard", "icons",
+                            Path.GetFileNameWithoutExtension(fla.ExecutablePath) + ".png");
+                        if (File.Exists(iconPath))
+                            btn.ImagePath = iconPath;
                     }
 
-                    await _deviceService.SetFolderButtonNameAsync(
-                        0, folder.FolderId, btnId,
-                        btn?.Name ?? string.Empty, cancellationToken);
-
-                    var led = btn?.Led ?? LedConfig.FromRgb(80, 80, 80);
-                    await _deviceService.SetFolderButtonLedAsync(
-                        0, folder.FolderId, btnId, led, cancellationToken);
-
-                    await _deviceService.SetButtonLongPressActionAsync(
-                        0, btnId, btn?.LongPressAction, folder.FolderId, cancellationToken);
-
-                    await _deviceService.SetButtonLongPressNameAsync(
-                        0, btnId, btn?.LongPressName ?? string.Empty, folder.FolderId, cancellationToken);
-
-                    // Send image for folder button (if configured)
-                    if (btn != null && !string.IsNullOrEmpty(btn.ImagePath) && File.Exists(btn.ImagePath))
+                    // Fingerprint the effective state we'd send (same defaults as the send path).
+                    var effectiveBtn = btn ?? new ButtonConfig
                     {
-                        var processedImage = await _imageService.ProcessImageForButtonAsync(btn.ImagePath, null);
-                        if (processedImage != null && processedImage.Length > 0)
-                        {
-                            await _deviceService.SendFolderButtonImageAsync(
-                                0, folder.FolderId, btnId, processedImage, null, cancellationToken);
-                        }
+                        ButtonId = (byte)i,
+                        Led      = LedConfig.FromRgb(80, 80, 80),
+                    };
+                    var key         = (profile.ProfileId, folder.FolderId, btnId);
+                    var fingerprint = ComputeButtonFingerprint(effectiveBtn);
+
+                    if (_sentConfigCache.TryGetValue(key, out var cachedFp) && cachedFp == fingerprint)
+                    {
+                        _logger.LogDebug("Folder {FolderId} button {ButtonId}: unchanged, skipping",
+                            folder.FolderId, btnId);
+                        continue;
                     }
 
+                    _logger.LogInformation("Folder {FolderId} button {ButtonId}: changed, sending",
+                        folder.FolderId, btnId);
+
+                    await SendFolderButtonAsync(folder, btn, btnId, cancellationToken);
+
+                    _sentConfigCache[key] = fingerprint;
+                    anythingSent = true;
                     await Task.Delay(50, cancellationToken);
                 }
             }
 
-            // 4. Отправить конфигурацию энкодера
-            var enc = profile.Encoder;
-            await _deviceService.SetEncoderActionAsync(0, enc?.RotateCwAction, cancellationToken);
-            await _deviceService.SetEncoderActionAsync(1, enc?.RotateCcwAction, cancellationToken);
-            await _deviceService.SetEncoderActionAsync(2, enc?.PressAction, cancellationToken);
-            await _deviceService.SetEncoderActionAsync(3, enc?.LongPressAction, cancellationToken);
+            // 4. Encoder — send only if changed.
+            var encoderKey = (profile.ProfileId, (byte)0xFE, (byte)0xFF);
+            var encoderFp  = ComputeEncoderFingerprint(profile.Encoder);
+            if (!_sentConfigCache.TryGetValue(encoderKey, out var cachedEncFp) || cachedEncFp != encoderFp)
+            {
+                _logger.LogInformation("Encoder: changed, sending");
+                var enc = profile.Encoder;
+                await _deviceService.SetEncoderActionAsync(0, enc?.RotateCwAction, cancellationToken);
+                await _deviceService.SetEncoderActionAsync(1, enc?.RotateCcwAction, cancellationToken);
+                await _deviceService.SetEncoderActionAsync(2, enc?.PressAction, cancellationToken);
+                await _deviceService.SetEncoderActionAsync(3, enc?.LongPressAction, cancellationToken);
+                _sentConfigCache[encoderKey] = encoderFp;
+                anythingSent = true;
+            }
+            else
+            {
+                _logger.LogDebug("Encoder: unchanged, skipping");
+            }
 
-            // 5. Сохранить профиль на устройстве
+            // 5. Nothing changed — device is already up to date.
+            if (!anythingSent)
+            {
+                _logger.LogInformation("Profile {ProfileId}: all up to date — skipping save/refresh",
+                    profile.ProfileId);
+                progress?.Report(100);
+                return true;
+            }
+
+            // 6. Persist to device NVS and refresh displays.
             var saved = await _deviceService.SaveProfileAsync(0, cancellationToken);
-
-            // 6. Обновить дисплеи — теперь все данные (включая long press) актуальны,
-            //    и кнопки с картинками тоже получат правильный split-layout
             await _deviceService.RefreshDisplaysAsync(cancellationToken);
 
             progress?.Report(100);
-
             _logger.LogInformation("Profile {ProfileId} sent successfully", profile.ProfileId);
-
             return saved;
         }
         catch (Exception ex)
@@ -365,31 +347,162 @@ public class ProfileService : IProfileService
             return false;
         }
     }
-    
+
+    // ── Private send helpers ─────────────────────────────────────────────────
+
+    private async Task SendRootButtonAsync(
+        Profile profile,
+        ButtonConfig button,
+        int buttonIndex,
+        IProgress<int>? progress,
+        CancellationToken cancellationToken)
+    {
+        var ringColor = button.Action switch
+        {
+            FolderAction       => (SixLabors.ImageSharp.Color?)SixLabors.ImageSharp.Color.FromRgb(0xFF, 0xA5, 0x00),
+            PluginActionConfig => (SixLabors.ImageSharp.Color?)SixLabors.ImageSharp.Color.FromRgb(0x8B, 0x5C, 0xF6),
+            _                  => null
+        };
+
+        if (!string.IsNullOrEmpty(button.ImagePath) && File.Exists(button.ImagePath))
+        {
+            _logger.LogInformation("Processing image for button {ButtonId}: {Path}",
+                button.ButtonId, button.ImagePath);
+
+            var processedImage = await _imageService.ProcessImageForButtonAsync(button.ImagePath, ringColor);
+            if (processedImage != null && processedImage.Length > 0)
+            {
+                _logger.LogInformation("Sending processed image for button {ButtonId}: {Size} bytes (JPEG)",
+                    button.ButtonId, processedImage.Length);
+
+                var imageProgress = new Progress<int>(p =>
+                    progress?.Report(10 + (buttonIndex * 40 / 10) + (p * 40 / 10 / 100)));
+
+                var imageSent = await _deviceService.SendButtonImageAsync(
+                    0, button.ButtonId, processedImage, imageProgress, cancellationToken);
+
+                if (!imageSent)
+                    _logger.LogWarning("Failed to send image for button {ButtonId}", button.ButtonId);
+            }
+            else
+            {
+                _logger.LogWarning("Failed to process image for button {ButtonId}: {Path}",
+                    button.ButtonId, button.ImagePath);
+            }
+        }
+        else if (!string.IsNullOrEmpty(button.ImagePath))
+        {
+            _logger.LogWarning("Image file not found for button {ButtonId}: {Path}",
+                button.ButtonId, button.ImagePath);
+        }
+        else if (button.Action == null || button.Action is NoneAction)
+        {
+            var blank = await _imageService.CreateBlankImageAsync();
+            await _deviceService.SendButtonImageAsync(0, button.ButtonId, blank, null, cancellationToken);
+        }
+        else if (ringColor.HasValue)
+        {
+            // Covers both FolderAction (orange ring) and PluginActionConfig (purple ring).
+            // Plugin buttons must receive a placeholder so image_size > 0 is stored in
+            // SPIFFS/NVS; otherwise profile_refresh_displays() renders the button name as
+            // text until willAppear fires.  The ring is temporary — willAppear overwrites
+            // it with the actual plugin state image.
+            var placeholderLabel = button.Name ?? string.Empty;
+            _logger.LogInformation("Sending ring placeholder for button {ButtonId} label='{Label}'",
+                button.ButtonId, placeholderLabel);
+            var placeholder = await _imageService.CreateRingPlaceholderAsync(ringColor.Value, placeholderLabel);
+            await _deviceService.SendButtonImageAsync(0, button.ButtonId, placeholder, null, cancellationToken);
+        }
+
+        var actionToSend = button.Action ?? new NoneAction();
+        if (actionToSend is MacroKeyboard.Core.Models.KeyboardAction ka &&
+            ka.KeyCode == 0 &&
+            System.Text.Encoding.UTF8.GetByteCount(ka.Text ?? "") > 44)
+        {
+            await _deviceService.SetButtonLongTextAsync(
+                0, 0xFF, button.ButtonId, ka.Text!, null, cancellationToken);
+        }
+        else
+        {
+            await _deviceService.SetButtonActionAsync(0, button.ButtonId, actionToSend, cancellationToken);
+        }
+
+        await _deviceService.SetButtonNameAsync(0, button.ButtonId, button.Name ?? string.Empty, cancellationToken);
+        await _deviceService.SetLedColorAsync(0, button.ButtonId, button.Led, cancellationToken);
+        await _deviceService.SetButtonLongPressActionAsync(
+            0, button.ButtonId, button.LongPressAction, cancellationToken: cancellationToken);
+        await _deviceService.SetButtonLongPressNameAsync(
+            0, button.ButtonId, button.LongPressName ?? string.Empty, cancellationToken: cancellationToken);
+    }
+
+    private async Task SendFolderButtonAsync(
+        Folder folder,
+        ButtonConfig? btn,
+        byte btnId,
+        CancellationToken cancellationToken)
+    {
+        var folderAction = btn?.Action ?? new NoneAction();
+        if (folderAction is MacroKeyboard.Core.Models.KeyboardAction fka &&
+            fka.KeyCode == 0 &&
+            System.Text.Encoding.UTF8.GetByteCount(fka.Text ?? "") > 44)
+        {
+            await _deviceService.SetButtonLongTextAsync(
+                0, folder.FolderId, btnId, fka.Text!, null, cancellationToken);
+        }
+        else
+        {
+            await _deviceService.SetFolderButtonActionAsync(
+                0, folder.FolderId, btnId, folderAction, cancellationToken);
+        }
+
+        await _deviceService.SetFolderButtonNameAsync(
+            0, folder.FolderId, btnId, btn?.Name ?? string.Empty, cancellationToken);
+
+        var led = btn?.Led ?? LedConfig.FromRgb(80, 80, 80);
+        await _deviceService.SetFolderButtonLedAsync(0, folder.FolderId, btnId, led, cancellationToken);
+
+        await _deviceService.SetButtonLongPressActionAsync(
+            0, btnId, btn?.LongPressAction, folder.FolderId, cancellationToken);
+        await _deviceService.SetButtonLongPressNameAsync(
+            0, btnId, btn?.LongPressName ?? string.Empty, folder.FolderId, cancellationToken);
+
+        if (btn != null && !string.IsNullOrEmpty(btn.ImagePath) && File.Exists(btn.ImagePath))
+        {
+            var folderRingColor = btn.Action switch
+            {
+                FolderAction       => (SixLabors.ImageSharp.Color?)SixLabors.ImageSharp.Color.FromRgb(0xFF, 0xA5, 0x00),
+                PluginActionConfig => (SixLabors.ImageSharp.Color?)SixLabors.ImageSharp.Color.FromRgb(0x8B, 0x5C, 0xF6),
+                _                  => null
+            };
+            var processedImage = await _imageService.ProcessImageForButtonAsync(btn.ImagePath, folderRingColor);
+            if (processedImage != null && processedImage.Length > 0)
+            {
+                await _deviceService.SendFolderButtonImageAsync(
+                    0, folder.FolderId, btnId, processedImage, null, cancellationToken);
+            }
+        }
+    }
+
+    // ── Load from device ─────────────────────────────────────────────────────
+
     public async Task<Profile?> LoadProfileFromDeviceAsync(byte profileId, CancellationToken cancellationToken = default)
     {
         try
         {
             _logger.LogInformation("Loading profile {ProfileId} from device", profileId);
-            
-            // Проверить подключение к устройству
+
             if (!_deviceService.IsConnected)
             {
                 _logger.LogWarning("Device is not connected");
                 return null;
             }
-            
-            // Start from the existing stored profile so folders/images/names are preserved.
-            // The device only knows about root-button actions and LEDs — everything else
-            // (folders, ImagePath, custom names) lives on the PC side only.
+
             var profile = await _repository.GetByIdAsync(profileId)
                           ?? Profile.CreateEmpty(profileId, $"Profile {profileId}");
 
-            // Merge root-button actions and LEDs from device into the stored profile.
             for (byte buttonId = 0; buttonId < 10; buttonId++)
             {
-                if (cancellationToken.IsCancellationRequested)
-                    return null;
+                if (cancellationToken.IsCancellationRequested) return null;
 
                 var button = profile.Buttons.FirstOrDefault(b => b.ButtonId == buttonId);
                 if (button == null) continue;
@@ -411,9 +524,7 @@ public class ProfileService : IProfileService
             }
 
             await _repository.SaveAsync(profile);
-            
             _logger.LogInformation("Profile {ProfileId} loaded from device successfully", profileId);
-            
             return profile;
         }
         catch (Exception ex)
@@ -422,14 +533,15 @@ public class ProfileService : IProfileService
             return null;
         }
     }
-    
+
+    // ── Import / Export ──────────────────────────────────────────────────────
+
     public async Task<bool> ExportProfileAsync(Profile profile, string filePath, CancellationToken cancellationToken = default)
     {
         try
         {
             var json = Newtonsoft.Json.JsonConvert.SerializeObject(profile, Newtonsoft.Json.Formatting.Indented);
             await File.WriteAllTextAsync(filePath, json, cancellationToken);
-            
             _logger.LogInformation("Profile {ProfileId} exported to {FilePath}", profile.ProfileId, filePath);
             return true;
         }
@@ -439,18 +551,15 @@ public class ProfileService : IProfileService
             return false;
         }
     }
-    
+
     public async Task<Profile?> ImportProfileAsync(string filePath, CancellationToken cancellationToken = default)
     {
         try
         {
-            var json = await File.ReadAllTextAsync(filePath, cancellationToken);
+            var json    = await File.ReadAllTextAsync(filePath, cancellationToken);
             var profile = Newtonsoft.Json.JsonConvert.DeserializeObject<Profile>(json);
-            
-            if (profile == null)
-                return null;
-            
-            // Найти свободный ID
+            if (profile == null) return null;
+
             var existingProfiles = await _repository.GetAllAsync();
             for (byte i = 0; i < 5; i++)
             {
@@ -460,9 +569,8 @@ public class ProfileService : IProfileService
                     break;
                 }
             }
-            
+
             await _repository.SaveAsync(profile);
-            
             _logger.LogInformation("Profile imported from {FilePath}", filePath);
             return profile;
         }
