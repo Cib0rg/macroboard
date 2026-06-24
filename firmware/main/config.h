@@ -122,6 +122,7 @@
 #define TASK_PRIORITY_DISPLAY   12
 #define TASK_PRIORITY_LED       10
 #define TASK_PRIORITY_SAVE      8
+#define TASK_PRIORITY_HEARTBEAT 6
 #define TASK_PRIORITY_MONITOR   3
 
 // ============================================
@@ -134,6 +135,7 @@
 #define STACK_SIZE_DISPLAY      8192
 #define STACK_SIZE_LED          4096
 #define STACK_SIZE_SAVE         4096
+#define STACK_SIZE_HEARTBEAT    2048
 
 // ============================================
 // Timing Configuration

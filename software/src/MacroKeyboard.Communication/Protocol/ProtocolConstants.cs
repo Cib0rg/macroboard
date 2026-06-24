@@ -67,6 +67,7 @@ public static class ProtocolConstants
     public const byte EVENT_DEVICE_READY = 0xF4;
     public const byte EVENT_FOLDER_ENTERED = 0xF5;
     public const byte EVENT_FOLDER_EXITED = 0xF6;
+    public const byte EVENT_HEARTBEAT = 0xF8;
     public const byte EVENT_ERROR = 0xFF;
     
     // Коды статуса

@@ -60,6 +60,10 @@
 #define EVENT_DEVICE_READY          0xF4
 #define EVENT_FOLDER_ENTERED        0xF5
 #define EVENT_FOLDER_EXITED         0xF6
+// Periodic liveness heartbeat — sent every 2 s by heartbeat_task.
+// Lets the host detect that the device is alive and TX is working even when
+// 0xF4 (EVENT_DEVICE_READY) was sent before the backend connected.
+#define EVENT_HEARTBEAT             0xF8
 #define EVENT_ERROR                 0xFF
 
 // Status codes

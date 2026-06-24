@@ -151,6 +151,12 @@ public class HidDeviceManager : IDisposable
     public void Disconnect()
     {
         _logger.LogInformation("Explicit device disconnect requested");
+        // Set _deviceLost = true so that HandleDisconnect doesn't skip the cleanup.
+        // The stale-disconnect guard (if !_deviceLost → skip) exists to prevent a
+        // Task.Run fired by the monitor thread from destroying a fresh reconnection.
+        // An explicit Disconnect() call must always proceed regardless of that flag.
+        // _deviceLost is reset to false in ConnectAsync before the next open attempt.
+        _deviceLost = true;
         HandleDisconnect(fireEvent: true);
     }
 
@@ -418,26 +424,35 @@ public class HidDeviceManager : IDisposable
                     {
                         consecutiveErrors = 0; // Reset error counter on successful read
 
-                        // Try to route to a pending response waiter
-                        bool routed = false;
+                        // The protocol_packet_t layout is: magic(0) | cmd_id(1) | ...
+                        // Event packets have cmd_id >= 0xF0; command responses have cmd_id < 0xF0.
+                        // We must check byte[1] (cmd_id), NOT byte[0] (magic=0xA5, always < 0xF0).
+                        // Checking the wrong byte caused every event to be misrouted to a pending
+                        // command waiter (FIFO poisoning: waiter got event data, not the response).
+                        bool isEvent = data.Length > 1 && data[1] >= 0xF0;
 
-                        // Find the oldest pending response and complete it
-                        foreach (var kvp in _pendingResponses)
+                        bool routed = false;
+                        if (!isEvent && _pendingResponses.Count > 0)
                         {
-                            if (_pendingResponses.TryRemove(kvp.Key, out var tcs))
+                            // Route command response to the oldest pending waiter
+                            foreach (var kvp in _pendingResponses)
                             {
-                                tcs.TrySetResult(data);
-                                routed = true;
-                                _logger.LogDebug("Routed {Length} bytes to pending response (id={Id})",
-                                    data.Length, kvp.Key);
-                                break;
+                                if (_pendingResponses.TryRemove(kvp.Key, out var tcs))
+                                {
+                                    tcs.TrySetResult(data);
+                                    routed = true;
+                                    _logger.LogDebug("Routed cmd=0x{Cmd:X2} response ({Length}b) to waiter id={Id}",
+                                        data.Length > 1 ? data[1] : data[0], data.Length, kvp.Key);
+                                    break;
+                                }
                             }
                         }
 
                         if (!routed)
                         {
-                            // No pending response — this is an unsolicited event from device
-                            _logger.LogDebug("Received unsolicited {Length} bytes, firing DataReceived", data.Length);
+                            // Event packet OR no pending waiter — fire as unsolicited event
+                            _logger.LogDebug("Received unsolicited cmd=0x{Cmd:X2} ({Length}b) → DataReceived",
+                                data.Length > 1 ? data[1] : data[0], data.Length);
                             DataReceived?.Invoke(this, data);
                         }
                     }

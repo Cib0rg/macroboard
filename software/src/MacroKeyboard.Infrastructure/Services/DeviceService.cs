@@ -45,6 +45,7 @@ public class DeviceService : IDeviceService
 
     public event EventHandler<DeviceEventArgs>? DeviceConnected;
     public event EventHandler<DeviceEventArgs>? DeviceDisconnected;
+    public event EventHandler? DeviceReady;
     public event EventHandler<ButtonEventArgs>? ButtonPressed;
     public event EventHandler<ButtonEventArgs>? ButtonReleased;
     public event EventHandler<EncoderEventArgs>? EncoderRotated;
@@ -475,6 +476,19 @@ public class DeviceService : IDeviceService
                     
                 case ProtocolConstants.EVENT_FOLDER_EXITED:
                     HandleFolderExited(packet.Payload);
+                    break;
+
+                case ProtocolConstants.EVENT_DEVICE_READY:
+                    _logger.LogInformation("Received EVENT_DEVICE_READY (0xF4) from firmware");
+                    DeviceReady?.Invoke(this, EventArgs.Empty);
+                    break;
+
+                case ProtocolConstants.EVENT_HEARTBEAT:
+                    // Periodic liveness signal (every 2 s). Treated identically to
+                    // EVENT_DEVICE_READY so the host can confirm the device is alive
+                    // and the TX path is working after a backend restart.
+                    _logger.LogTrace("Received EVENT_HEARTBEAT (0xF8) from firmware");
+                    DeviceReady?.Invoke(this, EventArgs.Empty);
                     break;
             }
         }

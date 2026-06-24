@@ -3,6 +3,7 @@ using MacroKeyboard.Backend.Plugin;
 using MacroKeyboard.Core.Models;
 using MacroKeyboard.Core.Services;
 using Microsoft.Extensions.Logging;
+using SharedEvents = MacroKeyboard.Shared.Events;
 
 namespace MacroKeyboard.Backend.Services;
 
@@ -23,6 +24,7 @@ public class ActionExecutorService
 
     public ActionExecutorService(
         IDeviceService deviceService,
+        DeviceManager deviceManager,
         IProfileService profileService,
         IShellCommandExecutor shellExecutor,
         PluginManager pluginManager,
@@ -34,17 +36,21 @@ public class ActionExecutorService
         _pluginManager = pluginManager;
         _logger = logger;
 
-        _deviceService.ButtonPressed    += OnButtonPressed;
-        _deviceService.FolderEntered    += (_, e) => _currentFolderId = e.FolderId;
-        _deviceService.FolderExited     += (_, e) => _currentFolderId = e.FolderDepth == 0 ? (byte)0xFF : e.ParentFolderId;
-        _deviceService.DeviceConnected  += OnDeviceConnected;
+        _deviceService.ButtonPressed += OnButtonPressed;
+        _deviceService.FolderEntered += (_, e) => _currentFolderId = e.FolderId;
+        _deviceService.FolderExited  += (_, e) => _currentFolderId = e.FolderDepth == 0 ? (byte)0xFF : e.ParentFolderId;
+        // Subscribe to DeviceManager.DeviceConnected (fires only after firmware is confirmed ready),
+        // not DeviceService.DeviceConnected (fires on raw USB connect, firmware may still be booting).
+        // The premature CMD 0x12 that was sent via the raw event would arrive late and poison the
+        // CMD 0x02 FIFO slot in HidDeviceManager, causing GetDeviceInfo to fail and triggering
+        // the boot retry counter even when the device was perfectly healthy.
+        deviceManager.DeviceConnected += OnDeviceConnected;
     }
 
-    private async void OnDeviceConnected(object? sender, DeviceEventArgs e)
+    private async void OnDeviceConnected(object? sender, SharedEvents.DeviceEventArgs e)
     {
         try
         {
-            await Task.Delay(300); // wait for device to be ready after connect
             var (folderId, depth) = await _deviceService.GetFolderStateAsync();
             _currentFolderId = depth > 0 ? folderId : (byte)0xFF;
             _logger.LogInformation("Device connected: folder state restored — folderId={FolderId}, depth={Depth}",

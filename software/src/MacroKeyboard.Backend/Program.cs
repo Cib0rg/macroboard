@@ -20,7 +20,7 @@ Environment.CurrentDirectory = AppContext.BaseDirectory;
 Log.Logger = new LoggerConfiguration()
     .MinimumLevel.Debug()
     .WriteTo.Console()
-    .WriteTo.File("logs/backend-.log", rollingInterval: RollingInterval.Day)
+    .WriteTo.File("logs/backend-.log", rollingInterval: RollingInterval.Day, retainedFileCountLimit: 3)
     .CreateLogger();
 
 try

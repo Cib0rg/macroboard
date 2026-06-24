@@ -31,9 +31,19 @@ esp_err_t usb_vendor_send(const uint8_t* data, size_t length) {
         return ESP_ERR_INVALID_STATE;
     }
 
-    // Send via TinyUSB Vendor class (interface 0 of vendor = first vendor itf)
-    uint32_t written = tud_vendor_n_write(0, data, length);
-    tud_vendor_n_flush(0);
+    // Send via TinyUSB Vendor class (interface 0 of vendor = first vendor itf).
+    // Retry up to 10 × 5 ms = 50 ms if the TX FIFO is momentarily full (e.g. a
+    // pending packet left over from the previous host session before it reconnected).
+    uint32_t written = 0;
+    for (int attempt = 0; attempt < 10 && written == 0; attempt++) {
+        written = tud_vendor_n_write(0, data, length);
+        if (written == 0) {
+            vTaskDelay(pdMS_TO_TICKS(5));
+        }
+    }
+    if (written > 0) {
+        tud_vendor_n_flush(0);
+    }
 
     return (written > 0) ? ESP_OK : ESP_FAIL;
 }

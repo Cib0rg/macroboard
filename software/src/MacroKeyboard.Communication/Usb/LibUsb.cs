@@ -51,19 +51,26 @@ internal sealed class UsbDeviceWrapper : IDisposable
 
         _device.Open();
 
-        // On Linux, the kernel configures the device during enumeration and
-        // attaches drivers (e.g. usbhid to the HID keyboard interface).
-        // Calling SetConfiguration while a kernel driver is active causes
-        // "Resource busy" (EBUSY). We only need to claim our Vendor interface
-        // (Interface 1), so we can safely skip SetConfiguration if it fails.
-        try
+        // On Windows, the WinUSB/OS driver configures the device during enumeration
+        // (SET_CONFIGURATION is sent before our code runs). Re-sending SET_CONFIGURATION(1)
+        // on a device that is already in config 1 causes TinyUSB on the ESP32 to tear
+        // down and re-initialize all class drivers. The bulk OUT endpoint is not always
+        // re-armed after this reset: BulkWrite then returns SUCCESS (hardware ACKs the
+        // transfer) but TinyUSB's FIFO never receives the data, so the firmware never
+        // sees incoming commands.  Skip SetConfiguration on Windows to avoid this.
+        //
+        // On Linux/macOS, the kernel may not have set the configuration yet (e.g. usbhid
+        // attaches to the HID interface separately), so we still try and ignore failures.
+        if (!OperatingSystem.IsWindows())
         {
-            _device.SetConfiguration(1);
-        }
-        catch (UsbException)
-        {
-            // Already configured by the kernel — this is expected on Linux
-            // when usbhid driver is attached to the HID interface.
+            try
+            {
+                _device.SetConfiguration(1);
+            }
+            catch (UsbException)
+            {
+                // Already configured by the kernel driver — expected on Linux.
+            }
         }
 
         return true;

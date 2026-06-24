@@ -16,6 +16,7 @@ idf_component_register(
         "protocol/packet_parser.c"
         "protocol/image_transfer.c"
         "protocol/text_transfer.c"
+        "protocol/heartbeat_task.c"
         "storage/nvs_manager.c"
         "storage/text_storage.c"
         "storage/profile_storage.c"

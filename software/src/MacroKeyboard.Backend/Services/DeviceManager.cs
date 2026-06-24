@@ -17,6 +17,15 @@ public class DeviceManager : IDisposable
     // Cancelled whenever device disconnects, so the monitoring loop wakes up immediately
     private volatile CancellationTokenSource? _sleepCts;
 
+    // Boot-wait state: how many consecutive GetDeviceInfo probes have failed for the
+    // current connection attempt.  Reset to 0 on each new USB connection.
+    private const int MaxBootRetries = 8;   // ~32 s at 3 s timeout + 1 s pause per attempt
+    private int _bootRetryCount;
+
+    // Set (TrySetResult) by OnDeviceReady when EVENT_DEVICE_READY (0xF4) arrives.
+    // Replaced with a fresh TCS on every new USB connection so it can be awaited again.
+    private volatile TaskCompletionSource<bool>? _firmwareReadyTcs;
+
     public event EventHandler<SharedEvents.DeviceEventArgs>? DeviceConnected;
     public event EventHandler<SharedEvents.DeviceEventArgs>? DeviceDisconnected;
     public event EventHandler<SharedEvents.ButtonEventArgs>? ButtonPressed;
@@ -41,6 +50,7 @@ public class DeviceManager : IDisposable
         _deviceService.FolderEntered += OnFolderEntered;
         _deviceService.FolderExited += OnFolderExited;
         _deviceService.DeviceDisconnected += OnDeviceDisconnected;
+        _deviceService.DeviceReady += OnDeviceReady;
     }
 
     public async Task StartAsync(CancellationToken cancellationToken = default)
@@ -104,7 +114,10 @@ public class DeviceManager : IDisposable
                     {
                         _logger.LogInformation("USB connection established — waiting for firmware...");
                         wasConnected = true;
-                        // firmwareReady stays false; the block below will poll until the firmware responds
+                        _bootRetryCount = 0;
+                        // Fresh TCS for this connection — EVENT_DEVICE_READY (0xF4) will complete it.
+                        _firmwareReadyTcs = new TaskCompletionSource<bool>(
+                            TaskCreationOptions.RunContinuationsAsynchronously);
                     }
                     else
                     {
@@ -115,20 +128,41 @@ public class DeviceManager : IDisposable
                 }
 
                 // USB is up but the firmware has not yet confirmed it is ready.
-                // Retry GetDeviceInfoAsync (each call has a 3 s internal timeout) until
-                // the firmware actually responds. This loop handles:
-                //   • Fresh boot: firmware takes 1–5 s to load images before starting tasks.
-                //   • Backend restart while device is already running: firmware responds immediately.
+                // Strategy:
+                //   First probe: wait up to 4 s for EVENT_DEVICE_READY (0xF4) or
+                //     EVENT_HEARTBEAT (0xF8, sent every 2 s by heartbeat_task), then probe CMD 0x02.
+                //     - Fresh boot: 0xF4 arrives quickly → probe early.
+                //     - Already-running firmware (backend restart): 0xF4 is gone but 0xF8 arrives
+                //       within 2 s → drain window ends early → fast probe.
+                //     - Any stale TX FIFO data from the old session is drained by the monitor thread
+                //       as unsolicited DataReceived BEFORE the CMD 0x02 waiter is registered.
+                //   Retries (bootRetryCount > 0): use short 500 ms settle.
+                //   After MaxBootRetries failures → CMD_FACTORY_RESET + USB reconnect.
                 if (wasConnected && !firmwareReady)
                 {
-                    // Brief settle delay on every attempt (avoids log spam; also gives the firmware
-                    // a moment to initialise the USB vendor interface after enumeration).
-                    await Task.Delay(500, cancellationToken);
+                    if (_bootRetryCount == 0)
+                    {
+                        // First probe: drain window — wait for 0xF4/0xF8 or 4 s, whichever comes first.
+                        _logger.LogDebug("Waiting up to 4s for EVENT_DEVICE_READY (0xF4) or EVENT_HEARTBEAT (0xF8)...");
+                        using var drainCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                        await Task.WhenAny(_firmwareReadyTcs!.Task, Task.Delay(4000, drainCts.Token));
+                        drainCts.Cancel();
+
+                        if (_firmwareReadyTcs.Task.IsCompleted)
+                            _logger.LogInformation("Firmware ready signal received (0xF4/0xF8) — probing");
+                        else
+                            _logger.LogInformation("No ready signal in 4s — probing anyway");
+                    }
+                    else
+                    {
+                        await Task.Delay(500, cancellationToken);
+                    }
 
                     var deviceInfo = await _deviceService.GetDeviceInfoAsync(cancellationToken);
                     if (deviceInfo.IsConnected)
                     {
                         firmwareReady = true;
+                        _bootRetryCount = 0;
                         _logger.LogInformation("Firmware ready — loading image hash cache");
                         await _deviceService.LoadImageHashCacheAsync(0, cancellationToken);
                         _logger.LogInformation("Firing DeviceConnected");
@@ -141,8 +175,35 @@ public class DeviceManager : IDisposable
                     }
                     else
                     {
-                        _logger.LogDebug("Firmware not ready yet (still booting) — retrying...");
-                        await InterruptibleDelayAsync(TimeSpan.FromSeconds(1), cancellationToken);
+                        _bootRetryCount++;
+                        if (_bootRetryCount >= MaxBootRetries)
+                        {
+                            _logger.LogWarning(
+                                "Firmware did not respond after {Max} attempts (~{Sec}s) — " +
+                                "sending CMD_FACTORY_RESET then forcing USB reconnect",
+                                MaxBootRetries, MaxBootRetries * 4);
+                            _bootRetryCount = 0;
+                            wasConnected = false;
+                            firmwareReady = false;
+                            // Best-effort reboot: if protocol_task was stuck (e.g. on a SPIFFS
+                            // write from the previous session), the device reboots cleanly, sends
+                            // 0xF4 on reconnect, and the next probe succeeds.  If the device cannot
+                            // process this command either, RebootDeviceAsync times out and we fall
+                            // through to the forced USB close below.
+                            _logger.LogInformation("Requesting firmware reboot via CMD_FACTORY_RESET...");
+                            try { await _deviceService.RebootDeviceAsync(cancellationToken); } catch { }
+                            // Allow the device to reboot and disconnect naturally (100 ms firmware
+                            // delay + USB re-enumeration) before we close the handle ourselves.
+                            await Task.Delay(500, cancellationToken);
+                            _deviceService.Disconnect();
+                            await InterruptibleDelayAsync(TimeSpan.FromSeconds(2), cancellationToken);
+                        }
+                        else
+                        {
+                            _logger.LogDebug("Firmware not ready yet ({N}/{Max}) — retrying...",
+                                _bootRetryCount, MaxBootRetries);
+                            await InterruptibleDelayAsync(TimeSpan.FromSeconds(1), cancellationToken);
+                        }
                     }
                     continue;
                 }
@@ -255,6 +316,20 @@ public class DeviceManager : IDisposable
         });
     }
 
+    private void OnDeviceReady(object? sender, EventArgs e)
+    {
+        var tcs = _firmwareReadyTcs;
+        if (tcs != null && !tcs.Task.IsCompleted)
+        {
+            // First signal after connect — log at Info and wake the probe loop.
+            _logger.LogInformation("Firmware signalled ready (0xF4 or 0xF8 heartbeat)");
+            tcs.TrySetResult(true);
+            _sleepCts?.Cancel();
+        }
+        // Subsequent heartbeats while already connected are silently ignored here;
+        // DeviceService already logs them at Trace level.
+    }
+
     private void OnDeviceDisconnected(object? sender, EventArgs e)
     {
         _logger.LogWarning("Device disconnected");
@@ -282,5 +357,6 @@ public class DeviceManager : IDisposable
         _deviceService.FolderEntered -= OnFolderEntered;
         _deviceService.FolderExited -= OnFolderExited;
         _deviceService.DeviceDisconnected -= OnDeviceDisconnected;
+        _deviceService.DeviceReady -= OnDeviceReady;
     }
 }

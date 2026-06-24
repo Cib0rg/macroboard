@@ -16,6 +16,7 @@
 #include "usb/usb_hid_keyboard.h"
 #include "usb/usb_vendor.h"
 #include "protocol/protocol_handler.h"
+#include "protocol/heartbeat_task.h"
 #include "storage/nvs_manager.h"
 #include "storage/profile_storage.h"
 #include "storage/image_storage.h"
@@ -258,6 +259,13 @@ void app_main(void) {
     xTaskCreatePinnedToCore(save_task_fn, "save", STACK_SIZE_SAVE, NULL,
                             TASK_PRIORITY_SAVE, NULL, 0);
     ESP_LOGI(TAG, "✓ Save task created (Core 0)");
+
+    // 6.5c Heartbeat task (Core 0) — sends EVENT_HEARTBEAT (0xF8) every 2 s so
+    //      the host can detect device liveness after a backend restart.  Bypasses
+    //      protocol_cmd_queue so it fires even when protocol_task is blocked on I/O.
+    xTaskCreatePinnedToCore(heartbeat_task, "heartbeat", STACK_SIZE_HEARTBEAT, NULL,
+                            TASK_PRIORITY_HEARTBEAT, NULL, 0);
+    ESP_LOGI(TAG, "✓ Heartbeat task created (Core 0)");
 
     // 6.6 Create display task (Core 1) — SPI draws run independently of protocol_task
     xTaskCreatePinnedToCore(display_task, "display", STACK_SIZE_DISPLAY, NULL,

@@ -52,8 +52,10 @@ extern "C" {
 #define CFG_TUD_HID_EP_BUFSIZE      16
 
 // Vendor FIFO size of TX and RX
+// TX is 256 bytes (4 packets) so a stale pending packet from a previous host
+// session does not block the next command response from being written.
 #define CFG_TUD_VENDOR_RX_BUFSIZE   64
-#define CFG_TUD_VENDOR_TX_BUFSIZE   64
+#define CFG_TUD_VENDOR_TX_BUFSIZE   256
 
 #ifdef __cplusplus
 }

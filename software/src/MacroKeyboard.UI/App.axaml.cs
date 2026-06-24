@@ -37,7 +37,7 @@ public partial class App : Application
         Log.Logger = new LoggerConfiguration()
             .MinimumLevel.Debug()
             .WriteTo.Console()
-            .WriteTo.File("logs/ui-.log", rollingInterval: RollingInterval.Day)
+            .WriteTo.File("logs/ui-.log", rollingInterval: RollingInterval.Day, retainedFileCountLimit: 3)
             .CreateLogger();
 
         // Setup DI

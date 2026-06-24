@@ -16,6 +16,11 @@ public interface IDeviceService
     /// Событие отключения устройства
     /// </summary>
     event EventHandler<DeviceEventArgs>? DeviceDisconnected;
+
+    /// <summary>
+    /// Прошивка полностью загружена и готова к командам (EVENT_DEVICE_READY 0xF4).
+    /// </summary>
+    event EventHandler? DeviceReady;
     
     /// <summary>
     /// Событие нажатия кнопки
