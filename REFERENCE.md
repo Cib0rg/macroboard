@@ -10,7 +10,7 @@
 - `hardware/`: gc9a01 (дисплей), display_mux, buttons, encoder, leds, night_mode
 - `protocol/`: protocol_handler, packet_parser, image_transfer, protocol_types
 - `profile/`: profile_manager, action_executor, profile_types
-- `storage/`: profile_storage, image_storage, nvs_manager
+- `storage/`: profile_storage, image_storage, nvs_manager, save_task
 - `usb/`: usb_hid_keyboard, usb_vendor, usb_descriptors
 - `utils/`: logger, crc, jpeg_decoder, text_render
 
@@ -23,7 +23,7 @@
 - MacroKeyboard.Backend — `ActionExecutorService`, `DeviceManager`, `EventRouter`, `IpcCommandHandler`, `IpcServer`, `ShellCommandExecutor`
 - MacroKeyboard.Communication — все команды протокола
 - MacroKeyboard.Core — все модели, IPC интерфейсы
-- MacroKeyboard.Infrastructure — `DeviceService`, `ImageService`, `ProfileService`
+- MacroKeyboard.Infrastructure — `DeviceService`, `ImageService`, `ProfileService` (diff-based sync)
 - MacroKeyboard.UI — `ProfileEditorView`, `ButtonConfigDialogViewModel`, полный UI
 
 ### Software (реализовано, плагины)
@@ -110,6 +110,96 @@
 | 0x0B | ACTION_TYPE_PLUGIN        | Plugin                |
 
 Delay (0x05) и Shell/LaunchApp/Media/NightMode — реализованы в firmware и software.
+
+---
+
+## Производительность и синхронизация профиля
+
+### Diff-based send (ProfileService.cs)
+
+При каждом `SendProfileToDeviceAsync` пересылаются только кнопки/encoder/папки, чья конфигурация изменилась с последней отправки. Типовое «изменить одну кнопку» — ~5 с вместо ~39 с (полный профиль с 10 изображениями).
+
+**Fingerprint кнопки** (`ComputeButtonFingerprint`):
+```
+{image_path}\x01{mtime_ticks}   ← или "none" / "missing\x01{path}"
+\x1F {button.Name}
+\x1F {action_type_name}:{JSON}
+\x1F {long_press_action_type_name}:{JSON}
+\x1F {long_press_name}
+\x1F {led.R},{led.G},{led.B},{led.Brightness}
+```
+
+**Кэш:** `Dictionary<(profileId, folderId, buttonId), string> _sentConfigCache` в памяти backend. Ключи:
+- Корневые кнопки: `(profileId, 0xFF, buttonId)`
+- Кнопки в папках: `(profileId, folderId, buttonId)`
+- Encoder: `(profileId, 0xFE, 0xFF)`
+
+Кэш сбрасывается при отключении устройства (`DeviceDisconnected`) или при смене активного профиля.
+
+**Порядок команд при Send (только изменённые элементы):**
+```
+CMD SET_PROFILE            ← всегда; если тот же слот — no-op в firmware
+CMD IMAGE_TRANSFER × N     ← только кнопки с изменённым изображением
+CMD SET_BUTTON_ACTION × N
+CMD SET_BUTTON_NAME × N
+CMD SET_LED_COLOR × N
+...аналогично для папок и encoder...
+CMD SAVE_PROFILE           ← всегда (drain + NVS persist)
+CMD REFRESH_DISPLAYS       ← всегда
+```
+
+Если ни один элемент не изменился, `SendProfileToDeviceAsync` возвращает `true` сразу, без CMD SAVE/REFRESH.
+
+**Плагин-кнопки без `ImagePath`:** при каждом send после reconnect (кэш пуст) получают фиолетовый ring placeholder. Это критично: без него `image_size = 0` в SPIFFS/NVS → `profile_refresh_displays()` рисует `btn->name` текстом вместо изображения до прихода `willAppear`. Ring перезаписывается реальным состоянием плагина через ~800 мс. При последующих sends в той же сессии (fingerprint в кэше) ring не пересылается — CMD REFRESH показывает сохранённое в SPIFFS состояние от предыдущего `willAppear`.
+
+---
+
+### Async SPIFFS: save_task
+
+`firmware/main/storage/save_task.c` — FreeRTOS-задача на Core 0, принимает записи через очередь и пишет JPEG-файлы в SPIFFS независимо от протокол-задачи.
+
+**Параметры:**
+```c
+#define SAVE_QUEUE_DEPTH      20   // ≈ 20 × 50 KB = 1 MB PSRAM в пике
+#define SAVE_QUEUE_SYNC_BELOW  3   // при < 3 свободных слотах — sync fallback
+```
+
+**Путь `save_task_save_image()`:**
+1. `free_slots >= 3` → копирует буфер в PSRAM, `pending_inc()`, `xQueueSend` → async.
+2. `free_slots < 3`, ошибка alloc или race на очереди → синхронный `image_storage_save()` + `update_image_size()` прямо в вызывающей задаче.
+
+`update_image_size()` вызывается из `save_task_fn` **после** успешной записи:
+```c
+prof->buttons[button_id].image_size = DISPLAY_BUFFER_SIZE;
+```
+Это единственное место, где `image_size` устанавливается в `> 0` для async-пути.
+
+**Drain race и `pending_count`:**
+
+Наивный drain (ждать пока очередь пуста, затем взять semaphore) имел race: задача сняла элемент из очереди — очередь уже пуста — но `image_size` ещё не обновлён. Drain возвращался, CMD SAVE записывал профиль с `image_size = 0`. После перезагрузки устройство показывало текст вместо изображения.
+
+Исправление: `s_pending` (spinlock `portMUX_TYPE`) инкрементируется **до** `xQueueSend`, декрементируется **после** `write + update_image_size + free`:
+
+```c
+// save_task_save_image:
+pending_inc();
+if (xQueueSend(...) != pdTRUE) { pending_dec(); /* fallback */ }
+
+// save_task_fn:
+image_storage_save(...);
+update_image_size(...);
+free(cmd.rgb565_buf);
+pending_dec();          // ← только здесь
+
+// save_task_drain:
+while (pending_get() > 0) vTaskDelay(pdMS_TO_TICKS(20));
+```
+
+**CMD SAVE_PROFILE (0x50) всегда вызывает drain перед NVS:**
+```c
+save_task_drain();
+profile_save_to_storage(profile_id);   // NVS видит актуальные image_size
+```
 
 ---
 
