@@ -163,11 +163,20 @@ public interface IDeviceService
     Task<bool> RefreshDisplaysAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Передать длинный текст для действия Keyboard через SPIFFS (для текстов > 44 байт).
-    /// folderId=0xFF — корневая кнопка.
+    /// Передать произвольные бинарные данные в SPIFFS через chunked transfer (CMD 0x38/0x39/0x3A).
+    /// Используется для длинных текстов (stepIndex=TEXT_STEP_DIRECT) и sequence-блобов (stepIndex=TEXT_STEP_SEQ_BLOB).
     /// </summary>
-    Task<bool> SetButtonLongTextAsync(byte profileId, byte folderId, byte buttonId, string text,
+    Task<bool> SendSpiffsDataAsync(byte profileId, byte folderId, byte buttonId,
+        byte actionSlot, byte stepIndex, byte[] data,
         IProgress<int>? progress = null, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Отправить действие кнопки на устройство с автоматическим выбором пути:
+    /// длинный текст и крупные sequence-блобы идут через SPIFFS; остальное — inline.
+    /// actionSlot: TEXT_ACTION_SHORT (0) или TEXT_ACTION_LONG (1).
+    /// </summary>
+    Task<bool> SendActionAsync(byte profileId, byte folderId, byte buttonId,
+        byte actionSlot, ActionConfig? action, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Сохранить профиль в энергонезависимую память

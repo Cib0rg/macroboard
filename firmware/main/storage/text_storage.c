@@ -1,6 +1,10 @@
 /**
  * @file text_storage.c
- * @brief SPIFFS-based long keyboard text storage implementation
+ * @brief SPIFFS-based storage for keyboard text and sequence blobs
+ *
+ * Path format: /storage/txt_{P}_{F}_{B}_{A}_{S}.bin
+ *   P = profile_id, F = folder_id (255=root), B = button_id,
+ *   A = action_slot (0=short, 1=long), S = step_index (0xFF=direct, 0xFE=seq blob)
  */
 
 #include "common.h"
@@ -13,17 +17,19 @@
 
 static const char* TAG = "TEXT_STORAGE";
 
-#define TEXT_FILE_FMT "/storage/txt_%d_%d.bin"
-
-static void build_path(uint8_t profile_id, uint8_t storage_bid,
+static void build_path(uint8_t profile_id, uint8_t folder_id, uint8_t button_id,
+                        uint8_t action_slot, uint8_t step_index,
                         char* path, size_t path_size) {
-    snprintf(path, path_size, TEXT_FILE_FMT, (int)profile_id, (int)storage_bid);
+    snprintf(path, path_size, "/storage/txt_%d_%d_%d_%d_%d.bin",
+             (int)profile_id, (int)folder_id, (int)button_id,
+             (int)action_slot, (int)step_index);
 }
 
-esp_err_t text_storage_save(uint8_t profile_id, uint8_t storage_bid,
-                             const char* text, size_t text_len) {
+esp_err_t text_storage_save(uint8_t profile_id, uint8_t folder_id, uint8_t button_id,
+                             uint8_t action_slot, uint8_t step_index,
+                             const uint8_t* data, size_t data_len) {
     char path[64];
-    build_path(profile_id, storage_bid, path, sizeof(path));
+    build_path(profile_id, folder_id, button_id, action_slot, step_index, path, sizeof(path));
 
     FILE* f = fopen(path, "wb");
     if (f == NULL) {
@@ -31,56 +37,41 @@ esp_err_t text_storage_save(uint8_t profile_id, uint8_t storage_bid,
         return ESP_FAIL;
     }
 
-    size_t written = fwrite(text, 1, text_len, f);
+    size_t written = fwrite(data, 1, data_len, f);
     fclose(f);
 
-    if (written != text_len) {
-        ESP_LOGE(TAG, "Write incomplete: %d/%d bytes", (int)written, (int)text_len);
+    if (written != data_len) {
+        ESP_LOGE(TAG, "Write incomplete: %d/%d bytes to %s", (int)written, (int)data_len, path);
         return ESP_FAIL;
     }
 
-    ESP_LOGI(TAG, "Saved %d bytes to %s", (int)text_len, path);
+    ESP_LOGI(TAG, "Saved %d bytes to %s", (int)data_len, path);
     return ESP_OK;
 }
 
-esp_err_t text_storage_load(uint8_t profile_id, uint8_t storage_bid,
-                             char* buf, size_t buf_size, size_t* out_len) {
+FILE* text_storage_open_for_read(uint8_t profile_id, uint8_t folder_id, uint8_t button_id,
+                                  uint8_t action_slot, uint8_t step_index) {
     char path[64];
-    build_path(profile_id, storage_bid, path, sizeof(path));
-
-    struct stat st;
-    if (stat(path, &st) != 0) {
-        return ESP_ERR_NOT_FOUND;
-    }
-
+    build_path(profile_id, folder_id, button_id, action_slot, step_index, path, sizeof(path));
     FILE* f = fopen(path, "rb");
-    if (f == NULL) {
-        ESP_LOGE(TAG, "Failed to open %s for reading", path);
-        return ESP_FAIL;
+    if (!f) {
+        ESP_LOGD(TAG, "Not found: %s", path);
     }
-
-    size_t to_read = (size_t)st.st_size;
-    if (to_read >= buf_size) {
-        to_read = buf_size - 1;
-    }
-
-    size_t actual = fread(buf, 1, to_read, f);
-    fclose(f);
-
-    *out_len = actual;
-    return ESP_OK;
+    return f;
 }
 
-bool text_storage_exists(uint8_t profile_id, uint8_t storage_bid) {
+bool text_storage_exists(uint8_t profile_id, uint8_t folder_id, uint8_t button_id,
+                          uint8_t action_slot, uint8_t step_index) {
     char path[64];
-    build_path(profile_id, storage_bid, path, sizeof(path));
+    build_path(profile_id, folder_id, button_id, action_slot, step_index, path, sizeof(path));
     struct stat st;
     return (stat(path, &st) == 0);
 }
 
-esp_err_t text_storage_delete(uint8_t profile_id, uint8_t storage_bid) {
+esp_err_t text_storage_delete(uint8_t profile_id, uint8_t folder_id, uint8_t button_id,
+                               uint8_t action_slot, uint8_t step_index) {
     char path[64];
-    build_path(profile_id, storage_bid, path, sizeof(path));
+    build_path(profile_id, folder_id, button_id, action_slot, step_index, path, sizeof(path));
     if (unlink(path) != 0) {
         ESP_LOGW(TAG, "Delete failed or not found: %s", path);
     }

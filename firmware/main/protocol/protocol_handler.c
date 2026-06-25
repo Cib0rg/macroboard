@@ -26,6 +26,7 @@ static uint16_t response_sequence = 0;
 // Forward declarations of command handlers
 static esp_err_t handle_ping(const uint8_t* payload, uint16_t length, uint8_t* response, uint16_t* response_len);
 static esp_err_t handle_get_device_info(const uint8_t* payload, uint16_t length, uint8_t* response, uint16_t* response_len);
+static esp_err_t handle_set_profile(const uint8_t* payload, uint16_t length, uint8_t* response, uint16_t* response_len);
 static esp_err_t handle_get_folder_state(const uint8_t* payload, uint16_t length, uint8_t* response, uint16_t* response_len);
 static esp_err_t handle_start_image_transfer(const uint8_t* payload, uint16_t length, uint8_t* response, uint16_t* response_len);
 static esp_err_t handle_image_data_chunk(const uint8_t* payload, uint16_t length, uint8_t* response, uint16_t* response_len);
@@ -60,8 +61,9 @@ typedef struct {
 } command_entry_t;
 
 static const command_entry_t command_table[] = {
-    {CMD_PING, handle_ping},
+    {CMD_PING,            handle_ping},
     {CMD_GET_DEVICE_INFO, handle_get_device_info},
+    {CMD_SET_PROFILE,     handle_set_profile},
     {CMD_GET_FOLDER_STATE, handle_get_folder_state},
     {CMD_START_IMAGE_TRANSFER, handle_start_image_transfer},
     {CMD_IMAGE_DATA_CHUNK, handle_image_data_chunk},
@@ -235,6 +237,14 @@ static esp_err_t handle_get_device_info(const uint8_t* payload, uint16_t length,
     memcpy(&response[31], &saved_bytes, 4);
     
     *response_len = 35;
+    return ESP_OK;
+}
+
+// Device operates on a single profile slot; always acknowledge.
+static esp_err_t handle_set_profile(const uint8_t* payload, uint16_t length,
+                                     uint8_t* response, uint16_t* response_len) {
+    response[0] = STATUS_OK;
+    *response_len = 1;
     return ESP_OK;
 }
 
@@ -646,14 +656,17 @@ static esp_err_t handle_get_button_image(const uint8_t* payload, uint16_t length
 
 static esp_err_t handle_set_button_text_start(const uint8_t* payload, uint16_t length,
                                                uint8_t* response, uint16_t* response_len) {
-    // Payload: [profile_id(1)][folder_id(1)][button_id(1)][text_size(4 LE)]
-    if (length < 7) { response[0] = STATUS_ERROR; *response_len = 1; return ESP_OK; }
-    uint8_t  profile_id = payload[0];
-    uint8_t  folder_id  = payload[1];
-    uint8_t  button_id  = payload[2];
-    uint32_t text_size;
-    memcpy(&text_size, &payload[3], 4);
-    esp_err_t ret = text_transfer_start(profile_id, folder_id, button_id, text_size);
+    // Payload: [profile_id(1)][folder_id(1)][button_id(1)][action_slot(1)][step_index(1)][data_size(4 LE)]
+    if (length < 9) { response[0] = STATUS_ERROR; *response_len = 1; return ESP_OK; }
+    uint8_t  profile_id  = payload[0];
+    uint8_t  folder_id   = payload[1];
+    uint8_t  button_id   = payload[2];
+    uint8_t  action_slot = payload[3];  // TEXT_ACTION_SHORT / TEXT_ACTION_LONG
+    uint8_t  step_index  = payload[4];  // TEXT_STEP_DIRECT / TEXT_STEP_SEQ_BLOB / 0..15
+    uint32_t data_size;
+    memcpy(&data_size, &payload[5], 4);
+    esp_err_t ret = text_transfer_start(profile_id, folder_id, button_id,
+                                        action_slot, step_index, data_size);
     response[0] = (ret == ESP_OK) ? STATUS_OK : STATUS_ERROR;
     uint16_t max_chunk = 54; // PayloadSize(56) - chunkNum(2)
     memcpy(&response[1], &max_chunk, 2);

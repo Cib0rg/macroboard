@@ -1,6 +1,6 @@
 /**
  * @file text_transfer.h
- * @brief Chunked long keyboard-text transfer (CMD 0x38/0x39/0x3A)
+ * @brief Chunked data transfer for keyboard text and sequence blobs (CMD 0x38/0x39/0x3A)
  */
 
 #ifndef TEXT_TRANSFER_H
@@ -8,20 +8,25 @@
 
 #include <stdint.h>
 #include "esp_err.h"
+#include "storage/text_storage.h"  // TEXT_ACTION_* / TEXT_STEP_* constants
 
 /**
- * @brief Begin a text transfer session.
- * @param profile_id Profile ID (always 0 on device)
- * @param folder_id  0xFF = root button; 0..N = folder button
- * @param button_id  Physical button position within root / folder
- * @param text_size  Total text size in bytes (max 4096)
+ * @brief Begin a transfer session.
+ *
+ * @param profile_id  Profile ID (always 0)
+ * @param folder_id   0xFF = root, 0..15 = folder
+ * @param button_id   0..9 = button
+ * @param action_slot TEXT_ACTION_SHORT or TEXT_ACTION_LONG
+ * @param step_index  TEXT_STEP_DIRECT / TEXT_STEP_SEQ_BLOB / 0..15
+ * @param data_size   Total bytes to expect (max 4096)
  */
 esp_err_t text_transfer_start(uint8_t profile_id, uint8_t folder_id,
-                               uint8_t button_id, uint32_t text_size);
+                               uint8_t button_id, uint8_t action_slot,
+                               uint8_t step_index, uint32_t data_size);
 
 /**
  * @brief Append one chunk to the in-progress transfer buffer.
- * @param data      Raw text bytes for this chunk
+ * @param data      Raw bytes for this chunk
  * @param size      Chunk byte count
  * @param chunk_num Zero-based, sequential
  */

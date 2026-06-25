@@ -140,6 +140,19 @@ void profile_refresh_displays(void);
 void profile_image_cache_invalidate(uint8_t button_id, bool folder);
 
 /**
+ * @brief Store a pre-decoded RGB565 buffer directly into the image cache.
+ *        Takes ownership of buf (freed on the next invalidation or update).
+ *        Call immediately after a successful image transfer so the next display
+ *        refresh uses the new image without a SPIFFS round-trip — prevents the
+ *        "image disappears" race where profile_update_button_display loads the
+ *        old SPIFFS image before save_task finishes writing the new one.
+ * @param button_id  Button slot (0..NUM_BUTTONS-1)
+ * @param folder     true = folder cache, false = root cache
+ * @param buf        heap_caps_malloc'd RGB565 buffer (ownership transferred)
+ */
+void profile_image_cache_update(uint8_t button_id, bool folder, uint8_t* buf);
+
+/**
  * @brief Refresh the display for one root button from current profile state.
  *        If image_size == 0, renders text; otherwise loads image from SPIFFS.
  */

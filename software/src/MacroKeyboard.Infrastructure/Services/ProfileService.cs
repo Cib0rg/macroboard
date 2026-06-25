@@ -1,3 +1,4 @@
+using MacroKeyboard.Communication.Protocol;
 using MacroKeyboard.Core.Models;
 using MacroKeyboard.Core.Services;
 using MacroKeyboard.Infrastructure.Repositories;
@@ -428,23 +429,14 @@ public class ProfileService : IProfileService
             button.ImagePath, button.Action, button.Name,
             imageProgress, cancellationToken);
 
-        var actionToSend = button.Action ?? new NoneAction();
-        if (actionToSend is MacroKeyboard.Core.Models.KeyboardAction ka &&
-            ka.KeyCode == 0 &&
-            System.Text.Encoding.UTF8.GetByteCount(ka.Text ?? "") > 44)
-        {
-            await _deviceService.SetButtonLongTextAsync(
-                0, 0xFF, button.ButtonId, ka.Text!, null, cancellationToken);
-        }
-        else
-        {
-            await _deviceService.SetButtonActionAsync(0, button.ButtonId, actionToSend, cancellationToken);
-        }
+        await _deviceService.SendActionAsync(
+            0, 0xFF, button.ButtonId, ProtocolConstants.TEXT_ACTION_SHORT, button.Action, cancellationToken);
 
         await _deviceService.SetButtonNameAsync(0, button.ButtonId, button.Name ?? string.Empty, cancellationToken);
         await _deviceService.SetLedColorAsync(0, button.ButtonId, button.Led, cancellationToken);
-        await _deviceService.SetButtonLongPressActionAsync(
-            0, button.ButtonId, button.LongPressAction, cancellationToken: cancellationToken);
+
+        await _deviceService.SendActionAsync(
+            0, 0xFF, button.ButtonId, ProtocolConstants.TEXT_ACTION_LONG, button.LongPressAction, cancellationToken);
         await _deviceService.SetButtonLongPressNameAsync(
             0, button.ButtonId, button.LongPressName ?? string.Empty, cancellationToken: cancellationToken);
     }
@@ -460,19 +452,8 @@ public class ProfileService : IProfileService
             btn?.ImagePath, btn?.Action, btn?.Name,
             null, cancellationToken);
 
-        var folderAction = btn?.Action ?? new NoneAction();
-        if (folderAction is MacroKeyboard.Core.Models.KeyboardAction fka &&
-            fka.KeyCode == 0 &&
-            System.Text.Encoding.UTF8.GetByteCount(fka.Text ?? "") > 44)
-        {
-            await _deviceService.SetButtonLongTextAsync(
-                0, folder.FolderId, btnId, fka.Text!, null, cancellationToken);
-        }
-        else
-        {
-            await _deviceService.SetFolderButtonActionAsync(
-                0, folder.FolderId, btnId, folderAction, cancellationToken);
-        }
+        await _deviceService.SendActionAsync(
+            0, folder.FolderId, btnId, ProtocolConstants.TEXT_ACTION_SHORT, btn?.Action, cancellationToken);
 
         await _deviceService.SetFolderButtonNameAsync(
             0, folder.FolderId, btnId, btn?.Name ?? string.Empty, cancellationToken);
@@ -480,8 +461,8 @@ public class ProfileService : IProfileService
         var led = btn?.Led ?? LedConfig.FromRgb(80, 80, 80);
         await _deviceService.SetFolderButtonLedAsync(0, folder.FolderId, btnId, led, cancellationToken);
 
-        await _deviceService.SetButtonLongPressActionAsync(
-            0, btnId, btn?.LongPressAction, folder.FolderId, cancellationToken);
+        await _deviceService.SendActionAsync(
+            0, folder.FolderId, btnId, ProtocolConstants.TEXT_ACTION_LONG, btn?.LongPressAction, cancellationToken);
         await _deviceService.SetButtonLongPressNameAsync(
             0, btnId, btn?.LongPressName ?? string.Empty, folder.FolderId, cancellationToken);
     }

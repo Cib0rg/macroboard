@@ -1,3 +1,4 @@
+using System.Text;
 using MacroKeyboard.Core.Models;
 using MacroKeyboard.Core.Services;
 using MacroKeyboard.Core.Utilities;
@@ -331,27 +332,30 @@ public class DeviceService : IDeviceService
         byte folderId = 0xFF, CancellationToken cancellationToken = default)
         => await _setButtonLongPressNameCommand.ExecuteAsync(profileId, buttonId, name, folderId, cancellationToken);
 
-    public async Task<bool> SetButtonLongTextAsync(
-        byte profileId, byte folderId, byte buttonId, string text,
+    // ── SPIFFS transfer ──────────────────────────────────────────────────────
+
+    public async Task<bool> SendSpiffsDataAsync(
+        byte profileId, byte folderId, byte buttonId,
+        byte actionSlot, byte stepIndex, byte[] data,
         IProgress<int>? progress = null,
         CancellationToken cancellationToken = default)
     {
         try
         {
-            var textBytes = System.Text.Encoding.UTF8.GetBytes(text);
-            uint textSize = (uint)textBytes.Length;
+            uint dataSize = (uint)data.Length;
+            const int ChunkSize = 54; // PayloadSize(56) - chunkNum(2)
 
-            const int TextChunkSize = 54; // PayloadSize(56) - chunkNum(2)
-
-            // START: [profileId][folderId][buttonId][textSize(4 LE)]
-            var startPayload = new byte[7];
+            // START: [profileId][folderId][buttonId][actionSlot][stepIndex][dataSize(4 LE)]
+            var startPayload = new byte[9];
             startPayload[0] = profileId;
             startPayload[1] = folderId;
             startPayload[2] = buttonId;
-            startPayload[3] = (byte)(textSize & 0xFF);
-            startPayload[4] = (byte)((textSize >> 8) & 0xFF);
-            startPayload[5] = (byte)((textSize >> 16) & 0xFF);
-            startPayload[6] = (byte)((textSize >> 24) & 0xFF);
+            startPayload[3] = actionSlot;
+            startPayload[4] = stepIndex;
+            startPayload[5] = (byte)(dataSize & 0xFF);
+            startPayload[6] = (byte)((dataSize >> 8) & 0xFF);
+            startPayload[7] = (byte)((dataSize >> 16) & 0xFF);
+            startPayload[8] = (byte)((dataSize >> 24) & 0xFF);
 
             var startResp = await _protocol.SendCommandAsync(
                 ProtocolConstants.CMD_SET_BUTTON_TEXT_START,
@@ -361,22 +365,22 @@ public class DeviceService : IDeviceService
             if (startResp == null || startResp.Payload.Length < 1 ||
                 startResp.Payload[0] != ProtocolConstants.STATUS_OK)
             {
-                _logger.LogError("Text transfer START failed for button {ButtonId}", buttonId);
+                _logger.LogError("SPIFFS START failed (btn={ButtonId} slot={Slot} step=0x{Step:X2})",
+                    buttonId, actionSlot, stepIndex);
                 return false;
             }
 
-            // CHUNKs
             int offset = 0;
             ushort chunkNum = 0;
-            while (offset < textBytes.Length)
+            while (offset < data.Length)
             {
                 if (cancellationToken.IsCancellationRequested) return false;
 
-                int chunkLen = Math.Min(TextChunkSize, textBytes.Length - offset);
+                int chunkLen = Math.Min(ChunkSize, data.Length - offset);
                 var chunkPayload = new byte[2 + chunkLen];
                 chunkPayload[0] = (byte)(chunkNum & 0xFF);
                 chunkPayload[1] = (byte)((chunkNum >> 8) & 0xFF);
-                Array.Copy(textBytes, offset, chunkPayload, 2, chunkLen);
+                Array.Copy(data, offset, chunkPayload, 2, chunkLen);
 
                 var chunkResp = await _protocol.SendCommandAsync(
                     ProtocolConstants.CMD_SET_BUTTON_TEXT_CHUNK,
@@ -386,16 +390,15 @@ public class DeviceService : IDeviceService
                 if (chunkResp == null || chunkResp.Payload.Length < 1 ||
                     chunkResp.Payload[0] != ProtocolConstants.STATUS_OK)
                 {
-                    _logger.LogError("Text CHUNK {Num} failed for button {ButtonId}", chunkNum, buttonId);
+                    _logger.LogError("SPIFFS CHUNK {Num} failed (btn={ButtonId})", chunkNum, buttonId);
                     return false;
                 }
 
                 offset += chunkLen;
                 chunkNum++;
-                progress?.Report((int)(100.0 * offset / textBytes.Length));
+                progress?.Report((int)(100.0 * offset / data.Length));
             }
 
-            // END
             var endResp = await _protocol.SendCommandAsync(
                 ProtocolConstants.CMD_SET_BUTTON_TEXT_END,
                 Array.Empty<byte>(),
@@ -404,16 +407,132 @@ public class DeviceService : IDeviceService
             var ok = endResp != null && endResp.Payload.Length >= 1 &&
                      endResp.Payload[0] == ProtocolConstants.STATUS_OK;
             if (ok)
-                _logger.LogInformation("Long text ({Bytes}B) → button {ButtonId}", textBytes.Length, buttonId);
+                _logger.LogInformation("SPIFFS transfer OK ({Bytes}B, slot={Slot}, step=0x{Step:X2}) → btn {ButtonId}",
+                    data.Length, actionSlot, stepIndex, buttonId);
             else
-                _logger.LogError("Text transfer END failed for button {ButtonId}", buttonId);
+                _logger.LogError("SPIFFS END failed (btn={ButtonId})", buttonId);
             return ok;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "SetButtonLongTextAsync failed for button {ButtonId}", buttonId);
+            _logger.LogError(ex, "SendSpiffsDataAsync failed (btn={ButtonId})", buttonId);
             return false;
         }
+    }
+
+    public async Task<bool> SendActionAsync(
+        byte profileId, byte folderId, byte buttonId,
+        byte actionSlot, ActionConfig? action,
+        CancellationToken cancellationToken = default)
+    {
+        action ??= new NoneAction();
+
+        if (action is KeyboardAction ka && ka.KeyCode == 0)
+        {
+            var textBytes = Encoding.UTF8.GetBytes(ka.Text ?? "");
+            if (textBytes.Length > 44)
+                return await SendSpiffsDataAsync(profileId, folderId, buttonId, actionSlot,
+                    ProtocolConstants.TEXT_STEP_DIRECT, textBytes, null, cancellationToken);
+        }
+        else if (action is SequenceAction sa)
+        {
+            return await SendSequenceActionAsync(
+                profileId, folderId, buttonId, actionSlot, sa, cancellationToken);
+        }
+
+        // Inline: send via the appropriate command
+        if (actionSlot == ProtocolConstants.TEXT_ACTION_LONG)
+            return await SetButtonLongPressActionAsync(profileId, buttonId, action, folderId, cancellationToken);
+        if (folderId == 0xFF)
+            return await SetButtonActionAsync(profileId, buttonId, action, cancellationToken);
+        return await SetFolderButtonActionAsync(profileId, folderId, buttonId, action, cancellationToken);
+    }
+
+    private async Task<bool> SendSequenceActionAsync(
+        byte profileId, byte folderId, byte buttonId,
+        byte actionSlot, SequenceAction sa,
+        CancellationToken cancellationToken)
+    {
+        var (blob, hasLongTextSteps) = BuildSequenceBlob(sa);
+
+        // Send per-step long keyboard texts to individual SPIFFS slots
+        if (hasLongTextSteps)
+        {
+            for (int i = 0; i < sa.Steps.Count && i < SequenceAction.MaxSteps; i++)
+            {
+                var step = sa.Steps[i];
+                if (step.Action is KeyboardAction ska && ska.KeyCode == 0)
+                {
+                    var textBytes = Encoding.UTF8.GetBytes(ska.Text ?? "");
+                    if (textBytes.Length > 44)
+                    {
+                        if (!await SendSpiffsDataAsync(profileId, folderId, buttonId, actionSlot,
+                            (byte)i, textBytes, null, cancellationToken))
+                            return false;
+                    }
+                }
+            }
+        }
+
+        if (blob.Length > ProtocolConstants.TextInlineMaxBytes || hasLongTextSteps)
+        {
+            // Blob too large or has SPIFFS-marker steps — store in SPIFFS.
+            // Firmware auto-sets the action_data to [0x01] marker on text_transfer_end.
+            return await SendSpiffsDataAsync(profileId, folderId, buttonId, actionSlot,
+                ProtocolConstants.TEXT_STEP_SEQ_BLOB, blob, null, cancellationToken);
+        }
+
+        // Small blob with no SPIFFS markers — send inline
+        if (actionSlot == ProtocolConstants.TEXT_ACTION_LONG)
+            return await SetButtonLongPressActionAsync(profileId, buttonId, sa, folderId, cancellationToken);
+        if (folderId == 0xFF)
+            return await SetButtonActionAsync(profileId, buttonId, sa, cancellationToken);
+        return await SetFolderButtonActionAsync(profileId, folderId, buttonId, sa, cancellationToken);
+    }
+
+    // Build a sequence blob where long-text keyboard steps are replaced with SPIFFS markers.
+    // Returns the blob bytes and a flag indicating whether any step text was replaced.
+    private static (byte[] blob, bool hasLongTextSteps) BuildSequenceBlob(SequenceAction sa)
+    {
+        var data = new List<byte>();
+        bool hasLongTextSteps = false;
+        int stepCount = Math.Min(sa.Steps.Count, SequenceAction.MaxSteps);
+        data.Add((byte)stepCount);
+
+        foreach (var step in sa.Steps.Take(SequenceAction.MaxSteps))
+        {
+            data.Add((byte)step.Action.ActionType);
+            data.AddRange(BitConverter.GetBytes(step.DelayBeforeMs));
+
+            byte[] actionData;
+            if (step.Action is KeyboardAction ka && ka.KeyCode == 0)
+            {
+                var textBytes = Encoding.UTF8.GetBytes(ka.Text ?? "");
+                if (textBytes.Length > 44)
+                {
+                    // SPIFFS marker: [modifier][keycode=0][flag=0x01]
+                    actionData = new byte[] { (byte)ka.Modifiers, 0x00, 0x01 };
+                    hasLongTextSteps = true;
+                }
+                else
+                {
+                    actionData = ka.ToBytes();
+                }
+            }
+            else
+            {
+                actionData = step.Action.ToBytes();
+            }
+
+            // Clamp to firmware ACTION_DATA_MAX_LEN = 51
+            if (actionData.Length > ProtocolConstants.TextInlineMaxBytes)
+                actionData = actionData[..ProtocolConstants.TextInlineMaxBytes];
+
+            data.AddRange(BitConverter.GetBytes((ushort)actionData.Length));
+            data.AddRange(actionData);
+        }
+
+        return (data.ToArray(), hasLongTextSteps);
     }
 
     public async Task<bool> RefreshDisplaysAsync(CancellationToken cancellationToken = default)

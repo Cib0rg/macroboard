@@ -172,13 +172,23 @@ esp_err_t image_transfer_end(uint32_t* calculated_crc) {
         bool should_draw = false;
         if (transfer_ctx.folder_id == 0xFF) {
             profile_image_cache_invalidate(transfer_ctx.button_id, false);
+            // Populate root cache with new frame immediately after invalidation.
+            // Prevents profile_update_button_display (triggered by a subsequent
+            // SetButtonName or folder exit) from loading the OLD SPIFFS image before
+            // save_task finishes writing — which would draw the old image on top of
+            // what display_post_draw renders here, making the new image "disappear".
+            uint8_t* cc = heap_caps_malloc(DISPLAY_BUFFER_SIZE, MALLOC_CAP_SPIRAM);
+            if (cc) { memcpy(cc, rgb565_buf, DISPLAY_BUFFER_SIZE); profile_image_cache_update(transfer_ctx.button_id, false, cc); }
             // Only draw if the device is currently at root level.  When inside a
             // folder, root-button images must not overwrite the folder-button displays
-            // at the same physical positions.  The cache is already invalidated above,
+            // at the same physical positions.  The cache is already populated above,
             // so the image will be drawn correctly when the user exits the folder.
             should_draw = (profile_get_current_folder() == 0xFF);
         } else {
             profile_image_cache_invalidate(transfer_ctx.button_id, true);
+            // Same as above: populate folder cache immediately to prevent stale loads.
+            uint8_t* cc = heap_caps_malloc(DISPLAY_BUFFER_SIZE, MALLOC_CAP_SPIRAM);
+            if (cc) { memcpy(cc, rgb565_buf, DISPLAY_BUFFER_SIZE); profile_image_cache_update(transfer_ctx.button_id, true, cc); }
             if (profile_get_current_folder() == transfer_ctx.folder_id) {
                 should_draw = true;
             }

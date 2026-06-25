@@ -59,6 +59,13 @@ void profile_image_cache_invalidate(uint8_t button_id, bool folder) {
     if (cache[button_id]) { free(cache[button_id]); cache[button_id] = NULL; }
 }
 
+void profile_image_cache_update(uint8_t button_id, bool folder, uint8_t* buf) {
+    if (button_id >= NUM_BUTTONS) { free(buf); return; }
+    uint8_t **cache = folder ? s_folder_display_cache : s_display_cache;
+    free(cache[button_id]);
+    cache[button_id] = buf;
+}
+
 void profile_refresh_button_display(uint8_t button_id) {
     if (button_id >= NUM_BUTTONS) return;
     // When inside a folder, use the folder button config so the display reflects
@@ -280,7 +287,14 @@ esp_err_t profile_set_button_name(uint8_t button_id, const char* name) {
     memset(btn->name, 0, BUTTON_NAME_MAX_LEN);
     strncpy(btn->name, name, BUTTON_NAME_MAX_LEN - 1);
 
-    bool should_refresh = (btn->image_size == 0);
+    // Only do a text refresh when there is genuinely no image:
+    //   image_size > 0  → image is in SPIFFS; name change only affects text/split rendering
+    //   image_size == 0 AND cache non-NULL → image was just uploaded and is still being
+    //     written to SPIFFS by save_task (async); the display already shows the correct
+    //     decoded image drawn by display_post_draw in image_transfer_end.  Triggering a
+    //     refresh here would call render_full_display with image_size==0, which takes the
+    //     text path and overwrites the correct image with a black/text render.
+    bool should_refresh = (btn->image_size == 0) && (s_display_cache[button_id] == NULL);
 
     xSemaphoreGive(profile_mutex);
 
@@ -654,14 +668,13 @@ static void render_split_display(uint8_t button_id, button_config_t* btn) {
     uint8_t* frame = heap_caps_malloc(DISPLAY_BUFFER_SIZE, MALLOC_CAP_DMA | MALLOC_CAP_SPIRAM);
     if (!frame) { gc9a01_clear(button_id, COLOR_BLACK); return; }
 
-    // Top SPLIT_SHORT_H px: image or text label for the short-press action
-    if (btn->image_size > 0) {
-        uint8_t* img = load_image_cached(button_id);
-        if (img != NULL) {
-            memcpy(frame, img, (size_t)DISPLAY_WIDTH * SPLIT_SHORT_H * 2);
-        } else {
-            text_render_fill_region(frame, DISPLAY_WIDTH, 0, SPLIT_SHORT_H, NULL, COLOR_WHITE, COLOR_BLACK);
-        }
+    // Top SPLIT_SHORT_H px: image (from cache or SPIFFS) or text label.
+    // load_image_cached checks the PSRAM cache first so a freshly uploaded image
+    // (cache populated, image_size still 0 while save_task is running) is shown
+    // correctly without waiting for the async SPIFFS write to finish.
+    uint8_t* img = load_image_cached(button_id);
+    if (img != NULL) {
+        memcpy(frame, img, (size_t)DISPLAY_WIDTH * SPLIT_SHORT_H * 2);
     } else {
         char label[64] = {0};
         if (btn->name[0] != '\0')
@@ -689,12 +702,17 @@ static void render_split_display(uint8_t button_id, button_config_t* btn) {
 
 // ── Full-screen display: image or text label ──────────────────────────────────
 static void render_full_display(uint8_t button_id, button_config_t* btn) {
+    // A non-NULL cache entry is authoritative: it holds a freshly decoded image that
+    // may not yet be reflected in image_size (save_task writes SPIFFS asynchronously).
+    // Check cache before image_size so we never fall through to the text path while a
+    // real image is sitting in the cache waiting for save_task to finish.
+    uint8_t** cache_slot = resolve_cache_slot(button_id);
+    if (*cache_slot != NULL) {
+        gc9a01_draw_image(button_id, *cache_slot, DISPLAY_WIDTH, DISPLAY_HEIGHT);
+        return;
+    }
+
     if (btn->image_size > 0) {
-        uint8_t** cache_slot = resolve_cache_slot(button_id);
-        if (*cache_slot != NULL) {
-            gc9a01_draw_image(button_id, *cache_slot, DISPLAY_WIDTH, DISPLAY_HEIGHT);
-            return;
-        }
         uint8_t* image_data = NULL;
         size_t image_size = 0;
         if (image_storage_load(0, resolve_storage_bid(button_id), &image_data, &image_size) == ESP_OK

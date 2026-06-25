@@ -81,4 +81,11 @@ public static class ProtocolConstants
     
     // Размер фрагмента изображения (compact CHUNK layout: tid u8 + chunkNum u16 + len u8 = 4 bytes overhead → 52 bytes payload)
     public const int ImageChunkSize = 52;
+
+    // SPIFFS text/blob transfer — action slot and step index sentinels (must match firmware text_storage.h)
+    public const byte TEXT_ACTION_SHORT   = 0x00;
+    public const byte TEXT_ACTION_LONG    = 0x01;
+    public const byte TEXT_STEP_DIRECT   = 0xFF;
+    public const byte TEXT_STEP_SEQ_BLOB = 0xFE;
+    public const int  TextInlineMaxBytes = 51;  // ACTION_DATA_MAX_LEN on firmware
 }

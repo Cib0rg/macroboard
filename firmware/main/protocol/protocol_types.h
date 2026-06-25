@@ -17,6 +17,8 @@
 // Command IDs from PC to device
 #define CMD_PING                    0x01
 #define CMD_GET_DEVICE_INFO         0x02
+#define CMD_SET_PROFILE             0x10
+#define CMD_GET_PROFILE_INFO        0x11
 #define CMD_GET_FOLDER_STATE        0x12
 #define CMD_START_IMAGE_TRANSFER    0x20
 #define CMD_IMAGE_DATA_CHUNK        0x21
