@@ -38,10 +38,4 @@ esp_err_t led_update(void);
  */
 esp_err_t led_clear_all(void);
 
-/**
- * @brief LED task for effects
- * @param arg Task argument (unused)
- */
-void led_task(void* arg);
-
 #endif // LEDS_H

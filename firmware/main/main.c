@@ -251,11 +251,6 @@ void app_main(void) {
                             TASK_PRIORITY_PROTOCOL, NULL, 0);
     ESP_LOGI(TAG, "✓ Protocol task created");
     
-    // 6.5 Create LED task
-    xTaskCreatePinnedToCore(led_task, "led", STACK_SIZE_LED, NULL,
-                            TASK_PRIORITY_LED, NULL, 1);
-    ESP_LOGI(TAG, "✓ LED task created");
-
     // 6.5b Save task (Core 0) — async SPIFFS writes, lower priority than protocol
     xTaskCreatePinnedToCore(save_task_fn, "save", STACK_SIZE_SAVE, NULL,
                             TASK_PRIORITY_SAVE, NULL, 0);

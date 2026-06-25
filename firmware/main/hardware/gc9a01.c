@@ -12,6 +12,7 @@
 #include "config.h"
 #include "esp_log.h"
 #include "driver/gpio.h"
+#include "driver/ledc.h"
 #include "driver/spi_master.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -21,6 +22,16 @@ static const char* TAG = "GC9D01";
 
 static spi_device_handle_t spi_device = NULL;
 static SemaphoreHandle_t spi_mutex = NULL;
+
+static void spi_lock(uint8_t display_id) {
+    xSemaphoreTake(spi_mutex, portMAX_DELAY);
+    display_mux_select(display_id);
+}
+
+static void spi_unlock(void) {
+    gc9a01_send_command(0x00);  // NOP — exits RAMWR so other displays don't pick up stray SPI traffic
+    xSemaphoreGive(spi_mutex);
+}
 
 // ==================== Low-level SPI ====================
 
@@ -354,35 +365,19 @@ esp_err_t gc9a01_clear(uint8_t display_id, uint16_t color) {
         return ESP_ERR_INVALID_ARG;
     }
     
-    xSemaphoreTake(spi_mutex, portMAX_DELAY);
-    
-    display_mux_select(display_id);
-    gc9a01_set_window(0, 0, DISPLAY_WIDTH - 1, DISPLAY_HEIGHT - 1);
-    
-    // Prepare color buffer (one row at a time for DMA)
     uint16_t* buffer = heap_caps_malloc(DISPLAY_WIDTH * 2, MALLOC_CAP_DMA);
-    if (buffer == NULL) {
-        xSemaphoreGive(spi_mutex);
-        return ESP_ERR_NO_MEM;
-    }
-    
-    // Fill buffer with color (byte-swapped for big-endian SPI transfer)
+    if (buffer == NULL) return ESP_ERR_NO_MEM;
+
     uint16_t swapped = __builtin_bswap16(color);
-    for (int i = 0; i < DISPLAY_WIDTH; i++) {
-        buffer[i] = swapped;
-    }
-    
-    // Write all rows
-    for (int y = 0; y < DISPLAY_HEIGHT; y++) {
+    for (int i = 0; i < DISPLAY_WIDTH; i++) buffer[i] = swapped;
+
+    spi_lock(display_id);
+    gc9a01_set_window(0, 0, DISPLAY_WIDTH - 1, DISPLAY_HEIGHT - 1);
+    for (int y = 0; y < DISPLAY_HEIGHT; y++)
         gc9a01_write_data((uint8_t*)buffer, DISPLAY_WIDTH * 2);
-    }
-    
-    // Send NOP to exit RAMWR mode — prevents this display from interpreting
-    // SPI traffic for other displays as pixel data (shared SPI bus)
-    gc9a01_send_command(0x00);
-    
+    spi_unlock();
+
     free(buffer);
-    xSemaphoreGive(spi_mutex);
     
     return ESP_OK;
 }
@@ -397,28 +392,16 @@ esp_err_t gc9a01_draw_image(uint8_t display_id, const uint8_t* image_data,
         return ESP_ERR_INVALID_SIZE;
     }
     
-    xSemaphoreTake(spi_mutex, portMAX_DELAY);
-    
-    display_mux_select(display_id);
-    
-    // Center the image on the display
     uint16_t x0 = (DISPLAY_WIDTH - width) / 2;
     uint16_t y0 = (DISPLAY_HEIGHT - height) / 2;
-    
-    gc9a01_set_window(x0, y0, x0 + width - 1, y0 + height - 1);
-    
-    // Write image data row by row to avoid exceeding SPI DMA max transfer size.
-    // Full image (160x160x2 = 51200 bytes) exceeds the hardware limit.
-    size_t row_bytes = width * 2;  // 2 bytes per pixel (RGB565)
-    for (uint16_t row = 0; row < height; row++) {
-        gc9a01_write_data(image_data + (row * row_bytes), row_bytes);
-    }
-    
-    // Send NOP to exit RAMWR mode — prevents this display from interpreting
-    // SPI traffic for other displays as pixel data (shared SPI bus)
-    gc9a01_send_command(0x00);
+    size_t row_bytes = width * 2;
 
-    xSemaphoreGive(spi_mutex);
+    spi_lock(display_id);
+    gc9a01_set_window(x0, y0, x0 + width - 1, y0 + height - 1);
+    // Write row-by-row: full image (160x160x2 = 51200 bytes) exceeds SPI DMA max transfer size
+    for (uint16_t row = 0; row < height; row++)
+        gc9a01_write_data(image_data + (row * row_bytes), row_bytes);
+    spi_unlock();
 
     return ESP_OK;
 }
@@ -442,16 +425,12 @@ esp_err_t gc9a01_draw_image_in_region(uint8_t display_id, const uint8_t* image_d
     uint16_t disp_y = dst_y + (region_h - draw_h) / 2;
     uint16_t x0     = (DISPLAY_WIDTH - img_w) / 2;
 
-    xSemaphoreTake(spi_mutex, portMAX_DELAY);
-    display_mux_select(display_id);
+    spi_lock(display_id);
     gc9a01_set_window(x0, disp_y, x0 + img_w - 1, disp_y + draw_h - 1);
-
     size_t row_bytes = img_w * 2;
     for (uint16_t row = 0; row < draw_h; row++)
         gc9a01_write_data(image_data + ((src_y + row) * row_bytes), row_bytes);
-
-    gc9a01_send_command(0x00);
-    xSemaphoreGive(spi_mutex);
+    spi_unlock();
     return ESP_OK;
 }
 
@@ -466,14 +445,101 @@ esp_err_t gc9a01_fill_band(uint8_t display_id, uint16_t y0, uint16_t h, uint16_t
     uint16_t swapped = __builtin_bswap16(color);
     for (int i = 0; i < DISPLAY_WIDTH; i++) row_buf[i] = swapped;
 
-    xSemaphoreTake(spi_mutex, portMAX_DELAY);
-    display_mux_select(display_id);
+    spi_lock(display_id);
     gc9a01_set_window(0, y0, DISPLAY_WIDTH - 1, y0 + h - 1);
     for (uint16_t row = 0; row < h; row++)
         gc9a01_write_data((uint8_t*)row_buf, DISPLAY_WIDTH * 2);
-    gc9a01_send_command(0x00);
-    xSemaphoreGive(spi_mutex);
+    spi_unlock();
 
     free(row_buf);
     return ESP_OK;
+}
+
+// ==================== Backlight ====================
+
+static bool backlight_initialized = false;
+static bool backlight_enabled = true;
+static uint8_t current_brightness = 100;
+
+#define BACKLIGHT_LEDC_TIMER       LEDC_TIMER_1
+#define BACKLIGHT_LEDC_MODE        LEDC_LOW_SPEED_MODE
+#define BACKLIGHT_LEDC_CHANNEL     LEDC_CHANNEL_0
+#define BACKLIGHT_LEDC_DUTY_RES    LEDC_TIMER_8_BIT
+#define BACKLIGHT_LEDC_FREQUENCY   5000
+
+static esp_err_t backlight_pwm_init(void) {
+    if (backlight_initialized) return ESP_OK;
+
+    ledc_timer_config_t timer_config = {
+        .speed_mode      = BACKLIGHT_LEDC_MODE,
+        .timer_num        = BACKLIGHT_LEDC_TIMER,
+        .duty_resolution  = BACKLIGHT_LEDC_DUTY_RES,
+        .freq_hz          = BACKLIGHT_LEDC_FREQUENCY,
+        .clk_cfg          = LEDC_AUTO_CLK,
+    };
+    esp_err_t ret = ledc_timer_config(&timer_config);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to configure LEDC timer: %s", esp_err_to_name(ret));
+        return ret;
+    }
+
+    ledc_channel_config_t channel_config = {
+        .speed_mode = BACKLIGHT_LEDC_MODE,
+        .channel    = BACKLIGHT_LEDC_CHANNEL,
+        .timer_sel  = BACKLIGHT_LEDC_TIMER,
+        .intr_type  = LEDC_INTR_DISABLE,
+        .gpio_num   = PIN_DISPLAY_BACKLIGHT,
+        .duty       = (uint32_t)current_brightness * 255 / 100,
+        .hpoint     = 0,
+    };
+    ret = ledc_channel_config(&channel_config);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to configure LEDC channel: %s", esp_err_to_name(ret));
+        return ret;
+    }
+
+    backlight_initialized = true;
+    ESP_LOGI(TAG, "Backlight PWM initialized (GPIO %d, %d Hz)",
+             PIN_DISPLAY_BACKLIGHT, BACKLIGHT_LEDC_FREQUENCY);
+    return ESP_OK;
+}
+
+esp_err_t gc9a01_set_backlight(bool enabled) {
+    backlight_enabled = enabled;
+
+    esp_err_t ret = backlight_pwm_init();
+    if (ret != ESP_OK) {
+        gpio_set_level(PIN_DISPLAY_BACKLIGHT, enabled ? 1 : 0);
+        ESP_LOGW(TAG, "PWM init failed, using GPIO fallback");
+        return ESP_OK;
+    }
+
+    uint32_t duty = enabled ? (uint32_t)current_brightness * 255 / 100 : 0;
+    ledc_set_duty(BACKLIGHT_LEDC_MODE, BACKLIGHT_LEDC_CHANNEL, duty);
+    ledc_update_duty(BACKLIGHT_LEDC_MODE, BACKLIGHT_LEDC_CHANNEL);
+    ESP_LOGI(TAG, "Backlight %s (brightness: %d%%)", enabled ? "enabled" : "disabled", current_brightness);
+    return ESP_OK;
+}
+
+esp_err_t gc9a01_set_brightness(uint8_t brightness) {
+    if (brightness > 100) brightness = 100;
+    current_brightness = brightness;
+
+    esp_err_t ret = backlight_pwm_init();
+    if (ret != ESP_OK) {
+        gpio_set_level(PIN_DISPLAY_BACKLIGHT, brightness > 0 ? 1 : 0);
+        ESP_LOGW(TAG, "PWM init failed, using GPIO fallback");
+        return ESP_OK;
+    }
+
+    backlight_enabled = (brightness > 0);
+    uint32_t duty = (uint32_t)brightness * 255 / 100;
+    ledc_set_duty(BACKLIGHT_LEDC_MODE, BACKLIGHT_LEDC_CHANNEL, duty);
+    ledc_update_duty(BACKLIGHT_LEDC_MODE, BACKLIGHT_LEDC_CHANNEL);
+    ESP_LOGI(TAG, "Backlight brightness set to %d%%", brightness);
+    return ESP_OK;
+}
+
+uint8_t gc9a01_get_brightness(void) {
+    return current_brightness;
 }

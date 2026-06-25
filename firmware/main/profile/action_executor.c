@@ -246,14 +246,9 @@ static esp_err_t execute_sequence_action(button_config_t* btn, uint8_t button_id
 }
 
 esp_err_t action_execute_long_press(uint8_t button_id) {
-    if (button_id >= NUM_BUTTONS) {
-        return ESP_ERR_INVALID_ARG;
-    }
-
+    if (button_id >= NUM_BUTTONS) return ESP_ERR_INVALID_ARG;
     button_config_t* btn = profile_get_button_config(button_id);
-    if (btn == NULL) {
-        return ESP_FAIL;
-    }
+    if (btn == NULL) return ESP_FAIL;
 
     if (btn->long_press_action_type == ACTION_TYPE_NONE) {
         ESP_LOGD(TAG, "No long press action for button %d", button_id);
@@ -266,13 +261,9 @@ esp_err_t action_execute_long_press(uint8_t button_id) {
 }
 
 esp_err_t action_execute(uint8_t button_id) {
-    if (button_id >= NUM_BUTTONS) {
-        return ESP_ERR_INVALID_ARG;
-    }
+    if (button_id >= NUM_BUTTONS) return ESP_ERR_INVALID_ARG;
 
-    // Exit folder toggle: the button that opened the folder acts as a back button
-    // regardless of what action the folder assigns to it (often NONE).
-    // Check before reading the folder's button config.
+    // The button that opened the folder exits it on short press, regardless of its config.
     if (profile_is_in_folder() && folder_entry_button_id == button_id) {
         ESP_LOGI(TAG, "Exiting folder via back button %d", button_id);
         profile_folder_exit();
@@ -281,17 +272,14 @@ esp_err_t action_execute(uint8_t button_id) {
     }
 
     button_config_t* btn = profile_get_button_config(button_id);
-    if (btn == NULL) {
-        return ESP_FAIL;
-    }
+    if (btn == NULL) return ESP_FAIL;
 
     ESP_LOGI(TAG, "Executing action for button %d, type=%d", button_id, btn->action_type);
 
-    if (btn->action_type == ACTION_TYPE_SEQUENCE) {
+    if (btn->action_type == ACTION_TYPE_SEQUENCE)
         return execute_sequence_action(btn, button_id);
-    }
 
-    // Folder action needs folder_id from button config, not action_data
+    // Folder action: folder_id lives in button config, not action_data
     if (btn->action_type == ACTION_TYPE_FOLDER) {
         uint8_t folder_data[1] = { btn->folder_id };
         return execute_single_action(ACTION_TYPE_FOLDER, folder_data, 1, button_id);

@@ -48,27 +48,26 @@ static button_state_t button_states[NUM_BUTTONS] = {0};
 // ─────────────────────────────────────────────────────────────────────────────
 #define REBOOT_HOLD_MS    3000
 #define COMBO_WINDOW_US   150000ULL   // 150 ms to press all three buttons
-static const uint8_t REBOOT_COMBO[]  = {0, 1, 2};
-#define REBOOT_COMBO_SIZE 3
+static const uint8_t REBOOT_COMBO[] = REBOOT_COMBO_BUTTONS;
 
 static bool     reboot_combo_active   = false;
 static uint64_t reboot_combo_start_us = 0;
 
 // Pending press events for combo buttons not yet sent to the PC
 typedef struct { bool pending; uint8_t payload[3]; } combo_evt_t;
-static combo_evt_t  combo_pending[REBOOT_COMBO_SIZE] = {0};
+static combo_evt_t  combo_pending[REBOOT_COMBO_LEN] = {0};
 static uint64_t     combo_window_start_us             = 0; // 0 = no pending window
 
 // Returns the combo index of btn_id, or -1 if not a combo button.
 static int get_combo_idx(uint8_t btn_id) {
-    for (int i = 0; i < REBOOT_COMBO_SIZE; i++)
+    for (int i = 0; i < REBOOT_COMBO_LEN; i++)
         if (REBOOT_COMBO[i] == btn_id) return i;
     return -1;
 }
 
 // Send all buffered combo events (combo did not form in time).
 static void flush_combo_pending(void) {
-    for (int i = 0; i < REBOOT_COMBO_SIZE; i++) {
+    for (int i = 0; i < REBOOT_COMBO_LEN; i++) {
         if (combo_pending[i].pending) {
             protocol_send_event(EVENT_BUTTON_PRESSED, combo_pending[i].payload, 3);
             combo_pending[i].pending = false;
@@ -79,7 +78,7 @@ static void flush_combo_pending(void) {
 
 // Discard all buffered combo events (combo formed — actions are suppressed).
 static void cancel_combo_pending(void) {
-    for (int i = 0; i < REBOOT_COMBO_SIZE; i++)
+    for (int i = 0; i < REBOOT_COMBO_LEN; i++)
         combo_pending[i].pending = false;
     combo_window_start_us = 0;
 }
@@ -87,7 +86,7 @@ static void cancel_combo_pending(void) {
 // Call after any change to button_states[].is_pressed.
 static void update_reboot_combo(void) {
     bool all_pressed = true;
-    for (int i = 0; i < REBOOT_COMBO_SIZE; i++)
+    for (int i = 0; i < REBOOT_COMBO_LEN; i++)
         if (!button_states[REBOOT_COMBO[i]].is_pressed) { all_pressed = false; break; }
 
     if (all_pressed && !reboot_combo_active) {
@@ -96,7 +95,7 @@ static void update_reboot_combo(void) {
         // Discard buffered press events — this is a reboot gesture, not individual presses
         cancel_combo_pending();
         // Prevent long-press timers and short-press actions for all combo buttons
-        for (int i = 0; i < REBOOT_COMBO_SIZE; i++) {
+        for (int i = 0; i < REBOOT_COMBO_LEN; i++) {
             uint8_t b = REBOOT_COMBO[i];
             button_states[b].long_press_sent = true;
             button_states[b].combo_consumed  = true;
@@ -229,6 +228,108 @@ static TickType_t calculate_timeout(void) {
     return min_ticks;
 }
 
+static void check_deadlines(uint64_t now) {
+    if (combo_window_start_us != 0 && (now - combo_window_start_us) >= COMBO_WINDOW_US) {
+        ESP_LOGI(TAG, "Combo window expired — flushing buffered events");
+        flush_combo_pending();
+    }
+
+    for (int i = 0; i < NUM_BUTTONS; i++) {
+        if (!button_states[i].is_pressed || button_states[i].long_press_sent) continue;
+        uint64_t held_us = now - button_states[i].press_time;
+        if (held_us >= (uint64_t)BUTTON_LONG_PRESS_MS * 1000ULL) {
+            ESP_LOGI(TAG, "Button %d long press (threshold)", i);
+            button_states[i].long_press_sent = true;
+            action_execute_long_press((uint8_t)i);
+            led_blink_confirm((uint8_t)i);
+        }
+    }
+
+    if (reboot_combo_active) {
+        uint64_t held_us = now - reboot_combo_start_us;
+        if (held_us >= (uint64_t)REBOOT_HOLD_MS * 1000ULL) {
+            ESP_LOGW(TAG, "Reboot combo held for %llu ms — restarting!", held_us / 1000ULL);
+            vTaskDelay(pdMS_TO_TICKS(50));
+            esp_restart();
+        }
+    }
+}
+
+static void process_press(uint8_t btn_id, uint64_t timestamp) {
+    if (button_states[btn_id].is_pressed) return;
+
+    button_states[btn_id].is_pressed      = true;
+    button_states[btn_id].press_time      = timestamp;
+    button_states[btn_id].long_press_sent = false;
+    button_states[btn_id].combo_consumed  = false;
+
+    ESP_LOGI(TAG, "Button %d pressed", btn_id);
+
+    button_config_t* btn_cfg = profile_get_button_config(btn_id);
+    uint8_t evt_payload[3] = { btn_id, 0, btn_cfg ? btn_cfg->action_type : 0 };
+
+    int cidx = get_combo_idx(btn_id);
+    if (cidx >= 0) {
+        if (combo_window_start_us == 0)
+            combo_window_start_us = esp_timer_get_time();
+        combo_pending[cidx].pending    = true;
+        combo_pending[cidx].payload[0] = evt_payload[0];
+        combo_pending[cidx].payload[1] = evt_payload[1];
+        combo_pending[cidx].payload[2] = evt_payload[2];
+        ESP_LOGI(TAG, "Button %d buffered (combo candidate)", btn_id);
+    } else {
+        if (combo_window_start_us != 0) {
+            ESP_LOGI(TAG, "Non-combo press — flushing buffered combo events");
+            flush_combo_pending();
+        }
+        protocol_send_event(EVENT_BUTTON_PRESSED, evt_payload, 3);
+    }
+
+    update_reboot_combo();
+}
+
+static void process_release(uint8_t btn_id) {
+    if (!button_states[btn_id].is_pressed) return;
+
+    uint64_t press_duration = esp_timer_get_time() - button_states[btn_id].press_time;
+    bool already_fired = button_states[btn_id].long_press_sent;
+    bool was_consumed  = button_states[btn_id].combo_consumed;
+    button_states[btn_id].is_pressed      = false;
+    button_states[btn_id].long_press_sent = false;
+    button_states[btn_id].combo_consumed  = false;
+
+    ESP_LOGI(TAG, "Button %d released (duration: %llu us, already_fired: %d, consumed: %d)",
+             btn_id, press_duration, already_fired, was_consumed);
+
+    int cidx = get_combo_idx(btn_id);
+    if (cidx >= 0 && combo_pending[cidx].pending) {
+        protocol_send_event(EVENT_BUTTON_PRESSED, combo_pending[cidx].payload, 3);
+        combo_pending[cidx].pending = false;
+        bool any_pending = false;
+        for (int i = 0; i < REBOOT_COMBO_LEN; i++)
+            if (combo_pending[i].pending) { any_pending = true; break; }
+        if (!any_pending) combo_window_start_us = 0;
+    }
+
+    update_reboot_combo();
+
+    if (was_consumed) {
+        ESP_LOGI(TAG, "Button %d release skipped — consumed by reboot combo", btn_id);
+    } else if (already_fired) {
+        // long press executed at threshold — nothing on release
+    } else if (press_duration >= (uint64_t)BUTTON_LONG_PRESS_MS * 1000ULL) {
+        ESP_LOGI(TAG, "Button %d long press (on release)", btn_id);
+        action_execute_long_press(btn_id);
+        led_blink_confirm(btn_id);
+    } else {
+        ESP_LOGI(TAG, "Button %d short press", btn_id);
+        action_execute(btn_id);
+    }
+
+    ESP_LOGI(TAG, "Stack after action: %u bytes free",
+             (unsigned int)(uxTaskGetStackHighWaterMark(NULL) * sizeof(StackType_t)));
+}
+
 void button_task(void* arg) {
     (void)arg;
     button_event_t event;
@@ -241,40 +342,10 @@ void button_task(void* arg) {
         TickType_t timeout = calculate_timeout();
 
         if (xQueueReceive(button_event_queue, &event, timeout) == pdFALSE) {
-            // Timeout — check every pending deadline.
-            uint64_t now = esp_timer_get_time();
-
-            // Flush combo window if it expired before all three buttons were pressed
-            if (combo_window_start_us != 0 && (now - combo_window_start_us) >= COMBO_WINDOW_US) {
-                ESP_LOGI(TAG, "Combo window expired — flushing buffered events");
-                flush_combo_pending();
-            }
-
-            // Fire long press for any button that crossed its threshold
-            for (int i = 0; i < NUM_BUTTONS; i++) {
-                if (!button_states[i].is_pressed || button_states[i].long_press_sent) continue;
-                uint64_t held_us = now - button_states[i].press_time;
-                if (held_us >= (uint64_t)BUTTON_LONG_PRESS_MS * 1000ULL) {
-                    ESP_LOGI(TAG, "Button %d long press (threshold)", i);
-                    button_states[i].long_press_sent = true;
-                    action_execute_long_press((uint8_t)i);
-                    led_blink_confirm((uint8_t)i);
-                }
-            }
-
-            // Reboot if the combo has been held long enough
-            if (reboot_combo_active) {
-                uint64_t held_us = now - reboot_combo_start_us;
-                if (held_us >= (uint64_t)REBOOT_HOLD_MS * 1000ULL) {
-                    ESP_LOGW(TAG, "Reboot combo held for %llu ms — restarting!", held_us / 1000ULL);
-                    vTaskDelay(pdMS_TO_TICKS(50));
-                    esp_restart();
-                }
-            }
+            check_deadlines(esp_timer_get_time());
             continue;
         }
 
-        // Got an edge event from ISR.
         uint8_t btn_id = event.button_id;
         if (btn_id >= NUM_BUTTONS) continue;
 
@@ -282,91 +353,11 @@ void button_task(void* arg) {
         int level = gpio_get_level(button_pins[btn_id]);
         vTaskDelay(pdMS_TO_TICKS(BUTTON_DEBOUNCE_MS));
         int level_after = gpio_get_level(button_pins[btn_id]);
-        if (level != level_after) continue;  // bounce
+        if (level != level_after) continue;
 
-        if (level == 0) {
-            // ── Button pressed (active low) ──────────────────────────────────
-            if (!button_states[btn_id].is_pressed) {
-                button_states[btn_id].is_pressed      = true;
-                button_states[btn_id].press_time      = event.timestamp;
-                button_states[btn_id].long_press_sent = false;
-                button_states[btn_id].combo_consumed  = false;
-
-                ESP_LOGI(TAG, "Button %d pressed", btn_id);
-
-                button_config_t* btn_cfg = profile_get_button_config(btn_id);
-                uint8_t evt_payload[3] = { btn_id, 0, btn_cfg ? btn_cfg->action_type : 0 };
-
-                int cidx = get_combo_idx(btn_id);
-                if (cidx >= 0) {
-                    // Combo button: buffer the event — send only if combo doesn't form in time.
-                    // If there are already non-combo events that flushed the window, this combo
-                    // attempt is invalid; treat it as a regular button.
-                    if (combo_window_start_us == 0) {
-                        // Start or extend the detection window only on first combo-button press.
-                        combo_window_start_us = esp_timer_get_time();
-                    }
-                    combo_pending[cidx].pending    = true;
-                    combo_pending[cidx].payload[0] = evt_payload[0];
-                    combo_pending[cidx].payload[1] = evt_payload[1];
-                    combo_pending[cidx].payload[2] = evt_payload[2];
-                    ESP_LOGI(TAG, "Button %d buffered (combo candidate)", btn_id);
-                } else {
-                    // Non-combo button pressed — flush any pending combo window first so
-                    // those buttons behave normally.
-                    if (combo_window_start_us != 0) {
-                        ESP_LOGI(TAG, "Non-combo press — flushing buffered combo events");
-                        flush_combo_pending();
-                    }
-                    protocol_send_event(EVENT_BUTTON_PRESSED, evt_payload, 3);
-                }
-
-                update_reboot_combo();
-            }
-        } else {
-            // ── Button released ──────────────────────────────────────────────
-            if (button_states[btn_id].is_pressed) {
-                uint64_t press_duration = esp_timer_get_time() - button_states[btn_id].press_time;
-                bool already_fired    = button_states[btn_id].long_press_sent;
-                bool was_consumed     = button_states[btn_id].combo_consumed;
-                button_states[btn_id].is_pressed      = false;
-                button_states[btn_id].long_press_sent = false;
-                button_states[btn_id].combo_consumed  = false;
-
-                ESP_LOGI(TAG, "Button %d released (duration: %llu us, already_fired: %d, consumed: %d)",
-                         btn_id, press_duration, already_fired, was_consumed);
-
-                int cidx = get_combo_idx(btn_id);
-                if (cidx >= 0 && combo_pending[cidx].pending) {
-                    // Released before window closed and combo didn't form — send now.
-                    protocol_send_event(EVENT_BUTTON_PRESSED, combo_pending[cidx].payload, 3);
-                    combo_pending[cidx].pending = false;
-                    // Check if the window is now empty
-                    bool any_pending = false;
-                    for (int i = 0; i < REBOOT_COMBO_SIZE; i++)
-                        if (combo_pending[i].pending) { any_pending = true; break; }
-                    if (!any_pending) combo_window_start_us = 0;
-                }
-
-                update_reboot_combo();
-
-                // Suppress actions entirely if button was consumed by the reboot combo.
-                if (was_consumed) {
-                    ESP_LOGI(TAG, "Button %d release skipped — consumed by reboot combo", btn_id);
-                } else if (already_fired) {
-                    // Long press already executed at threshold crossing — nothing on release.
-                } else if (press_duration >= (uint64_t)BUTTON_LONG_PRESS_MS * 1000ULL) {
-                    ESP_LOGI(TAG, "Button %d long press (on release)", btn_id);
-                    action_execute_long_press(btn_id);
-                    led_blink_confirm(btn_id);
-                } else {
-                    ESP_LOGI(TAG, "Button %d short press", btn_id);
-                    action_execute(btn_id);
-                }
-
-                ESP_LOGI(TAG, "Stack after action: %u bytes free",
-                         (unsigned int)(uxTaskGetStackHighWaterMark(NULL) * sizeof(StackType_t)));
-            }
-        }
+        if (level == 0)
+            process_press(btn_id, event.timestamp);
+        else
+            process_release(btn_id);
     }
 }

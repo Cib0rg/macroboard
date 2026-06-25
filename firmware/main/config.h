@@ -119,7 +119,6 @@
 #define TASK_PRIORITY_ENCODER   18
 #define TASK_PRIORITY_PROTOCOL  15
 #define TASK_PRIORITY_DISPLAY   12
-#define TASK_PRIORITY_LED       10
 #define TASK_PRIORITY_SAVE      8
 #define TASK_PRIORITY_HEARTBEAT 6
 #define TASK_PRIORITY_MONITOR   3
@@ -132,7 +131,6 @@
 #define STACK_SIZE_ENCODER      4096
 #define STACK_SIZE_PROTOCOL     8192
 #define STACK_SIZE_DISPLAY      8192
-#define STACK_SIZE_LED          4096
 #define STACK_SIZE_SAVE         4096
 #define STACK_SIZE_HEARTBEAT    2048
 
@@ -141,6 +139,8 @@
 // ============================================
 #define BUTTON_DEBOUNCE_MS      10
 #define BUTTON_LONG_PRESS_MS    1000
+#define REBOOT_COMBO_BUTTONS    {0, 1, 2}
+#define REBOOT_COMBO_LEN        3
 #define ENCODER_STEPS_PER_PROFILE 4
 
 // ============================================

@@ -113,18 +113,3 @@ esp_err_t led_clear_all(void) {
     
     return ret;
 }
-
-void led_task(void* arg) {
-    (void)arg;
-    ESP_LOGI(TAG, "LED task started");
-    
-    // This task can handle LED effects in the future
-    // For now, it just waits
-    
-    while (1) {
-        vTaskDelay(pdMS_TO_TICKS(100));
-        
-        // LED effects could be implemented here
-        // For example: breathing, rainbow, wave, etc.
-    }
-}

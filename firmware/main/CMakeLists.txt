@@ -2,7 +2,6 @@ idf_component_register(
     SRCS
         "main.c"
         "hardware/gc9a01.c"
-        "hardware/gc9a01_backlight.c"
         "hardware/display_mux.c"
         "hardware/display_task.c"
         "hardware/buttons.c"
