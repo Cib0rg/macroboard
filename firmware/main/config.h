@@ -80,7 +80,7 @@
 // ============================================
 #define PROFILE_NAME_MAX_LEN    32
 #define BUTTON_NAME_MAX_LEN     32
-#define ACTION_DATA_MAX_LEN     100
+#define ACTION_DATA_MAX_LEN     51   // Max action blob bytes (protocol payload 56 − 5 header)
 
 // Folder Configuration
 #define NUM_FOLDERS             16  // Maximum number of folders per profile

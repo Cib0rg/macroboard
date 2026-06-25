@@ -21,6 +21,7 @@ static uint8_t folder_entry_button_id = 0xFF;
 // Forward declarations for internal functions
 static esp_err_t execute_single_action(action_type_t type, const uint8_t* data, uint16_t data_len, uint8_t button_id);
 static esp_err_t execute_sequence(const action_sequence_t* seq, uint8_t button_id);
+static esp_err_t execute_sequence_from_blob(const uint8_t* data, uint16_t data_len, uint8_t button_id);
 
 /**
  * @brief Execute a single action (used by both direct actions and sequence steps)
@@ -40,6 +41,10 @@ static esp_err_t execute_single_action(action_type_t type, const uint8_t* data, 
                     usb_hid_keyboard_press(modifier, keycode);
                 } else if (data_len >= 3 && data[2] == 0x01) {
                     // Long text stored in SPIFFS — load and type
+                    if (button_id == 0xFF) {
+                        ESP_LOGE(TAG, "SPIFFS text not supported for encoder (no storage slot assigned)");
+                        return ESP_ERR_NOT_SUPPORTED;
+                    }
                     uint8_t folder = profile_get_current_folder();
                     uint8_t storage_bid = (folder == 0xFF)
                         ? button_id
@@ -148,6 +153,9 @@ static esp_err_t execute_single_action(action_type_t type, const uint8_t* data, 
             ESP_LOGD(TAG, "Plugin action forwarded to PC via generic button event");
             break;
 
+        case ACTION_TYPE_SEQUENCE:
+            return execute_sequence_from_blob(data, data_len, button_id);
+
         default:
             ESP_LOGW(TAG, "Unknown action type: %d", type);
             return ESP_ERR_INVALID_ARG;
@@ -198,11 +206,10 @@ static esp_err_t execute_sequence(const action_sequence_t* seq, uint8_t button_i
     return ESP_OK;
 }
 
-// Sequence parsing is split into its own function so the ~1732-byte
-// action_sequence_t is only on the stack when a sequence is actually running,
-// not on every button press regardless of action type.
-static esp_err_t execute_sequence_action(button_config_t* btn, uint8_t button_id) {
-    if (btn->action_data_len < 1) {
+// Sequence blob parser — allocated on stack only when a sequence actually fires.
+// Called from execute_single_action so all contexts (button, long press, sequence step) are uniform.
+static esp_err_t execute_sequence_from_blob(const uint8_t* data, uint16_t data_len, uint8_t button_id) {
+    if (data_len < 1) {
         ESP_LOGW(TAG, "Sequence action with no data");
         return ESP_ERR_INVALID_ARG;
     }
@@ -210,8 +217,8 @@ static esp_err_t execute_sequence_action(button_config_t* btn, uint8_t button_id
     action_sequence_t seq;
     memset(&seq, 0, sizeof(seq));
 
-    const uint8_t* ptr = btn->action_data;
-    const uint8_t* end = btn->action_data + btn->action_data_len;
+    const uint8_t* ptr = data;
+    const uint8_t* end = data + data_len;
 
     seq.num_steps = *ptr++;
     if (seq.num_steps > MAX_SEQUENCE_STEPS) {
@@ -275,15 +282,5 @@ esp_err_t action_execute(uint8_t button_id) {
     if (btn == NULL) return ESP_FAIL;
 
     ESP_LOGI(TAG, "Executing action for button %d, type=%d", button_id, btn->action_type);
-
-    if (btn->action_type == ACTION_TYPE_SEQUENCE)
-        return execute_sequence_action(btn, button_id);
-
-    // Folder action: folder_id lives in button config, not action_data
-    if (btn->action_type == ACTION_TYPE_FOLDER) {
-        uint8_t folder_data[1] = { btn->folder_id };
-        return execute_single_action(ACTION_TYPE_FOLDER, folder_data, 1, button_id);
-    }
-
     return execute_single_action(btn->action_type, btn->action_data, btn->action_data_len, button_id);
 }
