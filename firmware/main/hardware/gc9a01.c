@@ -387,22 +387,33 @@ esp_err_t gc9a01_draw_image(uint8_t display_id, const uint8_t* image_data,
     if (display_id >= NUM_DISPLAYS || image_data == NULL) {
         return ESP_ERR_INVALID_ARG;
     }
-    
+
     if (width > DISPLAY_WIDTH || height > DISPLAY_HEIGHT) {
         return ESP_ERR_INVALID_SIZE;
     }
-    
+
+    // image_data may point into PSRAM (s_display_cache / s_folder_display_cache).
+    // spi_device_transmit requires a DMA-capable (internal SRAM) buffer; passing a
+    // PSRAM pointer causes the driver to either reject the transaction or fall back
+    // to an expensive per-row bounce-buffer copy internally.  Allocate one row-sized
+    // DMA buffer here and memcpy each row before sending — this is fast (320 bytes
+    // from PSRAM, typically L1-cache-warm) and guarantees DMA works correctly.
+    size_t row_bytes = width * 2;
+    uint8_t* row_buf = heap_caps_malloc(row_bytes, MALLOC_CAP_DMA);
+    if (!row_buf) return ESP_ERR_NO_MEM;
+
     uint16_t x0 = (DISPLAY_WIDTH - width) / 2;
     uint16_t y0 = (DISPLAY_HEIGHT - height) / 2;
-    size_t row_bytes = width * 2;
 
     spi_lock(display_id);
     gc9a01_set_window(x0, y0, x0 + width - 1, y0 + height - 1);
-    // Write row-by-row: full image (160x160x2 = 51200 bytes) exceeds SPI DMA max transfer size
-    for (uint16_t row = 0; row < height; row++)
-        gc9a01_write_data(image_data + (row * row_bytes), row_bytes);
+    for (uint16_t row = 0; row < height; row++) {
+        memcpy(row_buf, image_data + row * row_bytes, row_bytes);
+        gc9a01_write_data(row_buf, row_bytes);
+    }
     spi_unlock();
 
+    free(row_buf);
     return ESP_OK;
 }
 
@@ -425,12 +436,19 @@ esp_err_t gc9a01_draw_image_in_region(uint8_t display_id, const uint8_t* image_d
     uint16_t disp_y = dst_y + (region_h - draw_h) / 2;
     uint16_t x0     = (DISPLAY_WIDTH - img_w) / 2;
 
+    size_t row_bytes = img_w * 2;
+    uint8_t* row_buf = heap_caps_malloc(row_bytes, MALLOC_CAP_DMA);
+    if (!row_buf) return ESP_ERR_NO_MEM;
+
     spi_lock(display_id);
     gc9a01_set_window(x0, disp_y, x0 + img_w - 1, disp_y + draw_h - 1);
-    size_t row_bytes = img_w * 2;
-    for (uint16_t row = 0; row < draw_h; row++)
-        gc9a01_write_data(image_data + ((src_y + row) * row_bytes), row_bytes);
+    for (uint16_t row = 0; row < draw_h; row++) {
+        memcpy(row_buf, image_data + (src_y + row) * row_bytes, row_bytes);
+        gc9a01_write_data(row_buf, row_bytes);
+    }
     spi_unlock();
+
+    free(row_buf);
     return ESP_OK;
 }
 

@@ -94,10 +94,38 @@ esp_err_t profile_manager_init(void) {
     esp_err_t ret = profile_storage_load(0, &current_profile);
     if (ret != ESP_OK) {
         ESP_LOGW(TAG, "Failed to load profile, using empty profile");
-        // Create empty profile in memory (don't save to avoid watchdog timeout)
         memset(&current_profile, 0, sizeof(profile_t));
         current_profile.profile_id = 0;
         snprintf(current_profile.name, sizeof(current_profile.name), "Profile 1");
+    }
+
+    ESP_LOGI(TAG, "Boot: btn[0] image_size=%lu action_type=0x%02X lp_action_type=0x%02X",
+             (unsigned long)current_profile.buttons[0].image_size,
+             current_profile.buttons[0].action_type,
+             current_profile.buttons[0].long_press_action_type);
+
+    // Defensive: if image_size is 0 for a button but image_storage still holds a
+    // valid mapping+blob, the profile was saved before save_task could update
+    // image_size (e.g. async SPIFFS write failed).  Correct the in-memory value so
+    // the boot render loads the image from SPIFFS instead of falling back to text.
+    // Note: image_storage_init (Phase 1.4) already ran and its GC now keeps mappings
+    // alive when the blob exists, so image_storage_has_image() is reliable here.
+    for (int b = 0; b < NUM_BUTTONS; b++) {
+        if (current_profile.buttons[b].image_size == 0 &&
+            image_storage_has_image(0, (uint8_t)b)) {
+            current_profile.buttons[b].image_size = DISPLAY_BUFFER_SIZE;
+            ESP_LOGW(TAG, "Boot fix: btn[%d] image_size corrected (mapping+blob exists)", b);
+        }
+    }
+    for (int f = 0; f < NUM_FOLDERS; f++) {
+        for (int b = 0; b < NUM_BUTTONS; b++) {
+            uint8_t sbid = (uint8_t)(NUM_BUTTONS + (uint8_t)f * NUM_BUTTONS + (uint8_t)b);
+            if (current_profile.folders[f].buttons[b].image_size == 0 &&
+                image_storage_has_image(0, sbid)) {
+                current_profile.folders[f].buttons[b].image_size = DISPLAY_BUFFER_SIZE;
+                ESP_LOGW(TAG, "Boot fix: folder[%d].btn[%d] image_size corrected", f, b);
+            }
+        }
     }
 
     ESP_LOGI(TAG, "Profile manager initialized");
@@ -611,13 +639,18 @@ void profile_refresh_displays(void) {
         // profile_update_button_display already handles the back icon for folder_entry_button.
         uint8_t current_folder_id = folder_stack[folder_stack_depth - 1];
         folder_t* folder = &current_profile.folders[current_folder_id];
+        // Phase 1: update all LEDs at once so they change instantly.
         for (int i = 0; i < NUM_BUTTONS; i++) {
             button_config_t* btn = &folder->buttons[i];
             led_set_color(i, btn->led_r, btn->led_g, btn->led_b, BTN_LED_BRIGHTNESS(btn));
+        }
+        led_update();
+        // Phase 2: render displays one by one.
+        for (int i = 0; i < NUM_BUTTONS; i++) {
+            button_config_t* btn = &folder->buttons[i];
             profile_update_button_display(i, btn);
             vTaskDelay(pdMS_TO_TICKS(2));
         }
-        led_update();
         return;
     }
 
@@ -659,6 +692,12 @@ static uint8_t* load_image_cached(uint8_t button_id) {
 
 // ── Split display: top = short-press content, bottom = long-press label ───────
 static void render_split_display(uint8_t button_id, button_config_t* btn) {
+    if (button_id == 0) {
+        ESP_LOGI(TAG, "render_split[0]: action=0x%02X lp=0x%02X cache=%s image_size=%lu",
+                 btn->action_type, btn->long_press_action_type,
+                 (resolve_cache_slot(button_id) && *resolve_cache_slot(button_id)) ? "yes" : "no",
+                 (unsigned long)btn->image_size);
+    }
     char lp_label[64] = {0};
     if (btn->long_press_name[0] != '\0')
         strncpy(lp_label, btn->long_press_name, sizeof(lp_label) - 1);
@@ -702,6 +741,20 @@ static void render_split_display(uint8_t button_id, button_config_t* btn) {
 
 // ── Full-screen display: image or text label ──────────────────────────────────
 static void render_full_display(uint8_t button_id, button_config_t* btn) {
+    if (button_id == 0) {
+        ESP_LOGI(TAG, "render_full[0]: action=0x%02X lp=0x%02X cache=%s image_size=%lu",
+                 btn->action_type, btn->long_press_action_type,
+                 (resolve_cache_slot(button_id) && *resolve_cache_slot(button_id)) ? "yes" : "no",
+                 (unsigned long)btn->image_size);
+    }
+
+    // Unassigned buttons have no image and no label — just black.
+    // Skip cache/SPIFFS entirely, mirrors BTN_LED_BRIGHTNESS returning 0 for NONE.
+    if (btn->action_type == ACTION_TYPE_NONE) {
+        gc9a01_clear(button_id, COLOR_BLACK);
+        return;
+    }
+
     // A non-NULL cache entry is authoritative: it holds a freshly decoded image that
     // may not yet be reflected in image_size (save_task writes SPIFFS asynchronously).
     // Check cache before image_size so we never fall through to the text path while a
@@ -786,31 +839,36 @@ esp_err_t profile_folder_enter(uint8_t folder_id, uint8_t entry_button_id) {
     ESP_LOGI(TAG, "Entering folder %d ('%s'), depth: %d",
              folder_id, folder->name, folder_stack_depth);
 
-    // Only clear the folder image cache when switching to a different folder.
-    // Keeping it alive lets re-entry into the same folder skip SPIFFS reads.
-    if (s_cached_folder_id != folder_id) {
+    // Clear folder image cache only when switching between two PREVIOUSLY VISITED folders.
+    // When s_cached_folder_id is 0xFF (never entered any folder this session), the cache
+    // was just populated by image_transfer_end during the profile send — clearing it would
+    // force expensive SPIFFS re-reads (~300 ms/image) on first folder entry.
+    if (s_cached_folder_id != 0xFF && s_cached_folder_id != folder_id) {
         folder_display_cache_clear();
-        s_cached_folder_id = folder_id;
     }
+    s_cached_folder_id = folder_id;
 
-    // Update LEDs and displays with folder buttons
+    // Phase 1: set all LED colours and flush to hardware immediately.
+    // Doing this before any display SPI work means the LEDs visually respond
+    // to the button press in ~1 ms instead of after all images are rendered.
+    button_config_t* root_back_btn = &current_profile.buttons[entry_button_id];
     for (int i = 0; i < NUM_BUTTONS; i++) {
         button_config_t* btn = &folder->buttons[i];
-
-        // Back button slot: preserve root button LED color so the exit button
-        // keeps the same color as the folder opener button.
+        // Back button slot: keep the root button's LED colour on the exit key.
         if (i == entry_button_id) {
-            button_config_t* root_btn = &current_profile.buttons[entry_button_id];
-            led_set_color(i, root_btn->led_r, root_btn->led_g, root_btn->led_b,
-                          BTN_LED_BRIGHTNESS(root_btn));
+            led_set_color(i, root_back_btn->led_r, root_back_btn->led_g, root_back_btn->led_b,
+                          BTN_LED_BRIGHTNESS(root_back_btn));
         } else {
             led_set_color(i, btn->led_r, btn->led_g, btn->led_b, BTN_LED_BRIGHTNESS(btn));
         }
-
-        // Update display: try to load button image, otherwise clear to black
-        profile_update_button_display(i, btn);
     }
     led_update();
+
+    // Phase 2: render displays one by one (slower — may involve SPIFFS or SPI).
+    for (int i = 0; i < NUM_BUTTONS; i++) {
+        button_config_t* btn = &folder->buttons[i];
+        profile_update_button_display(i, btn);
+    }
     
     xSemaphoreGive(profile_mutex);
     
@@ -856,15 +914,17 @@ esp_err_t profile_folder_exit(void) {
         ESP_LOGI(TAG, "Returned to parent folder %d", parent_folder);
     }
     
-    // Update LEDs and displays
+    // Phase 1: flush all LED colours before any SPI display work.
     for (int i = 0; i < NUM_BUTTONS; i++) {
         button_config_t* btn = &buttons[i];
         led_set_color(i, btn->led_r, btn->led_g, btn->led_b, BTN_LED_BRIGHTNESS(btn));
-        
-        // Update display: try to load button image, otherwise clear to black
-        profile_update_button_display(i, btn);
     }
     led_update();
+
+    // Phase 2: render displays one by one.
+    for (int i = 0; i < NUM_BUTTONS; i++) {
+        profile_update_button_display(i, &buttons[i]);
+    }
     
     xSemaphoreGive(profile_mutex);
     

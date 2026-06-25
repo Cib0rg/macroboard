@@ -179,13 +179,26 @@ void save_task_fn(void* arg)
             esp_err_t ret = image_storage_save(cmd.profile_id, cmd.storage_bid,
                                                cmd.rgb565_buf, DISPLAY_BUFFER_SIZE,
                                                cmd.crc32);
+
+            // SPIFFS write can fail transiently (GC, fragmentation, stale blob from
+            // a previous incomplete session).  The first attempt already calls unlink()
+            // on the failed blob, so the retry writes to a clean slate.
+            if (ret != ESP_OK) {
+                ESP_LOGW(TAG, "SPIFFS write failed for storage_bid=%d — retrying in 200 ms",
+                         cmd.storage_bid);
+                vTaskDelay(pdMS_TO_TICKS(200));
+                ret = image_storage_save(cmd.profile_id, cmd.storage_bid,
+                                         cmd.rgb565_buf, DISPLAY_BUFFER_SIZE,
+                                         cmd.crc32);
+            }
+
             if (ret == ESP_OK) {
                 update_image_size(cmd.profile_id, cmd.folder_id, cmd.button_id);
                 ESP_LOGD(TAG, "Saved storage_bid=%d (queue remaining: %lu)",
                          cmd.storage_bid,
                          (unsigned long)uxQueueMessagesWaiting(save_queue));
             } else {
-                ESP_LOGE(TAG, "Async save failed for storage_bid=%d: %s",
+                ESP_LOGE(TAG, "Async save PERMANENTLY failed for storage_bid=%d: %s",
                          cmd.storage_bid, esp_err_to_name(ret));
             }
 

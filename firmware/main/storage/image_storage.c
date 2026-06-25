@@ -27,6 +27,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <string.h>
+#include <errno.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
@@ -399,7 +400,8 @@ esp_err_t image_storage_save(uint8_t profile_id, uint8_t button_id,
         fclose(f);
 
         if (written != image_size) {
-            ESP_LOGE(TAG, "Failed to write image blob");
+            ESP_LOGE(TAG, "Failed to write image blob: path=%s wrote=%zu/%zu errno=%d",
+                     path, written, image_size, errno);
             unlink(path);
             return ESP_FAIL;
         }
@@ -603,12 +605,48 @@ esp_err_t image_storage_gc(void) {
         for (int i = (int)s_num_mappings - 1; i >= 0; i--) {
             if (s_mappings[i].profile_id != 0) continue;
             uint8_t bid = s_mappings[i].button_id;
-            if (bid < NUM_BUTTONS && profile->buttons[bid].image_size == 0) {
+            bool profile_has_no_image = false;
+
+            if (bid < NUM_BUTTONS) {
+                profile_has_no_image = (profile->buttons[bid].image_size == 0);
+            } else {
+                uint8_t offset    = bid - NUM_BUTTONS;
+                uint8_t folder_id = offset / NUM_BUTTONS;
+                uint8_t btn_slot  = offset % NUM_BUTTONS;
+                if (folder_id < NUM_FOLDERS) {
+                    profile_has_no_image =
+                        (profile->folders[folder_id].buttons[btn_slot].image_size == 0);
+                } else {
+                    profile_has_no_image = true;
+                }
+            }
+
+            // A mapping is truly stale only if BOTH the profile records no image AND
+            // the blob file no longer exists.  If the blob is present but image_size is
+            // 0 in the profile (e.g. save_task failed to update image_size before the
+            // profile was persisted), the blob is still valid — keep the mapping so
+            // profile_manager_init can correct the in-memory image_size at boot.
+            bool stale = false;
+            if (profile_has_no_image) {
+                char blob_path[48];
+                build_blob_path(s_mappings[i].crc32, blob_path, sizeof(blob_path));
+                struct stat bst;
+                bool blob_exists = (stat(blob_path, &bst) == 0);
+                stale = !blob_exists;
+                if (bid == 0 || profile_has_no_image) {
+                    ESP_LOGW(TAG,
+                             "GC: bid=%d image_size=0 blob_exists=%d stale=%d crc=0x%08lx",
+                             bid, (int)blob_exists, (int)stale,
+                             (unsigned long)s_mappings[i].crc32);
+                }
+            }
+
+            if (stale) {
                 uint32_t crc = s_mappings[i].crc32;
                 remove_mapping(i);
                 release_image(crc);
                 changed = true;
-                ESP_LOGI(TAG, "GC: removed stale mapping button=%d", bid);
+                ESP_LOGI(TAG, "GC: removed stale mapping storage_bid=%d", bid);
             }
         }
     }

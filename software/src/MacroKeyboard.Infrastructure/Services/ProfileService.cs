@@ -398,11 +398,6 @@ public class ProfileService : IProfileService
         {
             _logger.LogWarning("Image file not found for button {ButtonId}: {Path}", buttonId, imagePath);
         }
-        else if (action == null || action is NoneAction)
-        {
-            var blank = await _imageService.CreateBlankImageAsync();
-            await SendRaw(blank);
-        }
         else if (ringColor.HasValue)
         {
             // FolderAction (orange ring) and PluginActionConfig (purple ring) both need a
@@ -410,7 +405,8 @@ public class ProfileService : IProfileService
             // falls back to text rendering until willAppear fires.
             _logger.LogInformation("Sending ring placeholder for button {ButtonId} label='{Label}'", buttonId, label);
             var placeholder = await _imageService.CreateRingPlaceholderAsync(ringColor.Value, label ?? string.Empty);
-            await SendRaw(placeholder);
+            if (!await SendRaw(placeholder))
+                _logger.LogWarning("Failed to send ring placeholder for button {ButtonId}", buttonId);
         }
     }
 
