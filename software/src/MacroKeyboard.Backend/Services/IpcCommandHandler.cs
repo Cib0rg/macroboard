@@ -2,6 +2,7 @@ using MacroKeyboard.Backend;
 using MacroKeyboard.Backend.Plugin;
 using MacroKeyboard.Core.Models;
 using MacroKeyboard.Core.Services;
+using MacroKeyboard.Infrastructure.Services;
 using MacroKeyboard.Shared.IPC;
 using MacroKeyboard.Shared.Plugin;
 using Microsoft.Extensions.Hosting;
@@ -18,7 +19,7 @@ namespace MacroKeyboard.Backend.Services;
 public class IpcCommandHandler
 {
     private readonly IDeviceService _deviceService;
-    private readonly IProfileService _profileService;
+    private readonly ProfileService _profileService;
     private readonly IIpcServer _ipcServer;
     private readonly PluginManager _pluginManager;
     private readonly IHostApplicationLifetime _lifetime;
@@ -26,7 +27,7 @@ public class IpcCommandHandler
 
     public IpcCommandHandler(
         IDeviceService deviceService,
-        IProfileService profileService,
+        ProfileService profileService,
         IIpcServer ipcServer,
         PluginManager pluginManager,
         IHostApplicationLifetime lifetime,
@@ -75,17 +76,16 @@ public class IpcCommandHandler
                 _ => HandleUnknownCommand(message)
             };
 
-            // Broadcast response to all clients (the RequestId will match the sender's request)
-            await _ipcServer.BroadcastAsync(response);
+            await _ipcServer.SendToClientAsync(message.SourceClientId!, response);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error handling IPC command: {MessageType}", message.MessageType);
-            
+
             try
             {
                 var errorResponse = IpcResponse.Fail(message, ex.Message);
-                await _ipcServer.BroadcastAsync(errorResponse);
+                await _ipcServer.SendToClientAsync(message.SourceClientId!, errorResponse);
             }
             catch (Exception broadcastEx)
             {

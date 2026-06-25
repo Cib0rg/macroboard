@@ -126,6 +126,30 @@ public class IpcServer : IIpcServer, IDisposable
         }
     }
 
+    public async Task SendToClientAsync(string clientId, IpcMessage message, CancellationToken cancellationToken = default)
+    {
+        if (!_clients.TryGetValue(clientId, out var client))
+            return;
+
+        var json = JsonConvert.SerializeObject(message);
+        var data = Encoding.UTF8.GetBytes(json + "\n");
+
+        try
+        {
+            if (client.Connected)
+                await client.GetStream().WriteAsync(data, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error sending to client {ClientId}", clientId);
+            if (_clients.TryRemove(clientId, out _))
+            {
+                client.Close();
+                ClientDisconnected?.Invoke(this, clientId);
+            }
+        }
+    }
+
     private async Task AcceptClientsAsync(CancellationToken cancellationToken)
     {
         _logger.LogInformation("Accepting client connections...");
@@ -191,7 +215,7 @@ public class IpcServer : IIpcServer, IDisposable
                             if (message != null)
                             {
                                 _logger.LogDebug("Received message from {ClientId}: {MessageType}", clientId, message.MessageType);
-                                
+                                message.SourceClientId = clientId;
                                 // Fire event — IpcCommandHandler will process and send response
                                 MessageReceived?.Invoke(this, message);
                             }

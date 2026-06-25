@@ -118,7 +118,7 @@ public class ProfileRepository
                 Directory.Delete(imagesPath, recursive: true);
             }
             
-            return await Task.FromResult(true);
+            return true;
         }
         catch (Exception ex)
         {
@@ -130,10 +130,9 @@ public class ProfileRepository
     /// <summary>
     /// Проверить существование профиля
     /// </summary>
-    public Task<bool> ExistsAsync(byte profileId)
+    public bool Exists(byte profileId)
     {
-        var filePath = GetProfileFilePath(profileId);
-        return Task.FromResult(File.Exists(filePath));
+        return File.Exists(GetProfileFilePath(profileId));
     }
     
     private string GetProfileFilePath(byte profileId)

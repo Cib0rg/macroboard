@@ -18,18 +18,9 @@ public class ShellResult
 }
 
 /// <summary>
-/// Интерфейс для выполнения shell-команд
-/// </summary>
-public interface IShellCommandExecutor
-{
-    Task<ShellResult> ExecuteAsync(ShellAction action, CancellationToken cancellationToken = default);
-    Task<ShellResult> ExecuteAsync(string command, string? workingDirectory = null, bool waitForExit = true, int timeoutMs = 30000, CancellationToken cancellationToken = default);
-}
-
-/// <summary>
 /// Сервис для выполнения shell-команд на PC
 /// </summary>
-public class ShellCommandExecutor : IShellCommandExecutor
+public class ShellCommandExecutor
 {
     private readonly ILogger<ShellCommandExecutor> _logger;
     private readonly SemaphoreSlim _semaphore;

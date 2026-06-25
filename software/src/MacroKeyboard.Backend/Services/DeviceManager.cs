@@ -191,7 +191,8 @@ public class DeviceManager : IDisposable
                             // process this command either, RebootDeviceAsync times out and we fall
                             // through to the forced USB close below.
                             _logger.LogInformation("Requesting firmware reboot via CMD_FACTORY_RESET...");
-                            try { await _deviceService.RebootDeviceAsync(cancellationToken); } catch { }
+                            try { await _deviceService.RebootDeviceAsync(cancellationToken); }
+                            catch (Exception ex) { _logger.LogDebug(ex, "RebootDeviceAsync failed (best-effort)"); }
                             // Allow the device to reboot and disconnect naturally (100 ms firmware
                             // delay + USB re-enumeration) before we close the handle ourselves.
                             await Task.Delay(500, cancellationToken);

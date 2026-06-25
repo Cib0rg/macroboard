@@ -10,7 +10,7 @@ namespace MacroKeyboard.Infrastructure.Services;
 /// <summary>
 /// Реализация сервиса для управления профилями
 /// </summary>
-public class ProfileService : IProfileService
+public class ProfileService
 {
     private readonly ProfileRepository _repository;
     private readonly IDeviceService _deviceService;

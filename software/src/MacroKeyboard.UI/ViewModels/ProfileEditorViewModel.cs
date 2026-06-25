@@ -4,7 +4,6 @@ using Avalonia.Platform.Storage;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using MacroKeyboard.Core.Models;
-using MacroKeyboard.Core.Services;
 using MacroKeyboard.Infrastructure.Services;
 using MacroKeyboard.Shared.IPC;
 using MacroKeyboard.Shared.Plugin;
@@ -22,7 +21,7 @@ namespace MacroKeyboard.UI.ViewModels;
 
 public partial class ProfileEditorViewModel : ViewModelBase
 {
-    private readonly IProfileService _profileService;
+    private readonly ProfileService _profileService;
     private readonly IpcClient _ipcClient;
     private readonly ImageService _imageService;
     private readonly ILogger<ProfileEditorViewModel> _logger;
@@ -144,7 +143,7 @@ public partial class ProfileEditorViewModel : ViewModelBase
     // ── Constructor ───────────────────────────────────────────────────────────
 
     public ProfileEditorViewModel(
-        IProfileService profileService,
+        ProfileService profileService,
         IpcClient ipcClient,
         ImageService imageService,
         ILogger<ProfileEditorViewModel> logger,

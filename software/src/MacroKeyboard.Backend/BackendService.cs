@@ -16,7 +16,7 @@ public class BackendService : BackgroundService
     private readonly IpcServer _ipcServer;
     private readonly EventRouter _eventRouter;
     private readonly IpcCommandHandler _commandHandler;
-    private readonly ActionExecutorService _actionExecutor;
+    private readonly IActionExecutorService _actionExecutor;
     private readonly WebSocketServer _webSocketServer;
     private readonly PropertyInspectorServer _piServer;
     private readonly PluginManager _pluginManager;
@@ -27,7 +27,7 @@ public class BackendService : BackgroundService
         IpcServer ipcServer,
         EventRouter eventRouter,
         IpcCommandHandler commandHandler,
-        ActionExecutorService actionExecutor,
+        IActionExecutorService actionExecutor,
         WebSocketServer webSocketServer,
         PropertyInspectorServer piServer,
         PluginManager pluginManager)

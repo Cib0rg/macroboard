@@ -3,6 +3,7 @@ using MacroKeyboard.Backend;
 using MacroKeyboard.Backend.Plugin;
 using MacroKeyboard.Core.Models;
 using MacroKeyboard.Core.Services;
+using MacroKeyboard.Infrastructure.Services;
 using Microsoft.Extensions.Logging;
 using SharedEvents = MacroKeyboard.Shared.Events;
 
@@ -12,11 +13,11 @@ namespace MacroKeyboard.Backend.Services;
 /// Executes PC-side actions (LaunchApp, Shell, Plugin) triggered by device button presses.
 /// Subscribes directly to IDeviceService.ButtonPressed so it receives ActionType and ProfileId.
 /// </summary>
-public class ActionExecutorService
+public class ActionExecutorService : IActionExecutorService
 {
     private readonly IDeviceService _deviceService;
-    private readonly IProfileService _profileService;
-    private readonly IShellCommandExecutor _shellExecutor;
+    private readonly ProfileService _profileService;
+    private readonly ShellCommandExecutor _shellExecutor;
     private readonly PluginManager _pluginManager;
     private readonly ILogger<ActionExecutorService> _logger;
 
@@ -26,8 +27,8 @@ public class ActionExecutorService
     public ActionExecutorService(
         IDeviceService deviceService,
         DeviceManager deviceManager,
-        IProfileService profileService,
-        IShellCommandExecutor shellExecutor,
+        ProfileService profileService,
+        ShellCommandExecutor shellExecutor,
         PluginManager pluginManager,
         ILogger<ActionExecutorService> logger)
     {

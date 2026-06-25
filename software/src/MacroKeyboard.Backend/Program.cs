@@ -43,7 +43,7 @@ try
     builder.Services.AddSingleton<HidDeviceManager>();
     builder.Services.AddSingleton<ProtocolHandler>();
     builder.Services.AddSingleton<IDeviceService, DeviceService>();
-    builder.Services.AddSingleton<IProfileService, ProfileService>();
+    builder.Services.AddSingleton<ProfileService>();
     builder.Services.AddSingleton<ImageService>();
 
     // Register Infrastructure
@@ -55,8 +55,8 @@ try
     builder.Services.AddSingleton<IIpcServer>(sp => sp.GetRequiredService<IpcServer>());
     builder.Services.AddSingleton<EventRouter>();
     builder.Services.AddSingleton<IpcCommandHandler>();
-    builder.Services.AddSingleton<IShellCommandExecutor, ShellCommandExecutor>();
-    builder.Services.AddSingleton<ActionExecutorService>();
+    builder.Services.AddSingleton<ShellCommandExecutor>();
+    builder.Services.AddSingleton<IActionExecutorService, ActionExecutorService>();
 
     // Register Plugin services
     builder.Services.AddSingleton<WebSocketServer>();

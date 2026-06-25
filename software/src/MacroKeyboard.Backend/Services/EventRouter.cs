@@ -40,11 +40,9 @@ public class EventRouter
         _ipcServer.ClientConnected += (s, id) => OnIpcClientConnected(s, id).FireAndForget(_logger);
     }
 
-    private async Task OnIpcClientConnected(object? sender, string clientId)
-    {
-        try
+    private async Task OnIpcClientConnected(object? sender, string clientId) =>
+        await _logger.TryCatchAsync(async () =>
         {
-            // If device is already connected, send the cached event to the new client
             if (_deviceManager.IsDeviceConnected && _lastDeviceEvent != null)
             {
                 _logger.LogInformation("Sending cached device status to new IPC client {ClientId}", clientId);
@@ -54,164 +52,99 @@ public class EventRouter
                     Data = _lastDeviceEvent
                 });
             }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error sending device status to new IPC client");
-        }
-    }
+        }, "Error sending device status to new IPC client");
 
-    private async Task OnDeviceConnected(object? sender, SharedEvents.DeviceEventArgs e)
-    {
-        try
+    private async Task OnDeviceConnected(object? sender, SharedEvents.DeviceEventArgs e) =>
+        await _logger.TryCatchAsync(async () =>
         {
             _logger.LogInformation("Device connected: {DeviceName} (FW: {FirmwareVersion})",
                 e.DeviceName, e.FirmwareVersion);
-
-            // Cache for newly connecting IPC clients
             _lastDeviceEvent = e;
-
             await _ipcServer.BroadcastAsync(new IpcMessage
             {
                 MessageType = IpcMessageTypes.DeviceConnected,
                 Data = e
             });
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error broadcasting device connected event");
-        }
-    }
+        }, "Error broadcasting device connected event");
 
-    private async Task OnDeviceDisconnected(object? sender, SharedEvents.DeviceEventArgs e)
-    {
-        try
+    private async Task OnDeviceDisconnected(object? sender, SharedEvents.DeviceEventArgs e) =>
+        await _logger.TryCatchAsync(async () =>
         {
             _logger.LogInformation("Device disconnected");
-
-            // Clear cache
             _lastDeviceEvent = null;
-
             await _ipcServer.BroadcastAsync(new IpcMessage
             {
                 MessageType = IpcMessageTypes.DeviceDisconnected,
                 Data = e
             });
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error broadcasting device disconnected event");
-        }
-    }
+        }, "Error broadcasting device disconnected event");
 
-    private async Task OnButtonPressed(object? sender, SharedEvents.ButtonEventArgs e)
-    {
-        try
+    private async Task OnButtonPressed(object? sender, SharedEvents.ButtonEventArgs e) =>
+        await _logger.TryCatchAsync(async () =>
         {
             _logger.LogDebug("Button pressed: {ButtonIndex}", e.ButtonIndex);
-
             await _ipcServer.BroadcastAsync(new IpcMessage
             {
                 MessageType = IpcMessageTypes.ButtonPressed,
                 Data = e
             });
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error broadcasting button pressed event");
-        }
-    }
+        }, "Error broadcasting button pressed event");
 
-    private async Task OnButtonReleased(object? sender, SharedEvents.ButtonEventArgs e)
-    {
-        try
+    private async Task OnButtonReleased(object? sender, SharedEvents.ButtonEventArgs e) =>
+        await _logger.TryCatchAsync(async () =>
         {
             _logger.LogDebug("Button released: {ButtonIndex}", e.ButtonIndex);
-
             await _ipcServer.BroadcastAsync(new IpcMessage
             {
                 MessageType = IpcMessageTypes.ButtonReleased,
                 Data = e
             });
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error broadcasting button released event");
-        }
-    }
+        }, "Error broadcasting button released event");
 
-    private async Task OnEncoderRotated(object? sender, SharedEvents.EncoderEventArgs e)
-    {
-        try
+    private async Task OnEncoderRotated(object? sender, SharedEvents.EncoderEventArgs e) =>
+        await _logger.TryCatchAsync(async () =>
         {
             _logger.LogDebug("Encoder rotated: {Delta}", e.Delta);
-
             await _ipcServer.BroadcastAsync(new IpcMessage
             {
                 MessageType = IpcMessageTypes.EncoderRotated,
                 Data = e
             });
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error broadcasting encoder rotated event");
-        }
-    }
+        }, "Error broadcasting encoder rotated event");
 
-    private async Task OnProfileChanged(object? sender, SharedEvents.ProfileChangedEventArgs e)
-    {
-        try
+    private async Task OnProfileChanged(object? sender, SharedEvents.ProfileChangedEventArgs e) =>
+        await _logger.TryCatchAsync(async () =>
         {
             _logger.LogInformation("Profile changed: {ProfileIndex} - {ProfileName}",
                 e.ProfileIndex, e.ProfileName);
-
             await _ipcServer.BroadcastAsync(new IpcMessage
             {
                 MessageType = IpcMessageTypes.ProfileChanged,
                 Data = e
             });
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error broadcasting profile changed event");
-        }
-    }
+        }, "Error broadcasting profile changed event");
 
-    private async Task OnFolderEntered(object? sender, SharedEvents.FolderEventArgs e)
-    {
-        try
+    private async Task OnFolderEntered(object? sender, SharedEvents.FolderEventArgs e) =>
+        await _logger.TryCatchAsync(async () =>
         {
             _logger.LogInformation("Folder entered: {FolderId}, depth: {Depth}",
                 e.FolderId, e.FolderDepth);
-
             await _ipcServer.BroadcastAsync(new IpcMessage
             {
                 MessageType = IpcMessageTypes.FolderEntered,
                 Data = e
             });
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error broadcasting folder entered event");
-        }
-    }
+        }, "Error broadcasting folder entered event");
 
-    private async Task OnFolderExited(object? sender, SharedEvents.FolderEventArgs e)
-    {
-        try
+    private async Task OnFolderExited(object? sender, SharedEvents.FolderEventArgs e) =>
+        await _logger.TryCatchAsync(async () =>
         {
             _logger.LogInformation("Folder exited: {FolderId}, new depth: {Depth}",
                 e.FolderId, e.FolderDepth);
-
             await _ipcServer.BroadcastAsync(new IpcMessage
             {
                 MessageType = IpcMessageTypes.FolderExited,
                 Data = e
             });
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error broadcasting folder exited event");
-        }
-    }
+        }, "Error broadcasting folder exited event");
 }

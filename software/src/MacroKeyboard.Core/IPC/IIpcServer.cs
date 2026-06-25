@@ -19,6 +19,12 @@ public interface IIpcServer
     /// Broadcast message to all connected clients
     /// </summary>
     Task BroadcastAsync(IpcMessage message, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Send a message to a single client identified by <paramref name="clientId"/>.
+    /// No-ops silently if the client has disconnected.
+    /// </summary>
+    Task SendToClientAsync(string clientId, IpcMessage message, CancellationToken cancellationToken = default);
     
     /// <summary>
     /// Event raised when a message is received from a client

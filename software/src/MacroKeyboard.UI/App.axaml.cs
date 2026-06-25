@@ -252,7 +252,7 @@ public partial class App : Application
         // All device commands go through IPC to Backend.
         services.AddSingleton<HidDeviceManager>();
         services.AddSingleton<IDeviceService, DeviceService>();
-        services.AddSingleton<IProfileService, ProfileService>();
+        services.AddSingleton<ProfileService>();
         services.AddSingleton<ImageService>();
 
         // Infrastructure

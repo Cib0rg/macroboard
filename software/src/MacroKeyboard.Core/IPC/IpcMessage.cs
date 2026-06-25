@@ -14,6 +14,13 @@ public class IpcMessage
     public string MessageType { get; set; } = string.Empty;
     public string RequestId { get; set; } = Guid.NewGuid().ToString();
     public DateTime Timestamp { get; set; } = DateTime.UtcNow;
+
+    /// <summary>
+    /// Set by IpcServer before firing MessageReceived; identifies which client sent this message.
+    /// Never serialized — for server-side routing only.
+    /// </summary>
+    [JsonIgnore]
+    public string? SourceClientId { get; set; }
     
     /// <summary>
     /// Payload data. When serialized from C# objects, this will be the object.

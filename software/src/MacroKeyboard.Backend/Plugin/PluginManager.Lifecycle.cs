@@ -1,0 +1,201 @@
+using MacroKeyboard.Core.Models;
+using MacroKeyboard.Core.Services;
+using MacroKeyboard.Infrastructure.Services;
+using MacroKeyboard.Shared.Plugin;
+using Microsoft.Extensions.Logging;
+using Newtonsoft.Json;
+using System.Collections.Concurrent;
+using System.IO.Compression;
+using System.Reflection;
+using System.Runtime.Loader;
+
+namespace MacroKeyboard.Backend.Plugin;
+
+public partial class PluginManager
+{
+    // ── Lifecycle ─────────────────────────────────────────────────────────────
+
+    public async Task StartPluginAsync(string pluginId, CancellationToken cancellationToken = default)
+    {
+        if (!_plugins.TryGetValue(pluginId, out var instance))
+            throw new InvalidOperationException($"Plugin not found: {pluginId}");
+
+        await instance.StartAsync(cancellationToken);
+        _logger.LogInformation("Plugin started: {Id}", pluginId);
+    }
+
+    public async Task StopPluginAsync(string pluginId, CancellationToken cancellationToken = default)
+    {
+        if (!_plugins.TryGetValue(pluginId, out var instance))
+            throw new InvalidOperationException($"Plugin not found: {pluginId}");
+
+        await instance.StopAsync(cancellationToken);
+        _logger.LogInformation("Plugin stopped: {Id}", pluginId);
+    }
+
+    public async Task ReloadPluginsAsync(CancellationToken cancellationToken = default)
+    {
+        _logger.LogInformation("Reloading plugins...");
+
+        foreach (var (id, instance) in _plugins)
+        {
+            try { await instance.StopAsync(cancellationToken); }
+            catch (Exception ex) { _logger.LogWarning(ex, "Error stopping plugin {Id} before reload", id); }
+        }
+
+        _plugins.Clear();
+        _manifests.Clear();
+        _pluginDirectories.Clear();
+        _connectionToPlugin.Clear();
+        _piConnections.Clear();
+        _actionStates.Clear();
+        _contextToActionId.Clear();
+
+        await LoadPluginsAsync(cancellationToken);
+
+        foreach (var id in _plugins.Keys)
+        {
+            try { await StartPluginAsync(id, cancellationToken); }
+            catch (Exception ex) { _logger.LogWarning(ex, "Error starting plugin {Id} after reload", id); }
+        }
+
+        _logger.LogInformation("Plugin reload complete: {Count} plugins loaded", _plugins.Count);
+    }
+
+    // ── Button dispatch ───────────────────────────────────────────────────────
+
+    public async Task DispatchButtonPressAsync(
+        string pluginId, string actionId, string? settings, int buttonIndex,
+        CancellationToken ct = default)
+    {
+        if (!_plugins.TryGetValue(pluginId, out var instance))
+        {
+            _logger.LogWarning("DispatchButtonPress: plugin not found: {Id}", pluginId);
+            await FlashLedAsync((byte)buttonIndex, r: 255, g: 0, b: 0, onMs: 200, offMs: 100, times: 2);
+            return;
+        }
+
+        if (instance is ManagedPluginInstance managed)
+        {
+            await managed.OnButtonPressedAsync(actionId, settings, buttonIndex, ct);
+        }
+        else
+        {
+            var context = MakeContext(pluginId, buttonIndex);
+            await SendToPluginAsync(pluginId, new PluginMessage
+            {
+                Event   = "keyDown",
+                Action  = actionId,
+                Context = context,
+                Device  = DeviceId,
+                Payload = new
+                {
+                    settings          = DeserializeSettings(settings),
+                    coordinates       = new { column = buttonIndex % DeviceColumns, row = buttonIndex / DeviceColumns },
+                    state             = _actionStates.TryGetValue(context, out var s) ? s : 0,
+                    userDesiredState  = -1,
+                    isInMultiAction   = false
+                }
+            }, ct);
+        }
+    }
+
+    public async Task DispatchButtonReleaseAsync(
+        string pluginId, string actionId, string? settings, int buttonIndex,
+        CancellationToken ct = default)
+    {
+        if (!_plugins.TryGetValue(pluginId, out var instance))
+        {
+            _logger.LogWarning("DispatchButtonRelease: plugin not found: {Id}", pluginId);
+            return;
+        }
+
+        if (instance is ManagedPluginInstance managed)
+        {
+            await managed.OnButtonReleasedAsync(actionId, settings, buttonIndex, ct);
+        }
+        else
+        {
+            var context = MakeContext(pluginId, buttonIndex);
+            await SendToPluginAsync(pluginId, new PluginMessage
+            {
+                Event   = "keyUp",
+                Action  = actionId,
+                Context = context,
+                Device  = DeviceId,
+                Payload = new
+                {
+                    settings         = DeserializeSettings(settings),
+                    coordinates      = new { column = buttonIndex % DeviceColumns, row = buttonIndex / DeviceColumns },
+                    state            = _actionStates.TryGetValue(context, out var s) ? s : 0,
+                    userDesiredState = -1,
+                    isInMultiAction  = false
+                }
+            }, ct);
+        }
+    }
+
+    // ── Lifecycle notifications (called by BackendService) ────────────────────
+
+    public async Task NotifyWillAppearAsync(
+        string pluginId, string actionId, string? settings, int buttonIndex,
+        CancellationToken ct = default)
+    {
+        var context = MakeContext(pluginId, buttonIndex);
+        _contextToActionId[context] = actionId;
+        await SendToPluginAsync(pluginId, new PluginMessage
+        {
+            Event   = "willAppear",
+            Action  = actionId,
+            Context = context,
+            Device  = DeviceId,
+            Payload = new
+            {
+                settings        = DeserializeSettings(settings),
+                coordinates     = new { column = buttonIndex % DeviceColumns, row = buttonIndex / DeviceColumns },
+                state           = _actionStates.TryGetValue(context, out var s) ? s : 0,
+                isInMultiAction = false
+            }
+        }, ct);
+    }
+
+    public async Task NotifyWillDisappearAsync(
+        string pluginId, string actionId, string? settings, int buttonIndex,
+        CancellationToken ct = default)
+    {
+        var context = MakeContext(pluginId, buttonIndex);
+        await SendToPluginAsync(pluginId, new PluginMessage
+        {
+            Event   = "willDisappear",
+            Action  = actionId,
+            Context = context,
+            Device  = DeviceId,
+            Payload = new
+            {
+                settings        = DeserializeSettings(settings),
+                coordinates     = new { column = buttonIndex % DeviceColumns, row = buttonIndex / DeviceColumns },
+                state           = _actionStates.TryGetValue(context, out var s) ? s : 0,
+                isInMultiAction = false
+            }
+        }, ct);
+    }
+
+    public Task NotifyDeviceConnectedAsync(CancellationToken ct = default)
+        => _webSocketServer.BroadcastAsync(new PluginMessage
+        {
+            Event  = "deviceDidConnect",
+            Device = DeviceId,
+            Payload = new
+            {
+                deviceInfo = new
+                {
+                    name    = "MacroKeyboard",
+                    type    = 0,
+                    size    = new { columns = DeviceColumns, rows = DeviceRows }
+                }
+            }
+        }, ct);
+
+    public Task NotifyDeviceDisconnectedAsync(CancellationToken ct = default)
+        => _webSocketServer.BroadcastAsync(new PluginMessage { Event = "deviceDidDisconnect", Device = DeviceId }, ct);
+}
