@@ -1,3 +1,4 @@
+using MacroKeyboard.Backend;
 using MacroKeyboard.Backend.Plugin;
 using MacroKeyboard.Core.Models;
 using MacroKeyboard.Core.Services;
@@ -39,10 +40,10 @@ public class IpcCommandHandler
         _logger = logger;
 
         // Subscribe to incoming IPC messages
-        _ipcServer.MessageReceived += OnMessageReceived;
+        _ipcServer.MessageReceived += (s, msg) => OnMessageReceived(s, msg).FireAndForget(_logger);
     }
 
-    private async void OnMessageReceived(object? sender, IpcMessage message)
+    private async Task OnMessageReceived(object? sender, IpcMessage message)
     {
         try
         {

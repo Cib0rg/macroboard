@@ -1,3 +1,4 @@
+using MacroKeyboard.Backend;
 using MacroKeyboard.Shared.IPC;
 using Microsoft.Extensions.Logging;
 using SharedEvents = MacroKeyboard.Shared.Events;
@@ -26,20 +27,20 @@ public class EventRouter
         _logger = logger;
 
         // Subscribe to device events
-        _deviceManager.DeviceConnected += OnDeviceConnected;
-        _deviceManager.DeviceDisconnected += OnDeviceDisconnected;
-        _deviceManager.ButtonPressed += OnButtonPressed;
-        _deviceManager.ButtonReleased += OnButtonReleased;
-        _deviceManager.EncoderRotated += OnEncoderRotated;
-        _deviceManager.ProfileChanged += OnProfileChanged;
-        _deviceManager.FolderEntered += OnFolderEntered;
-        _deviceManager.FolderExited += OnFolderExited;
+        _deviceManager.DeviceConnected    += (s, e)  => OnDeviceConnected(s, e).FireAndForget(_logger);
+        _deviceManager.DeviceDisconnected += (s, e)  => OnDeviceDisconnected(s, e).FireAndForget(_logger);
+        _deviceManager.ButtonPressed      += (s, e)  => OnButtonPressed(s, e).FireAndForget(_logger);
+        _deviceManager.ButtonReleased     += (s, e)  => OnButtonReleased(s, e).FireAndForget(_logger);
+        _deviceManager.EncoderRotated     += (s, e)  => OnEncoderRotated(s, e).FireAndForget(_logger);
+        _deviceManager.ProfileChanged     += (s, e)  => OnProfileChanged(s, e).FireAndForget(_logger);
+        _deviceManager.FolderEntered      += (s, e)  => OnFolderEntered(s, e).FireAndForget(_logger);
+        _deviceManager.FolderExited       += (s, e)  => OnFolderExited(s, e).FireAndForget(_logger);
 
         // When a new IPC client connects, send current device status
-        _ipcServer.ClientConnected += OnIpcClientConnected;
+        _ipcServer.ClientConnected += (s, id) => OnIpcClientConnected(s, id).FireAndForget(_logger);
     }
 
-    private async void OnIpcClientConnected(object? sender, string clientId)
+    private async Task OnIpcClientConnected(object? sender, string clientId)
     {
         try
         {
@@ -60,7 +61,7 @@ public class EventRouter
         }
     }
 
-    private async void OnDeviceConnected(object? sender, SharedEvents.DeviceEventArgs e)
+    private async Task OnDeviceConnected(object? sender, SharedEvents.DeviceEventArgs e)
     {
         try
         {
@@ -82,7 +83,7 @@ public class EventRouter
         }
     }
 
-    private async void OnDeviceDisconnected(object? sender, SharedEvents.DeviceEventArgs e)
+    private async Task OnDeviceDisconnected(object? sender, SharedEvents.DeviceEventArgs e)
     {
         try
         {
@@ -103,7 +104,7 @@ public class EventRouter
         }
     }
 
-    private async void OnButtonPressed(object? sender, SharedEvents.ButtonEventArgs e)
+    private async Task OnButtonPressed(object? sender, SharedEvents.ButtonEventArgs e)
     {
         try
         {
@@ -121,7 +122,7 @@ public class EventRouter
         }
     }
 
-    private async void OnButtonReleased(object? sender, SharedEvents.ButtonEventArgs e)
+    private async Task OnButtonReleased(object? sender, SharedEvents.ButtonEventArgs e)
     {
         try
         {
@@ -139,7 +140,7 @@ public class EventRouter
         }
     }
 
-    private async void OnEncoderRotated(object? sender, SharedEvents.EncoderEventArgs e)
+    private async Task OnEncoderRotated(object? sender, SharedEvents.EncoderEventArgs e)
     {
         try
         {
@@ -157,7 +158,7 @@ public class EventRouter
         }
     }
 
-    private async void OnProfileChanged(object? sender, SharedEvents.ProfileChangedEventArgs e)
+    private async Task OnProfileChanged(object? sender, SharedEvents.ProfileChangedEventArgs e)
     {
         try
         {
@@ -176,7 +177,7 @@ public class EventRouter
         }
     }
 
-    private async void OnFolderEntered(object? sender, SharedEvents.FolderEventArgs e)
+    private async Task OnFolderEntered(object? sender, SharedEvents.FolderEventArgs e)
     {
         try
         {
@@ -195,7 +196,7 @@ public class EventRouter
         }
     }
 
-    private async void OnFolderExited(object? sender, SharedEvents.FolderEventArgs e)
+    private async Task OnFolderExited(object? sender, SharedEvents.FolderEventArgs e)
     {
         try
         {

@@ -16,21 +16,20 @@ public partial class ProfileEditorView : UserControl
         InitializeComponent();
     }
 
-    protected override async void OnAttachedToVisualTree(Avalonia.VisualTreeAttachmentEventArgs e)
+    protected override void OnAttachedToVisualTree(Avalonia.VisualTreeAttachmentEventArgs e)
     {
         base.OnAttachedToVisualTree(e);
 
-        if (DataContext is ProfileEditorViewModel vm)
-        {
-            var topLevel = TopLevel.GetTopLevel(this);
-            if (topLevel != null)
-                vm.SetStorageProvider(topLevel.StorageProvider);
+        if (DataContext is not ProfileEditorViewModel vm) return;
 
-            if (!_profilesLoaded)
-            {
-                _profilesLoaded = true;
-                await vm.LoadProfilesAsync();
-            }
+        var topLevel = TopLevel.GetTopLevel(this);
+        if (topLevel != null)
+            vm.SetStorageProvider(topLevel.StorageProvider);
+
+        if (!_profilesLoaded)
+        {
+            _profilesLoaded = true;
+            _ = vm.LoadProfilesAsync();
         }
     }
 

@@ -48,8 +48,8 @@ static volatile int         s_pending = 0;
 
 static void update_image_size(uint8_t profile_id, uint8_t folder_id, uint8_t button_id)
 {
-    profile_t* prof = profile_get(profile_id);
-    if (prof == NULL) return;
+    (void)profile_id;
+    profile_t* prof = profile_get();
 
     if (folder_id == 0xFF) {
         prof->buttons[button_id].image_size = DISPLAY_BUFFER_SIZE;

@@ -40,7 +40,7 @@ esp_err_t profile_storage_init(void) {
 }
 
 esp_err_t profile_storage_save(uint8_t profile_id, const profile_t* profile) {
-    if (profile_id >= NUM_PROFILES || profile == NULL) {
+    if (profile == NULL) {
         return ESP_ERR_INVALID_ARG;
     }
     
@@ -67,7 +67,7 @@ esp_err_t profile_storage_save(uint8_t profile_id, const profile_t* profile) {
 }
 
 esp_err_t profile_storage_load(uint8_t profile_id, profile_t* profile) {
-    if (profile_id >= NUM_PROFILES || profile == NULL) {
+    if (profile == NULL) {
         return ESP_ERR_INVALID_ARG;
     }
     
@@ -114,9 +114,6 @@ esp_err_t profile_storage_load(uint8_t profile_id, profile_t* profile) {
 }
 
 esp_err_t profile_storage_delete(uint8_t profile_id) {
-    if (profile_id >= NUM_PROFILES) {
-        return ESP_ERR_INVALID_ARG;
-    }
     
     char path[64];
     snprintf(path, sizeof(path), PROFILE_FILE_FMT, profile_id);
@@ -131,9 +128,6 @@ esp_err_t profile_storage_delete(uint8_t profile_id) {
 }
 
 bool profile_storage_exists(uint8_t profile_id) {
-    if (profile_id >= NUM_PROFILES) {
-        return false;
-    }
     
     char path[64];
     snprintf(path, sizeof(path), PROFILE_FILE_FMT, profile_id);

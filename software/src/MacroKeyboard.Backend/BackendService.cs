@@ -73,8 +73,8 @@ public class BackendService : BackgroundService
             }
 
             // Wire device connect/disconnect → plugin notifications
-            _deviceManager.DeviceConnected    += OnDeviceConnected;
-            _deviceManager.DeviceDisconnected += OnDeviceDisconnected;
+            _deviceManager.DeviceConnected    += (s, e) => OnDeviceConnected(s, e).FireAndForget(_logger);
+            _deviceManager.DeviceDisconnected += (s, e) => OnDeviceDisconnected(s, e).FireAndForget(_logger);
 
             // Start device manager
             await _deviceManager.StartAsync(stoppingToken);
@@ -95,16 +95,16 @@ public class BackendService : BackgroundService
         }
     }
 
-    private async void OnDeviceConnected(object? sender, SharedEvents.DeviceEventArgs e)
+    private async Task OnDeviceConnected(object? sender, SharedEvents.DeviceEventArgs e)
     {
         try { await _pluginManager.NotifyDeviceConnectedAsync(); }
-        catch (Exception ex) { _logger.LogError(ex, "Error notifying plugins of device connect"); }
+        catch (Exception ex) { _logger.LogWarning(ex, "Error notifying plugins of device connect"); }
     }
 
-    private async void OnDeviceDisconnected(object? sender, SharedEvents.DeviceEventArgs e)
+    private async Task OnDeviceDisconnected(object? sender, SharedEvents.DeviceEventArgs e)
     {
         try { await _pluginManager.NotifyDeviceDisconnectedAsync(); }
-        catch (Exception ex) { _logger.LogError(ex, "Error notifying plugins of device disconnect"); }
+        catch (Exception ex) { _logger.LogWarning(ex, "Error notifying plugins of device disconnect"); }
     }
 
     public override async Task StopAsync(CancellationToken cancellationToken)

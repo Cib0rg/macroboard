@@ -26,8 +26,6 @@ static uint16_t response_sequence = 0;
 // Forward declarations of command handlers
 static esp_err_t handle_ping(const uint8_t* payload, uint16_t length, uint8_t* response, uint16_t* response_len);
 static esp_err_t handle_get_device_info(const uint8_t* payload, uint16_t length, uint8_t* response, uint16_t* response_len);
-static esp_err_t handle_set_profile(const uint8_t* payload, uint16_t length, uint8_t* response, uint16_t* response_len);
-static esp_err_t handle_get_profile_info(const uint8_t* payload, uint16_t length, uint8_t* response, uint16_t* response_len);
 static esp_err_t handle_get_folder_state(const uint8_t* payload, uint16_t length, uint8_t* response, uint16_t* response_len);
 static esp_err_t handle_start_image_transfer(const uint8_t* payload, uint16_t length, uint8_t* response, uint16_t* response_len);
 static esp_err_t handle_image_data_chunk(const uint8_t* payload, uint16_t length, uint8_t* response, uint16_t* response_len);
@@ -64,8 +62,6 @@ typedef struct {
 static const command_entry_t command_table[] = {
     {CMD_PING, handle_ping},
     {CMD_GET_DEVICE_INFO, handle_get_device_info},
-    {CMD_SET_PROFILE, handle_set_profile},
-    {CMD_GET_PROFILE_INFO, handle_get_profile_info},
     {CMD_GET_FOLDER_STATE, handle_get_folder_state},
     {CMD_START_IMAGE_TRANSFER, handle_start_image_transfer},
     {CMD_IMAGE_DATA_CHUNK, handle_image_data_chunk},
@@ -141,6 +137,7 @@ esp_err_t protocol_send_event(uint8_t event_id, const uint8_t* payload, uint16_t
 }
 
 void protocol_task(void* arg) {
+    (void)arg;
     protocol_packet_t packet;
     uint8_t response_payload[PROTOCOL_PAYLOAD_SIZE];
     uint16_t response_len;
@@ -198,7 +195,7 @@ static esp_err_t handle_ping(const uint8_t* payload, uint16_t length,
     uint32_t uptime = esp_timer_get_time() / 1000000; // seconds
     memcpy(&response[4], &uptime, 4);
     
-    response[8] = profile_get_current_id();
+    response[8] = 0;
     
     *response_len = 9;
     return ESP_OK;
@@ -220,13 +217,8 @@ static esp_err_t handle_get_device_info(const uint8_t* payload, uint16_t length,
     
     // Device capabilities
     response[20] = NUM_BUTTONS;
-    // Count profiles actually saved to SPIFFS, not the compile-time maximum
-    uint8_t saved_profiles = 0;
-    for (uint8_t p = 0; p < NUM_PROFILES; p++) {
-        if (profile_storage_exists(p)) saved_profiles++;
-    }
-    response[21] = saved_profiles;
-    response[22] = profile_get_current_id();
+    response[21] = profile_storage_exists(0) ? 1 : 0;
+    response[22] = 0;
     
     // Free flash space from SPIFFS
     size_t total = 0, used = 0;
@@ -243,41 +235,6 @@ static esp_err_t handle_get_device_info(const uint8_t* payload, uint16_t length,
     memcpy(&response[31], &saved_bytes, 4);
     
     *response_len = 35;
-    return ESP_OK;
-}
-
-static esp_err_t handle_set_profile(const uint8_t* payload, uint16_t length,
-                                     uint8_t* response, uint16_t* response_len) {
-    if (length < 1) {
-        return ESP_ERR_INVALID_ARG;
-    }
-    
-    esp_err_t ret = profile_switch(0);
-
-    response[0] = (ret == ESP_OK) ? STATUS_OK : STATUS_ERROR;
-    response[1] = 0;
-    *response_len = 2;
-    
-    return ESP_OK;
-}
-
-static esp_err_t handle_get_profile_info(const uint8_t* payload, uint16_t length,
-                                          uint8_t* response, uint16_t* response_len) {
-    if (length < 1) {
-        return ESP_ERR_INVALID_ARG;
-    }
-    
-    profile_t* profile = profile_get(0);
-
-    if (profile == NULL) {
-        return ESP_ERR_NOT_FOUND;
-    }
-
-    response[0] = 0;
-    strncpy((char*)&response[1], profile->name, 32);
-    response[33] = 1; // Is configured
-    
-    *response_len = 34;
     return ESP_OK;
 }
 
@@ -367,7 +324,7 @@ static esp_err_t handle_set_button_action(const uint8_t* payload, uint16_t lengt
     uint16_t action_len;
     memcpy(&action_len, &payload[3], 2);
 
-    esp_err_t ret = profile_set_button_action(0, button_id, action_type,
+    esp_err_t ret = profile_set_button_action(button_id, action_type,
                                                &payload[5], action_len);
     
     response[0] = (ret == ESP_OK) ? STATUS_OK : STATUS_ERROR;
@@ -453,7 +410,7 @@ static esp_err_t handle_set_button_name(const uint8_t* payload, uint16_t length,
     if (name_len >= BUTTON_NAME_MAX_LEN) name_len = BUTTON_NAME_MAX_LEN - 1;
     if (name_len > 0) memcpy(name, &payload[2], name_len);
 
-    esp_err_t ret = profile_set_button_name(0, button_id, name);
+    esp_err_t ret = profile_set_button_name(button_id, name);
     response[0] = (ret == ESP_OK) ? STATUS_OK : STATUS_ERROR;
     *response_len = 1;
     return ESP_OK;
@@ -467,7 +424,7 @@ static esp_err_t handle_set_folder_button_action(const uint8_t* payload, uint16_
     uint8_t button_id   = payload[2];
     uint8_t action_type = payload[3];
     uint16_t action_len; memcpy(&action_len, &payload[4], 2);
-    esp_err_t ret = profile_set_folder_button_action(0, folder_id, button_id,
+    esp_err_t ret = profile_set_folder_button_action(folder_id, button_id,
                                                       action_type, &payload[6], action_len);
     response[0] = (ret == ESP_OK) ? STATUS_OK : STATUS_ERROR;
     *response_len = 1;
@@ -485,7 +442,7 @@ static esp_err_t handle_set_folder_button_name(const uint8_t* payload, uint16_t 
     uint16_t name_len = length - 3;
     if (name_len >= BUTTON_NAME_MAX_LEN) name_len = BUTTON_NAME_MAX_LEN - 1;
     if (name_len > 0) memcpy(name, &payload[3], name_len);
-    esp_err_t ret = profile_set_folder_button_name(0, folder_id, button_id, name);
+    esp_err_t ret = profile_set_folder_button_name(folder_id, button_id, name);
     response[0] = (ret == ESP_OK) ? STATUS_OK : STATUS_ERROR;
     *response_len = 1;
     return ESP_OK;
@@ -496,7 +453,7 @@ static esp_err_t handle_set_folder_button_led(const uint8_t* payload, uint16_t l
     // payload: [profile_id][folder_id][button_id][r][g][b][brightness][effect]
     if (length < 8) { response[0] = STATUS_ERROR; *response_len = 1; return ESP_OK; }
     esp_err_t ret = profile_set_folder_button_led(
-        0, payload[1], payload[2],
+        payload[1], payload[2],
         payload[3], payload[4], payload[5], payload[6], payload[7]);
     response[0] = (ret == ESP_OK) ? STATUS_OK : STATUS_ERROR;
     *response_len = 1;
@@ -517,7 +474,7 @@ static esp_err_t handle_set_led_color(const uint8_t* payload, uint16_t length,
     uint8_t brightness = payload[5];
     uint8_t effect = payload[6];
 
-    esp_err_t ret = profile_set_led_color(0, button_id, r, g, b, brightness, effect);
+    esp_err_t ret = profile_set_led_color(button_id, r, g, b, brightness, effect);
     
     response[0] = (ret == ESP_OK) ? STATUS_OK : STATUS_ERROR;
     *response_len = 1;
@@ -559,17 +516,13 @@ static esp_err_t handle_set_backlight(const uint8_t* payload, uint16_t length,
 
 static esp_err_t handle_save_profile(const uint8_t* payload, uint16_t length,
                                       uint8_t* response, uint16_t* response_len) {
-    if (length < 1) {
-        return ESP_ERR_INVALID_ARG;
-    }
-    
-    uint8_t profile_id = payload[0];
+    (void)payload; (void)length;
 
     // Ensure all async SPIFFS image writes are complete before persisting the
     // profile.  Without this, image_size fields could be stale in the saved binary.
     save_task_drain();
 
-    esp_err_t ret = profile_save_to_storage(profile_id);
+    esp_err_t ret = profile_save_to_storage();
 
     if (ret == ESP_OK) {
         image_storage_gc();
@@ -608,8 +561,8 @@ static esp_err_t handle_get_button_action(const uint8_t* payload, uint16_t lengt
     
     uint8_t button_id = payload[1];
 
-    profile_t* profile = profile_get(0);
-    if (profile == NULL || button_id >= NUM_BUTTONS) {
+    profile_t* profile = profile_get();
+    if (button_id >= NUM_BUTTONS) {
         response[0] = STATUS_ERROR;
         *response_len = 1;
         return ESP_OK;
@@ -641,8 +594,8 @@ static esp_err_t handle_get_led_color(const uint8_t* payload, uint16_t length,
     
     uint8_t button_id = payload[1];
 
-    profile_t* profile = profile_get(0);
-    if (profile == NULL || button_id >= NUM_BUTTONS) {
+    profile_t* profile = profile_get();
+    if (button_id >= NUM_BUTTONS) {
         response[0] = STATUS_ERROR;
         *response_len = 1;
         return ESP_OK;
@@ -670,8 +623,8 @@ static esp_err_t handle_get_button_image(const uint8_t* payload, uint16_t length
 
     uint8_t button_id = payload[1];
 
-    profile_t* profile = profile_get(0);
-    if (profile == NULL || button_id >= NUM_BUTTONS) {
+    profile_t* profile = profile_get();
+    if (button_id >= NUM_BUTTONS) {
         response[0] = STATUS_ERROR;
         *response_len = 1;
         return ESP_OK;
@@ -735,17 +688,12 @@ static esp_err_t handle_set_button_text_end(const uint8_t* payload, uint16_t len
 // Response: [status(1)][count(1)][{button_id(1), crc32_le(4)} × count]
 static esp_err_t handle_get_image_hashes(const uint8_t* payload, uint16_t length,
                                           uint8_t* response, uint16_t* response_len) {
-    if (length < 1) {
-        response[0] = STATUS_ERROR;
-        *response_len = 1;
-        return ESP_OK;
-    }
-    uint8_t profile_id = payload[0];
+    (void)payload; (void)length;
     uint8_t count = 0;
     response[0] = STATUS_OK;
     for (uint8_t b = 0; b < NUM_BUTTONS; b++) {
         uint32_t crc;
-        if (image_storage_get_crc(profile_id, b, &crc) != ESP_OK) continue;
+        if (image_storage_get_crc(0, b, &crc) != ESP_OK) continue;
         int offset = 2 + count * 5;
         if (offset + 5 > PROTOCOL_PAYLOAD_SIZE) break;
         response[offset]     = b;
@@ -757,7 +705,7 @@ static esp_err_t handle_get_image_hashes(const uint8_t* payload, uint16_t length
     }
     response[1] = count;
     *response_len = 2 + (uint16_t)count * 5;
-    ESP_LOGI(TAG, "GET_IMAGE_HASHES profile=%d: %d entries", profile_id, count);
+    ESP_LOGI(TAG, "GET_IMAGE_HASHES: %d entries", count);
     return ESP_OK;
 }
 
@@ -772,33 +720,24 @@ static esp_err_t handle_clear_button_image(const uint8_t* payload, uint16_t leng
         return ESP_OK;
     }
 
-    uint8_t profile_id = payload[0];
     uint8_t button_id  = payload[1];
 
-    if (profile_id >= NUM_PROFILES || button_id >= NUM_BUTTONS) {
+    if (button_id >= NUM_BUTTONS) {
         response[0] = STATUS_ERROR;
         *response_len = 1;
         return ESP_OK;
     }
 
-    profile_t* prof = profile_get(profile_id);
-    if (prof == NULL) {
-        response[0] = STATUS_ERROR;
-        *response_len = 1;
-        return ESP_OK;
-    }
+    profile_t* prof = profile_get();
 
     prof->buttons[button_id].image_size = 0;
-    profile_image_cache_invalidate(button_id);
+    profile_image_cache_invalidate(button_id, false);
     // Release the stored image blob (decrement refcount, delete if unreferenced).
     // Without this, the SPIFFS file stays allocated until the next image_storage_gc().
-    image_storage_delete(profile_id, button_id);
+    image_storage_delete(0, button_id);
+    profile_refresh_button_display(button_id);
 
-    if (profile_id == profile_get_current_id()) {
-        profile_refresh_button_display(button_id);
-    }
-
-    ESP_LOGI(TAG, "Cleared image for profile=%d button=%d", profile_id, button_id);
+    ESP_LOGI(TAG, "Cleared image for button=%d", button_id);
     response[0] = STATUS_OK;
     *response_len = 1;
     return ESP_OK;

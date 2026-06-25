@@ -6,7 +6,6 @@
 #include "common.h"
 #include "config.h"
 #include "tinyusb.h"
-#include "utils/logger.h"
 #include "hardware/gc9a01.h"
 #include "hardware/display_mux.h"
 #include "hardware/display_task.h"
@@ -44,9 +43,12 @@ void app_main(void) {
     
     ESP_LOGI(TAG, "Phase 1: Core System Init");
     
-    // 1.1 Initialize logger
-    logger_init();
-    ESP_LOGI(TAG, "✓ Logger initialized");
+    // 1.1 Configure log levels
+    esp_log_level_set("*", ESP_LOG_INFO);
+    esp_log_level_set("MAIN", ESP_LOG_DEBUG);
+    esp_log_level_set("PROTOCOL", ESP_LOG_DEBUG);
+    esp_log_level_set("USB_HID", ESP_LOG_DEBUG);
+    esp_log_level_set("PROFILE", ESP_LOG_DEBUG);
     
     // 1.2 Initialize NVS
     ret = nvs_manager_init();
@@ -207,8 +209,7 @@ void app_main(void) {
         return;
     }
     
-    uint8_t current_profile = profile_get_current_id();
-    ESP_LOGI(TAG, "✓ Profile %d loaded", current_profile);
+    ESP_LOGI(TAG, "✓ Profile loaded");
     
     // 5.2 Update LEDs from profile
     for (int i = 0; i < NUM_BUTTONS; i++) {
@@ -221,7 +222,7 @@ void app_main(void) {
     ESP_LOGI(TAG, "✓ LEDs configured from profile");
     
     // 5.3 Refresh all button displays (images or text labels) from current profile
-    ESP_LOGI(TAG, "Refreshing displays for profile %d...", current_profile);
+    ESP_LOGI(TAG, "Refreshing displays...");
     profile_refresh_displays();
     
     // ============================================
@@ -280,7 +281,7 @@ void app_main(void) {
     ESP_LOGI(TAG, "  System Ready!");
     ESP_LOGI(TAG, "===========================================");
     ESP_LOGI(TAG, "Firmware Version: %s", FIRMWARE_VERSION);
-    ESP_LOGI(TAG, "Current Profile: %d", current_profile);
+    ESP_LOGI(TAG, "Current Profile: 0");
     ESP_LOGI(TAG, "Free heap: %u bytes", (unsigned int)esp_get_free_heap_size());
     ESP_LOGI(TAG, "Free PSRAM: %u bytes", (unsigned int)heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
     

@@ -43,9 +43,9 @@ static const char* TAG = "IMG_STOR";
 
 // Maximum unique images we can track
 #define MAX_UNIQUE_IMAGES       64
-// Root slots + folder slots: NUM_PROFILES * (NUM_BUTTONS + NUM_FOLDERS * NUM_BUTTONS)
+// Root slots + folder slots per profile: NUM_BUTTONS + NUM_FOLDERS * NUM_BUTTONS
 // Synthetic button_id encoding: root btn b → b; folder f btn b → NUM_BUTTONS + f*NUM_BUTTONS + b
-#define MAX_MAPPINGS            (NUM_PROFILES * NUM_BUTTONS * (1 + NUM_FOLDERS))
+#define MAX_MAPPINGS            (NUM_BUTTONS * (1 + NUM_FOLDERS))
 
 // ============================================
 // In-memory data structures
@@ -274,50 +274,41 @@ static esp_err_t load_map_from_flash(void) {
 static void migrate_legacy_images(void) {
     int migrated = 0;
 
-    for (uint8_t p = 0; p < NUM_PROFILES; p++) {
-        for (uint8_t b = 0; b < NUM_BUTTONS; b++) {
-            // Yield between iterations so the IDLE task can run and reset the WDT.
-            // SPIFFS stat() can be slow enough on its own to starve the idle task.
-            vTaskDelay(pdMS_TO_TICKS(1));
-            char old_path[64];
-            snprintf(old_path, sizeof(old_path), IMAGE_FILE_FMT, p, b);
+    for (uint8_t b = 0; b < NUM_BUTTONS; b++) {
+        // Yield between iterations so the IDLE task can run and reset the WDT.
+        vTaskDelay(pdMS_TO_TICKS(1));
+        char old_path[64];
+        snprintf(old_path, sizeof(old_path), IMAGE_FILE_FMT, 0, b);
 
-            struct stat st;
-            if (stat(old_path, &st) != 0) {
-                continue;  // No legacy file for this slot
-            }
-
-            ESP_LOGI(TAG, "Migrating legacy image: %s (%ld bytes)", old_path, st.st_size);
-
-            // Read the file
-            FILE* f = fopen(old_path, "rb");
-            if (f == NULL) continue;
-
-            uint8_t* buf = heap_caps_malloc(st.st_size, MALLOC_CAP_SPIRAM);
-            if (buf == NULL) {
-                fclose(f);
-                continue;
-            }
-
-            size_t read = fread(buf, 1, st.st_size, f);
-            fclose(f);
-
-            if (read != (size_t)st.st_size) {
-                free(buf);
-                continue;
-            }
-
-            // Compute CRC32
-            uint32_t crc = crc32_calculate(buf, read);
-
-            // Save through the new dedup path
-            image_storage_save(p, b, buf, read, crc);
-            free(buf);
-
-            // Delete the legacy file
-            unlink(old_path);
-            migrated++;
+        struct stat st;
+        if (stat(old_path, &st) != 0) {
+            continue;  // No legacy file for this slot
         }
+
+        ESP_LOGI(TAG, "Migrating legacy image: %s (%ld bytes)", old_path, st.st_size);
+
+        FILE* f = fopen(old_path, "rb");
+        if (f == NULL) continue;
+
+        uint8_t* buf = heap_caps_malloc(st.st_size, MALLOC_CAP_SPIRAM);
+        if (buf == NULL) {
+            fclose(f);
+            continue;
+        }
+
+        size_t read = fread(buf, 1, st.st_size, f);
+        fclose(f);
+
+        if (read != (size_t)st.st_size) {
+            free(buf);
+            continue;
+        }
+
+        uint32_t crc = crc32_calculate(buf, read);
+        image_storage_save(0, b, buf, read, crc);
+        free(buf);
+        unlink(old_path);
+        migrated++;
     }
 
     if (migrated > 0) {
@@ -365,7 +356,7 @@ esp_err_t image_storage_init(void) {
 esp_err_t image_storage_save(uint8_t profile_id, uint8_t button_id,
                               const uint8_t* image_data, size_t image_size,
                               uint32_t crc32) {
-    if (profile_id >= NUM_PROFILES || image_data == NULL || image_size == 0) {
+    if (image_data == NULL || image_size == 0) {
         return ESP_ERR_INVALID_ARG;
     }
 
@@ -460,7 +451,7 @@ esp_err_t image_storage_save(uint8_t profile_id, uint8_t button_id,
 
 esp_err_t image_storage_load(uint8_t profile_id, uint8_t button_id,
                               uint8_t** image_data, size_t* image_size) {
-    if (profile_id >= NUM_PROFILES || image_data == NULL || image_size == NULL) {
+    if (image_data == NULL || image_size == NULL) {
         return ESP_ERR_INVALID_ARG;
     }
 
@@ -515,10 +506,6 @@ esp_err_t image_storage_load(uint8_t profile_id, uint8_t button_id,
 }
 
 esp_err_t image_storage_delete(uint8_t profile_id, uint8_t button_id) {
-    if (profile_id >= NUM_PROFILES) {
-        return ESP_ERR_INVALID_ARG;
-    }
-
     int map_idx = find_mapping(profile_id, button_id);
     if (map_idx < 0) {
         ESP_LOGW(TAG, "No image to delete for profile=%d, button=%d",
@@ -568,7 +555,6 @@ esp_err_t image_storage_flush(void) {
 }
 
 esp_err_t image_storage_cleanup_profile(uint8_t profile_id) {
-    if (profile_id >= NUM_PROFILES) return ESP_ERR_INVALID_ARG;
 
     bool changed = false;
     // Iterate backwards: remove_mapping() swaps-with-last, so going forward
@@ -613,19 +599,16 @@ esp_err_t image_storage_gc(void) {
         goto done;
     }
 
-    for (uint8_t pid = 0; pid < NUM_PROFILES; pid++) {
-        if (!profile_storage_exists(pid)) continue;
-        if (profile_storage_load(pid, profile) != ESP_OK) continue;
-
+    if (profile_storage_exists(0) && profile_storage_load(0, profile) == ESP_OK) {
         for (int i = (int)s_num_mappings - 1; i >= 0; i--) {
-            if (s_mappings[i].profile_id != pid) continue;
+            if (s_mappings[i].profile_id != 0) continue;
             uint8_t bid = s_mappings[i].button_id;
             if (bid < NUM_BUTTONS && profile->buttons[bid].image_size == 0) {
                 uint32_t crc = s_mappings[i].crc32;
                 remove_mapping(i);
                 release_image(crc);
                 changed = true;
-                ESP_LOGI(TAG, "GC: removed stale mapping profile=%d button=%d", pid, bid);
+                ESP_LOGI(TAG, "GC: removed stale mapping button=%d", bid);
             }
         }
     }

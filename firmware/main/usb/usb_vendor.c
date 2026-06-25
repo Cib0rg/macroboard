@@ -49,6 +49,7 @@ esp_err_t usb_vendor_send(const uint8_t* data, size_t length) {
 }
 
 void usb_vendor_rx_task(void* arg) {
+    (void)arg;
     ESP_LOGI(TAG, "USB Vendor RX task started");
     uint8_t rx_buf[64];
 

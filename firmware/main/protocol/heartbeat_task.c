@@ -13,6 +13,7 @@
 static const char* TAG = "HEARTBEAT";
 
 void heartbeat_task(void* arg) {
+    (void)arg;
     ESP_LOGI(TAG, "Heartbeat task started (every 2 s)");
 
     while (1) {

@@ -135,6 +135,7 @@ esp_err_t encoder_init(void) {
 
 
 void encoder_task(void* arg) {
+    (void)arg;
     encoder_event_t event;
     int16_t step_accumulator = 0;
     uint32_t last_logged_isr_count = 0;
@@ -154,8 +155,8 @@ void encoder_task(void* arg) {
                 last_logged_isr_count = cur;
             }
 
-            profile_t* current_profile = profile_get(0);
-            encoder_config_t* enc_cfg = current_profile ? &current_profile->encoder : NULL;
+            profile_t* current_profile = profile_get();
+            encoder_config_t* enc_cfg = &current_profile->encoder;
 
             if (event.type == ENCODER_ROTATED) {
                 if (event.direction == ENCODER_CW) {

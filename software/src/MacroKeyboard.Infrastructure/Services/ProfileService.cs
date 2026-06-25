@@ -350,6 +350,69 @@ public class ProfileService : IProfileService
 
     // ── Private send helpers ─────────────────────────────────────────────────
 
+    // Returns the ring overlay colour for a given action, or null for no ring.
+    private static SixLabors.ImageSharp.Color? GetRingColor(MacroKeyboard.Core.Models.ActionConfig? action) =>
+        action switch
+        {
+            FolderAction       => SixLabors.ImageSharp.Color.FromRgb(0xFF, 0xA5, 0x00),
+            PluginActionConfig => SixLabors.ImageSharp.Color.FromRgb(0x8B, 0x5C, 0xF6),
+            _                  => null
+        };
+
+    // Processes and sends a button image, with blank/placeholder fallbacks.
+    // folderId == null means root button (uses SendButtonImageAsync);
+    // folderId != null means folder button (uses SendFolderButtonImageAsync).
+    private async Task SendButtonImageDataAsync(
+        byte profileId,
+        byte? folderId,
+        byte buttonId,
+        string? imagePath,
+        MacroKeyboard.Core.Models.ActionConfig? action,
+        string? label,
+        IProgress<int>? imageProgress,
+        CancellationToken cancellationToken)
+    {
+        var ringColor = GetRingColor(action);
+
+        async Task<bool> SendRaw(byte[] data) => folderId == null
+            ? await _deviceService.SendButtonImageAsync(profileId, buttonId, data, imageProgress, cancellationToken)
+            : await _deviceService.SendFolderButtonImageAsync(profileId, folderId.Value, buttonId, data, null, cancellationToken);
+
+        if (!string.IsNullOrEmpty(imagePath) && File.Exists(imagePath))
+        {
+            _logger.LogInformation("Processing image for button {ButtonId}: {Path}", buttonId, imagePath);
+            var processed = await _imageService.ProcessImageForButtonAsync(imagePath, ringColor);
+            if (processed?.Length > 0)
+            {
+                _logger.LogInformation("Sending processed image for button {ButtonId}: {Size}B", buttonId, processed.Length);
+                if (!await SendRaw(processed))
+                    _logger.LogWarning("Failed to send image for button {ButtonId}", buttonId);
+            }
+            else
+            {
+                _logger.LogWarning("Failed to process image for button {ButtonId}: {Path}", buttonId, imagePath);
+            }
+        }
+        else if (!string.IsNullOrEmpty(imagePath))
+        {
+            _logger.LogWarning("Image file not found for button {ButtonId}: {Path}", buttonId, imagePath);
+        }
+        else if (action == null || action is NoneAction)
+        {
+            var blank = await _imageService.CreateBlankImageAsync();
+            await SendRaw(blank);
+        }
+        else if (ringColor.HasValue)
+        {
+            // FolderAction (orange ring) and PluginActionConfig (purple ring) both need a
+            // placeholder so SPIFFS stores image_size > 0; otherwise profile_refresh_displays()
+            // falls back to text rendering until willAppear fires.
+            _logger.LogInformation("Sending ring placeholder for button {ButtonId} label='{Label}'", buttonId, label);
+            var placeholder = await _imageService.CreateRingPlaceholderAsync(ringColor.Value, label ?? string.Empty);
+            await SendRaw(placeholder);
+        }
+    }
+
     private async Task SendRootButtonAsync(
         Profile profile,
         ButtonConfig button,
@@ -357,62 +420,13 @@ public class ProfileService : IProfileService
         IProgress<int>? progress,
         CancellationToken cancellationToken)
     {
-        var ringColor = button.Action switch
-        {
-            FolderAction       => (SixLabors.ImageSharp.Color?)SixLabors.ImageSharp.Color.FromRgb(0xFF, 0xA5, 0x00),
-            PluginActionConfig => (SixLabors.ImageSharp.Color?)SixLabors.ImageSharp.Color.FromRgb(0x8B, 0x5C, 0xF6),
-            _                  => null
-        };
+        var imageProgress = new Progress<int>(p =>
+            progress?.Report(10 + (buttonIndex * 40 / 10) + (p * 40 / 10 / 100)));
 
-        if (!string.IsNullOrEmpty(button.ImagePath) && File.Exists(button.ImagePath))
-        {
-            _logger.LogInformation("Processing image for button {ButtonId}: {Path}",
-                button.ButtonId, button.ImagePath);
-
-            var processedImage = await _imageService.ProcessImageForButtonAsync(button.ImagePath, ringColor);
-            if (processedImage != null && processedImage.Length > 0)
-            {
-                _logger.LogInformation("Sending processed image for button {ButtonId}: {Size} bytes (JPEG)",
-                    button.ButtonId, processedImage.Length);
-
-                var imageProgress = new Progress<int>(p =>
-                    progress?.Report(10 + (buttonIndex * 40 / 10) + (p * 40 / 10 / 100)));
-
-                var imageSent = await _deviceService.SendButtonImageAsync(
-                    0, button.ButtonId, processedImage, imageProgress, cancellationToken);
-
-                if (!imageSent)
-                    _logger.LogWarning("Failed to send image for button {ButtonId}", button.ButtonId);
-            }
-            else
-            {
-                _logger.LogWarning("Failed to process image for button {ButtonId}: {Path}",
-                    button.ButtonId, button.ImagePath);
-            }
-        }
-        else if (!string.IsNullOrEmpty(button.ImagePath))
-        {
-            _logger.LogWarning("Image file not found for button {ButtonId}: {Path}",
-                button.ButtonId, button.ImagePath);
-        }
-        else if (button.Action == null || button.Action is NoneAction)
-        {
-            var blank = await _imageService.CreateBlankImageAsync();
-            await _deviceService.SendButtonImageAsync(0, button.ButtonId, blank, null, cancellationToken);
-        }
-        else if (ringColor.HasValue)
-        {
-            // Covers both FolderAction (orange ring) and PluginActionConfig (purple ring).
-            // Plugin buttons must receive a placeholder so image_size > 0 is stored in
-            // SPIFFS/NVS; otherwise profile_refresh_displays() renders the button name as
-            // text until willAppear fires.  The ring is temporary — willAppear overwrites
-            // it with the actual plugin state image.
-            var placeholderLabel = button.Name ?? string.Empty;
-            _logger.LogInformation("Sending ring placeholder for button {ButtonId} label='{Label}'",
-                button.ButtonId, placeholderLabel);
-            var placeholder = await _imageService.CreateRingPlaceholderAsync(ringColor.Value, placeholderLabel);
-            await _deviceService.SendButtonImageAsync(0, button.ButtonId, placeholder, null, cancellationToken);
-        }
+        await SendButtonImageDataAsync(
+            0, null, button.ButtonId,
+            button.ImagePath, button.Action, button.Name,
+            imageProgress, cancellationToken);
 
         var actionToSend = button.Action ?? new NoneAction();
         if (actionToSend is MacroKeyboard.Core.Models.KeyboardAction ka &&
@@ -441,6 +455,11 @@ public class ProfileService : IProfileService
         byte btnId,
         CancellationToken cancellationToken)
     {
+        await SendButtonImageDataAsync(
+            0, folder.FolderId, btnId,
+            btn?.ImagePath, btn?.Action, btn?.Name,
+            null, cancellationToken);
+
         var folderAction = btn?.Action ?? new NoneAction();
         if (folderAction is MacroKeyboard.Core.Models.KeyboardAction fka &&
             fka.KeyCode == 0 &&
@@ -465,22 +484,6 @@ public class ProfileService : IProfileService
             0, btnId, btn?.LongPressAction, folder.FolderId, cancellationToken);
         await _deviceService.SetButtonLongPressNameAsync(
             0, btnId, btn?.LongPressName ?? string.Empty, folder.FolderId, cancellationToken);
-
-        if (btn != null && !string.IsNullOrEmpty(btn.ImagePath) && File.Exists(btn.ImagePath))
-        {
-            var folderRingColor = btn.Action switch
-            {
-                FolderAction       => (SixLabors.ImageSharp.Color?)SixLabors.ImageSharp.Color.FromRgb(0xFF, 0xA5, 0x00),
-                PluginActionConfig => (SixLabors.ImageSharp.Color?)SixLabors.ImageSharp.Color.FromRgb(0x8B, 0x5C, 0xF6),
-                _                  => null
-            };
-            var processedImage = await _imageService.ProcessImageForButtonAsync(btn.ImagePath, folderRingColor);
-            if (processedImage != null && processedImage.Length > 0)
-            {
-                await _deviceService.SendFolderButtonImageAsync(
-                    0, folder.FolderId, btnId, processedImage, null, cancellationToken);
-            }
-        }
     }
 
     // ── Load from device ─────────────────────────────────────────────────────

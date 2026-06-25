@@ -1,6 +1,7 @@
 using Avalonia.Media.Imaging;
 using CommunityToolkit.Mvvm.ComponentModel;
 using MacroKeyboard.Core.Models;
+using MacroKeyboard.UI.Utilities;
 using System.IO;
 
 namespace MacroKeyboard.UI.ViewModels;
@@ -52,7 +53,7 @@ public partial class ButtonTileViewModel : ViewModelBase
             return Button.Action switch
             {
                 null or NoneAction  => $"B{Button.ButtonId + 1}",
-                KeyboardAction ka when ka.KeyCode != 0 => HidKeyName(ka.KeyCode),
+                KeyboardAction ka when ka.KeyCode != 0 => HidKeyCodeHelper.GetKeyName(ka.KeyCode),
                 KeyboardAction ka when !string.IsNullOrEmpty(ka.Text)
                     => ka.Text.Length > 8 ? ka.Text[..8] + "…" : ka.Text,
                 KeyboardAction      => $"B{Button.ButtonId + 1}",
@@ -88,13 +89,4 @@ public partial class ButtonTileViewModel : ViewModelBase
         catch { return null; }
     }
 
-    private static string HidKeyName(byte k) => k switch
-    {
-        >= 0x04 and <= 0x1D => ((char)('A' + k - 0x04)).ToString(),
-        >= 0x1E and <= 0x26 => ((char)('1' + k - 0x1E)).ToString(),
-        0x27 => "0", 0x28 => "Enter", 0x29 => "Esc",
-        0x2C => "Space",
-        >= 0x3A and <= 0x45 => $"F{k - 0x3A + 1}",
-        _ => $"0x{k:X2}"
-    };
 }

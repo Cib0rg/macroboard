@@ -17,8 +17,6 @@
 // Command IDs from PC to device
 #define CMD_PING                    0x01
 #define CMD_GET_DEVICE_INFO         0x02
-#define CMD_SET_PROFILE             0x10
-#define CMD_GET_PROFILE_INFO        0x11
 #define CMD_GET_FOLDER_STATE        0x12
 #define CMD_START_IMAGE_TRANSFER    0x20
 #define CMD_IMAGE_DATA_CHUNK        0x21
@@ -56,7 +54,6 @@
 #define EVENT_BUTTON_PRESSED        0xF0
 #define EVENT_ENCODER_ROTATED       0xF1
 #define EVENT_ENCODER_BUTTON        0xF2
-#define EVENT_PROFILE_CHANGED       0xF3
 #define EVENT_DEVICE_READY          0xF4
 #define EVENT_FOLDER_ENTERED        0xF5
 #define EVENT_FOLDER_EXITED         0xF6

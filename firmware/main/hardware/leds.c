@@ -115,6 +115,7 @@ esp_err_t led_clear_all(void) {
 }
 
 void led_task(void* arg) {
+    (void)arg;
     ESP_LOGI(TAG, "LED task started");
     
     // This task can handle LED effects in the future

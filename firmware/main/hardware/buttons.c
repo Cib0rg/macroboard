@@ -230,6 +230,7 @@ static TickType_t calculate_timeout(void) {
 }
 
 void button_task(void* arg) {
+    (void)arg;
     button_event_t event;
 
     ESP_LOGI(TAG, "Button task started");

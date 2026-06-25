@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using MacroKeyboard.Backend;
 using MacroKeyboard.Backend.Plugin;
 using MacroKeyboard.Core.Models;
 using MacroKeyboard.Core.Services;
@@ -36,7 +37,7 @@ public class ActionExecutorService
         _pluginManager = pluginManager;
         _logger = logger;
 
-        _deviceService.ButtonPressed += OnButtonPressed;
+        _deviceService.ButtonPressed += (s, e) => OnButtonPressed(s, e).FireAndForget(_logger);
         _deviceService.FolderEntered += (_, e) => _currentFolderId = e.FolderId;
         _deviceService.FolderExited  += (_, e) => _currentFolderId = e.FolderDepth == 0 ? (byte)0xFF : e.ParentFolderId;
         // Subscribe to DeviceManager.DeviceConnected (fires only after firmware is confirmed ready),
@@ -44,10 +45,10 @@ public class ActionExecutorService
         // The premature CMD 0x12 that was sent via the raw event would arrive late and poison the
         // CMD 0x02 FIFO slot in HidDeviceManager, causing GetDeviceInfo to fail and triggering
         // the boot retry counter even when the device was perfectly healthy.
-        deviceManager.DeviceConnected += OnDeviceConnected;
+        deviceManager.DeviceConnected += (s, e) => OnDeviceConnected(s, e).FireAndForget(_logger);
     }
 
-    private async void OnDeviceConnected(object? sender, SharedEvents.DeviceEventArgs e)
+    private async Task OnDeviceConnected(object? sender, SharedEvents.DeviceEventArgs e)
     {
         try
         {
@@ -75,7 +76,7 @@ public class ActionExecutorService
         return profile.Buttons.FirstOrDefault(b => b.ButtonId == buttonId);
     }
 
-    private async void OnButtonPressed(object? sender, ButtonEventArgs e)
+    private async Task OnButtonPressed(object? sender, ButtonEventArgs e)
     {
         try
         {

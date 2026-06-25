@@ -110,10 +110,10 @@ esp_err_t text_transfer_end(void) {
     {
         static const uint8_t spiffs_data[3] = {0x00, 0x00, 0x01};
         if (ctx.folder_id == 0xFF) {
-            ret = profile_set_button_action(ctx.profile_id, ctx.button_id,
+            ret = profile_set_button_action(ctx.button_id,
                                             ACTION_TYPE_KEYBOARD, spiffs_data, 3);
         } else {
-            ret = profile_set_folder_button_action(ctx.profile_id, ctx.folder_id,
+            ret = profile_set_folder_button_action(ctx.folder_id,
                                                    ctx.button_id, ACTION_TYPE_KEYBOARD,
                                                    spiffs_data, 3);
         }
@@ -124,7 +124,7 @@ esp_err_t text_transfer_end(void) {
     }
 
     // Flush profile to flash so the SPIFFS flag survives a reboot
-    profile_save_to_storage(ctx.profile_id);
+    profile_save_to_storage();
 
     ESP_LOGI(TAG, "Text transfer complete: %lu bytes for storage_bid=%d",
              ctx.received_size, ctx.storage_bid);

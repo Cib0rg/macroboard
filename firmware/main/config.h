@@ -72,13 +72,12 @@
 // SPI Configuration
 // ============================================
 #define SPI_HOST                SPI2_HOST
-#define SPI_CLOCK_SPEED_HZ      (20 * 1000 * 1000)  // 40 MHz
+#define SPI_CLOCK_SPEED_HZ      (20 * 1000 * 1000)  // 20 MHz
 #define SPI_DMA_CHAN            SPI_DMA_CH_AUTO
 
 // ============================================
 // Profile Configuration
 // ============================================
-#define NUM_PROFILES            1
 #define PROFILE_NAME_MAX_LEN    32
 #define BUTTON_NAME_MAX_LEN     32
 #define ACTION_DATA_MAX_LEN     100

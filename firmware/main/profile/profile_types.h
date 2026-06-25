@@ -17,7 +17,6 @@ typedef enum {
     ACTION_TYPE_NONE = 0x00,
     ACTION_TYPE_KEYBOARD = 0x01,
     ACTION_TYPE_CUSTOM_HID = 0x02,
-    ACTION_TYPE_PROFILE_SWITCH = 0x03,
     ACTION_TYPE_FOLDER = 0x04,
     ACTION_TYPE_DELAY = 0x05,        // Задержка (используется в последовательностях)
     ACTION_TYPE_SHELL = 0x06,        // Shell-команда (выполняется на PC через Backend)

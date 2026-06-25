@@ -43,7 +43,7 @@ esp_err_t image_transfer_start(uint8_t profile_id, uint8_t folder_id,
         transfer_ctx.active = false;
     }
 
-    if (profile_id >= NUM_PROFILES || button_id >= NUM_BUTTONS) {
+    if (button_id >= NUM_BUTTONS) {
         return ESP_ERR_INVALID_ARG;
     }
     if (folder_id != 0xFF && folder_id >= NUM_FOLDERS) {
@@ -168,17 +168,17 @@ esp_err_t image_transfer_end(uint32_t* calculated_crc) {
     // Buffer ownership is transferred to the display_task (Core 1); it frees it
     // after the SPI write.  If draw is not required we free it here instead.
     bool draw_posted = false;
-    if (transfer_ctx.profile_id == profile_get_current_id()) {
+    {
         bool should_draw = false;
         if (transfer_ctx.folder_id == 0xFF) {
-            profile_image_cache_invalidate(transfer_ctx.button_id);
+            profile_image_cache_invalidate(transfer_ctx.button_id, false);
             // Only draw if the device is currently at root level.  When inside a
             // folder, root-button images must not overwrite the folder-button displays
             // at the same physical positions.  The cache is already invalidated above,
             // so the image will be drawn correctly when the user exits the folder.
             should_draw = (profile_get_current_folder() == 0xFF);
         } else {
-            profile_image_cache_invalidate_folder(transfer_ctx.button_id);
+            profile_image_cache_invalidate(transfer_ctx.button_id, true);
             if (profile_get_current_folder() == transfer_ctx.folder_id) {
                 should_draw = true;
             }

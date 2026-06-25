@@ -18,24 +18,10 @@
 esp_err_t profile_manager_init(void);
 
 /**
- * @brief Switch to different profile
- * @param profile_id Profile ID to switch to
- * @return ESP_OK on success
+ * @brief Get the single profile data
+ * @return Pointer to the profile
  */
-esp_err_t profile_switch(uint8_t profile_id);
-
-/**
- * @brief Get current profile ID
- * @return Current profile ID
- */
-uint8_t profile_get_current_id(void);
-
-/**
- * @brief Get profile data
- * @param profile_id Profile ID
- * @return Pointer to profile or NULL
- */
-profile_t* profile_get(uint8_t profile_id);
+profile_t* profile_get(void);
 
 /**
  * @brief Get button configuration
@@ -44,16 +30,7 @@ profile_t* profile_get(uint8_t profile_id);
  */
 button_config_t* profile_get_button_config(uint8_t button_id);
 
-/**
- * @brief Set button action
- * @param profile_id Profile ID
- * @param button_id Button ID
- * @param action_type Action type
- * @param action_data Action data
- * @param action_len Action data length
- * @return ESP_OK on success
- */
-esp_err_t profile_set_button_action(uint8_t profile_id, uint8_t button_id,
+esp_err_t profile_set_button_action(uint8_t button_id,
                                      uint8_t action_type, const uint8_t* action_data,
                                      uint16_t action_len);
 
@@ -70,40 +47,22 @@ esp_err_t profile_set_button_long_press_action(uint8_t button_id, uint8_t folder
  */
 esp_err_t profile_set_button_long_press_name(uint8_t button_id, uint8_t folder_id, const char* name);
 
-/**
- * @brief Set display name for a button (shown when no image is assigned)
- * @param profile_id Profile ID
- * @param button_id  Button ID
- * @param name       Null-terminated UTF-8 string (max BUTTON_NAME_MAX_LEN-1 chars)
- * @return ESP_OK on success
- */
-esp_err_t profile_set_button_name(uint8_t profile_id, uint8_t button_id, const char* name);
+esp_err_t profile_set_button_name(uint8_t button_id, const char* name);
 
-esp_err_t profile_set_folder_button_action(uint8_t profile_id, uint8_t folder_id,
+esp_err_t profile_set_folder_button_action(uint8_t folder_id,
                                             uint8_t button_id, uint8_t action_type,
                                             const uint8_t* action_data, uint16_t action_len);
 
-esp_err_t profile_set_folder_button_name(uint8_t profile_id, uint8_t folder_id,
+esp_err_t profile_set_folder_button_name(uint8_t folder_id,
                                           uint8_t button_id, const char* name);
 
-esp_err_t profile_set_folder_button_led(uint8_t profile_id, uint8_t folder_id,
+esp_err_t profile_set_folder_button_led(uint8_t folder_id,
                                          uint8_t button_id,
                                          uint8_t r, uint8_t g, uint8_t b,
                                          uint8_t brightness, uint8_t effect);
 
 
-/**
- * @brief Set LED color for button
- * @param profile_id Profile ID
- * @param button_id Button ID
- * @param r Red component
- * @param g Green component
- * @param b Blue component
- * @param brightness Brightness
- * @param effect LED effect
- * @return ESP_OK on success
- */
-esp_err_t profile_set_led_color(uint8_t profile_id, uint8_t button_id,
+esp_err_t profile_set_led_color(uint8_t button_id,
                                  uint8_t r, uint8_t g, uint8_t b,
                                  uint8_t brightness, uint8_t effect);
 
@@ -118,12 +77,7 @@ esp_err_t profile_set_led_color(uint8_t profile_id, uint8_t button_id,
 esp_err_t profile_set_encoder_action(uint8_t slot, uint8_t action_type,
                                       const uint8_t* action_data, uint16_t action_len);
 
-/**
- * @brief Save profile to storage
- * @param profile_id Profile ID
- * @return ESP_OK on success
- */
-esp_err_t profile_save_to_storage(uint8_t profile_id);
+esp_err_t profile_save_to_storage(void);
 
 /**
  * @brief Create default profiles
@@ -180,14 +134,10 @@ void profile_refresh_displays(void);
  * @brief Invalidate the PSRAM display cache for one button.
  *        Call after a new image is uploaded for that button so the next
  *        display refresh loads fresh data from storage.
+ * @param button_id Button slot index (0..NUM_BUTTONS-1)
+ * @param folder    true to invalidate the folder cache, false for the root cache
  */
-void profile_image_cache_invalidate(uint8_t button_id);
-
-/**
- * @brief Invalidate the PSRAM folder display cache for one button slot.
- *        Call after a new image is uploaded for a folder button.
- */
-void profile_image_cache_invalidate_folder(uint8_t button_id);
+void profile_image_cache_invalidate(uint8_t button_id, bool folder);
 
 /**
  * @brief Refresh the display for one root button from current profile state.

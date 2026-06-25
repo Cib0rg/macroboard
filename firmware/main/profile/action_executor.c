@@ -47,8 +47,7 @@ static esp_err_t execute_single_action(action_type_t type, const uint8_t* data, 
                     char* text_buf = malloc(4096 + 1);
                     if (text_buf != NULL) {
                         size_t text_len = 0;
-                        esp_err_t r = text_storage_load(profile_get_current_id(),
-                                                        storage_bid, text_buf, 4096, &text_len);
+                        esp_err_t r = text_storage_load(0, storage_bid, text_buf, 4096, &text_len);
                         if (r == ESP_OK) {
                             text_buf[text_len] = '\0';
                             ESP_LOGI(TAG, "Typing SPIFFS text: %d chars (bid=%d)",

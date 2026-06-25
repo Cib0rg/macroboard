@@ -24,7 +24,6 @@ idf_component_register(
         "storage/save_task.c"
         "profile/profile_manager.c"
         "profile/action_executor.c"
-        "utils/logger.c"
         "utils/crc.c"
         "utils/jpeg_decoder.c"
         "utils/text_render.c"
