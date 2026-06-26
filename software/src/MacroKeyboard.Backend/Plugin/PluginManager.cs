@@ -1,13 +1,9 @@
-using MacroKeyboard.Core.Models;
 using MacroKeyboard.Core.Services;
 using MacroKeyboard.Infrastructure.Services;
 using MacroKeyboard.Shared.Plugin;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using System.Collections.Concurrent;
-using System.IO.Compression;
-using System.Reflection;
-using System.Runtime.Loader;
 
 namespace MacroKeyboard.Backend.Plugin;
 
@@ -40,8 +36,6 @@ public partial class PluginManager : IDisposable
     private readonly ConcurrentDictionary<string, string> _contextToActionId = new();
 
     private const string DeviceId = "MK_DEVICE_0";
-    private const int DeviceColumns = 5;
-    private const int DeviceRows = 2;
 
     // Tolerates both "Category": "Foo" and "Category": ["Foo", "Bar"] in SD manifests
     private static readonly JsonSerializerSettings _manifestSerializerSettings = new()

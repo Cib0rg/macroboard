@@ -1,5 +1,7 @@
+using MacroKeyboard.Backend;
 using MacroKeyboard.Shared.IPC;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Newtonsoft.Json;
 using System.Collections.Concurrent;
 using System.Net;
@@ -24,10 +26,10 @@ public class IpcServer : IIpcServer, IDisposable
     public event EventHandler<string>? ClientConnected;
     public event EventHandler<string>? ClientDisconnected;
 
-    public IpcServer(ILogger<IpcServer> logger, int port = 28195)
+    public IpcServer(ILogger<IpcServer> logger, IOptions<BackendOptions> options)
     {
         _logger = logger;
-        _port = port;
+        _port = options.Value.IpcPort;
     }
 
     public async Task StartAsync(CancellationToken cancellationToken = default)

@@ -1,13 +1,9 @@
+using MacroKeyboard.Backend;
 using MacroKeyboard.Core.Models;
 using MacroKeyboard.Core.Services;
 using MacroKeyboard.Infrastructure.Services;
 using MacroKeyboard.Shared.Plugin;
-using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
-using System.Collections.Concurrent;
-using System.IO.Compression;
-using System.Reflection;
-using System.Runtime.Loader;
 
 namespace MacroKeyboard.Backend.Plugin;
 
@@ -87,7 +83,7 @@ public partial class PluginManager
                 {
                     name = "MacroKeyboard",
                     type = 0,
-                    size = new { columns = DeviceColumns, rows = DeviceRows }
+                    size = new { columns = DeviceConstants.Columns, rows = DeviceConstants.Rows }
                 }
             }
         });

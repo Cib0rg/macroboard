@@ -1,3 +1,4 @@
+using MacroKeyboard.Backend;
 using MacroKeyboard.Core.Models;
 using MacroKeyboard.Core.Services;
 using MacroKeyboard.Infrastructure.Services;
@@ -56,10 +57,7 @@ public class ExecutablePluginInstance : PluginInstance
         var entryPointPath = Path.Combine(PluginDirectory, entryPoint);
 
         if (!File.Exists(entryPointPath))
-        {
-            Logger.LogError("[{Id}] Entry point not found: {Path}", Manifest.Id, entryPointPath);
             throw new FileNotFoundException($"Plugin entry point not found: {entryPointPath}");
-        }
 
         // Build Stream Deck -info JSON
         var infoJson = JsonConvert.SerializeObject(new
@@ -81,7 +79,7 @@ public class ExecutablePluginInstance : PluginInstance
                 {
                     id   = "MK_DEVICE_0",
                     name = "MacroKeyboard",
-                    size = new { columns = 5, rows = 2 },
+                    size = new { columns = DeviceConstants.Columns, rows = DeviceConstants.Rows },
                     type = 0
                 }
             }
@@ -96,7 +94,7 @@ public class ExecutablePluginInstance : PluginInstance
             var httpUrl = string.Concat(
                 $"http://localhost:{PropertyInspectorServer.HttpPort}/plugins/",
                 Uri.EscapeDataString(Manifest.Id), "/", entryFile,
-                "?port=28196",
+                $"?port={WebSocketServer.Port}",
                 "&pluginUUID=",    Uri.EscapeDataString(Manifest.Id),
                 "&registerEvent=", Uri.EscapeDataString("registerPlugin"),
                 "&info=",          Uri.EscapeDataString(infoJson));
@@ -211,7 +209,7 @@ public class ExecutablePluginInstance : PluginInstance
 
         // Stream Deck standard CLI args
         startInfo.ArgumentList.Add("-port");
-        startInfo.ArgumentList.Add("28196");
+        startInfo.ArgumentList.Add($"{WebSocketServer.Port}");
         startInfo.ArgumentList.Add("-pluginUUID");
         startInfo.ArgumentList.Add(Manifest.Id);
         startInfo.ArgumentList.Add("-registerEvent");
@@ -219,8 +217,8 @@ public class ExecutablePluginInstance : PluginInstance
         startInfo.ArgumentList.Add("-info");
         startInfo.ArgumentList.Add(infoJson);
 
-        Logger.LogInformation("[{Id}] Launching: {Exe} -port 28196 -pluginUUID {Uuid} -registerEvent registerPlugin -info <json>",
-            Manifest.Id, startInfo.FileName, Manifest.Id);
+        Logger.LogInformation("[{Id}] Launching: {Exe} -port {Port} -pluginUUID {Uuid} -registerEvent registerPlugin -info <json>",
+            Manifest.Id, startInfo.FileName, WebSocketServer.Port, Manifest.Id);
 
         _process = new System.Diagnostics.Process
         {

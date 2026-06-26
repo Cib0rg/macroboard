@@ -234,8 +234,28 @@ public class DeviceService : IDeviceService
         IProgress<int>? progress = null,
         CancellationToken cancellationToken = default)
     {
-        var result = await _imageTransferCommand.ExecuteAsync(profileId, buttonId, imageData, folderId, progress, cancellationToken);
-        return result;
+        var crc = Crc32.Calculate(imageData);
+
+        await _commandLock.WaitAsync(cancellationToken);
+        try
+        {
+            // Use (folderId, buttonId) as cache key — distinct from root buttons which use (profileId, buttonId).
+            if (_imageHashCache.TryGetValue((folderId, buttonId), out var cached) && cached == crc)
+            {
+                _logger.LogDebug("Folder image for button {ButtonId} (folder {FolderId}) unchanged (CRC=0x{Crc:X8}), skipping transfer", buttonId, folderId, crc);
+                progress?.Report(100);
+                return true;
+            }
+
+            var result = await _imageTransferCommand.ExecuteAsync(profileId, buttonId, imageData, folderId, progress, cancellationToken);
+            if (result)
+                _imageHashCache[(folderId, buttonId)] = crc;
+            return result;
+        }
+        finally
+        {
+            _commandLock.Release();
+        }
     }
 
     public async Task LoadImageHashCacheAsync(byte profileId, CancellationToken cancellationToken = default)

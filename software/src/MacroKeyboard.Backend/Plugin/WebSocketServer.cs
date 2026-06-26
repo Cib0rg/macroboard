@@ -1,5 +1,7 @@
+using MacroKeyboard.Backend;
 using MacroKeyboard.Shared.Plugin;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Newtonsoft.Json;
 using System.Collections.Concurrent;
 using System.Net;
@@ -42,10 +44,14 @@ public class WebSocketServer : IDisposable
     /// </summary>
     public event EventHandler<string>? ConnectionClosed;
 
-    public WebSocketServer(ILogger<WebSocketServer> logger, int port = 28196)
+    /// <summary>Exposed so plugin launchers can read the configured port without DI.</summary>
+    public static int Port { get; private set; } = 28196;
+
+    public WebSocketServer(ILogger<WebSocketServer> logger, IOptions<BackendOptions> options)
     {
         _logger = logger;
-        _port = port;
+        _port   = options.Value.WebSocketPort;
+        Port    = _port;
     }
 
     public async Task StartAsync(CancellationToken cancellationToken = default)

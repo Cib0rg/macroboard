@@ -1,4 +1,6 @@
+using MacroKeyboard.Backend;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using System.Collections.Concurrent;
 using System.Net;
 
@@ -12,7 +14,8 @@ namespace MacroKeyboard.Backend.Plugin;
 /// </summary>
 public class PropertyInspectorServer : IDisposable
 {
-    public const int HttpPort = 8787;
+    /// <summary>Exposed so plugin launchers can build URLs without DI.</summary>
+    public static int HttpPort { get; private set; } = 8787;
 
     private readonly ILogger<PropertyInspectorServer> _logger;
 
@@ -41,9 +44,10 @@ public class PropertyInspectorServer : IDisposable
         [".woff2"] = "font/woff2",
     };
 
-    public PropertyInspectorServer(ILogger<PropertyInspectorServer> logger)
+    public PropertyInspectorServer(ILogger<PropertyInspectorServer> logger, IOptions<BackendOptions> options)
     {
-        _logger = logger;
+        _logger  = logger;
+        HttpPort = options.Value.PropertyInspectorPort;
     }
 
     /// <summary>Maps pluginId → the directory that contains its PI assets.</summary>

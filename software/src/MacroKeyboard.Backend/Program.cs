@@ -39,6 +39,9 @@ try
     // Add Serilog
     builder.Services.AddSerilog();
 
+    // Bind configuration
+    builder.Services.Configure<BackendOptions>(builder.Configuration.GetSection(BackendOptions.Section));
+
     // Register Core services
     builder.Services.AddSingleton<HidDeviceManager>();
     builder.Services.AddSingleton<ProtocolHandler>();

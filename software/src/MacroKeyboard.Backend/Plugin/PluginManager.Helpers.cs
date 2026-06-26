@@ -1,13 +1,6 @@
 using MacroKeyboard.Core.Models;
-using MacroKeyboard.Core.Services;
-using MacroKeyboard.Infrastructure.Services;
 using MacroKeyboard.Shared.Plugin;
-using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
-using System.Collections.Concurrent;
-using System.IO.Compression;
-using System.Reflection;
-using System.Runtime.Loader;
 
 namespace MacroKeyboard.Backend.Plugin;
 
