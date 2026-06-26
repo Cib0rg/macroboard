@@ -39,9 +39,6 @@ public partial class SettingsViewModel : ViewModelBase
     private int _webSocketPort = 28196;
 
     [ObservableProperty]
-    private string _pluginsDirectory = "Plugins";
-
-    [ObservableProperty]
     private string _defaultLedColorHex = "#00FFFF";
 
     [ObservableProperty]
@@ -95,7 +92,6 @@ public partial class SettingsViewModel : ViewModelBase
                 ShowNotifications = settings.ShowNotifications;
                 IpcPort = settings.IpcPort;
                 WebSocketPort = settings.WebSocketPort;
-                PluginsDirectory = settings.PluginsDirectory;
                 DefaultLedColorHex = settings.DefaultLedColor;
                 DefaultLedBrightness = settings.DefaultLedBrightness;
                 DefaultDisplayBrightness = settings.DefaultDisplayBrightness;
@@ -125,7 +121,6 @@ public partial class SettingsViewModel : ViewModelBase
                 ShowNotifications = ShowNotifications,
                 IpcPort = IpcPort,
                 WebSocketPort = WebSocketPort,
-                PluginsDirectory = PluginsDirectory,
                 DefaultLedColor = DefaultLedColorHex,
                 DefaultLedBrightness = DefaultLedBrightness,
                 DefaultDisplayBrightness = DefaultDisplayBrightness,
@@ -166,7 +161,6 @@ public partial class SettingsViewModel : ViewModelBase
             ShowNotifications = true;
             IpcPort = 28195;
             WebSocketPort = 28196;
-            PluginsDirectory = "Plugins";
             DefaultLedColorHex = "#00FFFF";
             DefaultLedBrightness = 80;
             DefaultDisplayBrightness = 100;

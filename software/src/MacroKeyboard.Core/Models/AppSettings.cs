@@ -31,11 +31,6 @@ public class AppSettings
     public int WebSocketPort { get; set; } = 28196;
     
     /// <summary>
-    /// Директория плагинов
-    /// </summary>
-    public string PluginsDirectory { get; set; } = "Plugins";
-    
-    /// <summary>
     /// Язык интерфейса
     /// </summary>
     public string Language { get; set; } = "en";

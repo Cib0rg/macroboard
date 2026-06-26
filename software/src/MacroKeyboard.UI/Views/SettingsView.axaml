@@ -50,10 +50,6 @@
                                        Maximum="65535" />
                     </StackPanel>
                     
-                    <StackPanel Spacing="8">
-                        <TextBlock Text="PLUGINS DIRECTORY:" Opacity="0.7" />
-                        <TextBox Text="{Binding PluginsDirectory}" />
-                    </StackPanel>
                 </StackPanel>
             </Border>
 
