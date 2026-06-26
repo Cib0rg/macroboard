@@ -43,12 +43,6 @@ public class Profile
     public DateTime ModifiedAt { get; set; } = DateTime.Now;
     
     /// <summary>
-    /// CRC32 для проверки целостности
-    /// </summary>
-    [JsonIgnore]
-    public uint Crc32 { get; set; }
-
-    /// <summary>
     /// Путь к файлу, из которого был загружен профиль. Если задан — Save пишет сюда, а не в AppData.
     /// </summary>
     [JsonIgnore]

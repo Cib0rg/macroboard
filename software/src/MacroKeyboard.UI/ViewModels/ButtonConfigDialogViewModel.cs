@@ -274,31 +274,9 @@ public partial class ButtonConfigDialogViewModel : ViewModelBase
     /// </summary>
     public ObservableCollection<SequenceStepViewModel> SequenceSteps { get; } = new();
 
-    public ObservableCollection<ActionType> AvailableActionTypes { get; } = new()
-    {
-        ActionType.None,
-        ActionType.Keyboard,
-        ActionType.Media,
-        ActionType.LaunchApp,
-        ActionType.Shell,
-        ActionType.Sequence,
-        ActionType.Folder,
-        ActionType.NightMode,
-        ActionType.CustomHid,
-        ActionType.Plugin,
-    };
-    
-    /// <summary>
-    /// Available action types for sequence steps (excludes Sequence to prevent recursion)
-    /// </summary>
-    public ObservableCollection<ActionType> AvailableStepActionTypes { get; } = new()
-    {
-        ActionType.Keyboard,
-        ActionType.Shell,
-        ActionType.CustomHid,
-        ActionType.Folder,
-        ActionType.Delay,
-    };
+    public IReadOnlyList<ActionType> AvailableActionTypes { get; } = ActionTypeHelpers.AllActionTypes;
+
+    public IReadOnlyList<ActionType> AvailableStepActionTypes { get; } = ActionTypeHelpers.SequenceStepTypes;
 
     /// <summary>
     /// Available profiles for ProfileSwitch action (populated from existing profiles)
@@ -1571,10 +1549,7 @@ public partial class ButtonConfigDialogViewModel : ViewModelBase
                 {
                     TargetProfileId = SelectedTargetProfile?.ProfileId ?? TargetProfileId
                 },
-                ActionType.Folder => new ProfileSwitchAction
-                {
-                    TargetProfileId = 0
-                },
+                ActionType.Folder => null, // handled by explicit if-block below (also sets ButtonConfig.FolderId)
                 ActionType.CustomHid => new CustomHidAction
                 {
                     Data = ParseHexString(CustomHidData)

@@ -114,32 +114,6 @@ public partial class ProfileEditorViewModel : ViewModelBase
 
     public ObservableCollection<Profile> Profiles { get; } = new();
 
-    /// <summary>Action palette items kept for future Action Picker (Phase 2).</summary>
-    public ObservableCollection<ActionPaletteItem> ActionPaletteItems { get; } = new()
-    {
-        new ActionPaletteItem(ActionType.Keyboard,  "Keyboard",   "⌨",  "Emulate keyboard key press or text input"),
-        new ActionPaletteItem(ActionType.Media,     "Media",      "🔊", "Media keys"),
-        new ActionPaletteItem(ActionType.Media, "Volume Up",   "🔊", "Increase system volume")
-            { IndentLevel = 1, PreConfiguredAction = new MediaAction { Key = MediaKey.VolumeUp } },
-        new ActionPaletteItem(ActionType.Media, "Volume Down", "🔉", "Decrease system volume")
-            { IndentLevel = 1, PreConfiguredAction = new MediaAction { Key = MediaKey.VolumeDown } },
-        new ActionPaletteItem(ActionType.Media, "Mute",        "🔇", "Toggle mute")
-            { IndentLevel = 1, PreConfiguredAction = new MediaAction { Key = MediaKey.Mute } },
-        new ActionPaletteItem(ActionType.Media, "Play/Pause",  "⏯",  "Play or pause media")
-            { IndentLevel = 1, PreConfiguredAction = new MediaAction { Key = MediaKey.PlayPause } },
-        new ActionPaletteItem(ActionType.Media, "Next Track",  "⏭",  "Skip to next track")
-            { IndentLevel = 1, PreConfiguredAction = new MediaAction { Key = MediaKey.NextTrack } },
-        new ActionPaletteItem(ActionType.Media, "Prev Track",  "⏮",  "Go to previous track")
-            { IndentLevel = 1, PreConfiguredAction = new MediaAction { Key = MediaKey.PreviousTrack } },
-        new ActionPaletteItem(ActionType.LaunchApp, "Launch App", "🚀", "Launch an application"),
-        new ActionPaletteItem(ActionType.Shell,     "Shell",      "💻", "Execute a shell command"),
-        new ActionPaletteItem(ActionType.Sequence,  "Sequence",   "📋", "Execute multiple actions"),
-        new ActionPaletteItem(ActionType.Folder,    "Folder",     "📁", "Open a folder of sub-buttons"),
-        new ActionPaletteItem(ActionType.CustomHid, "Custom HID", "🎛", "Send custom HID report"),
-        new ActionPaletteItem(ActionType.NightMode, "Night Mode", "🌙", "Toggle all LEDs off"),
-        new ActionPaletteItem(ActionType.None,      "None",       "⊘",  "No action assigned"),
-    };
-
     // ── Constructor ───────────────────────────────────────────────────────────
 
     public ProfileEditorViewModel(
@@ -445,25 +419,6 @@ public partial class ProfileEditorViewModel : ViewModelBase
             if (pluginActions == null || pluginActions.Count == 0) return;
 
             _availablePluginActions = pluginActions;
-
-            var existing = ActionPaletteItems.Where(i => i.ActionType == ActionType.Plugin).ToList();
-            foreach (var item in existing) ActionPaletteItems.Remove(item);
-
-            string? lastPluginId = null;
-            foreach (var pa in pluginActions)
-            {
-                if (pa.PluginId != lastPluginId)
-                {
-                    ActionPaletteItems.Add(new ActionPaletteItem(ActionType.Plugin, pa.PluginName, "🔌", pa.PluginName));
-                    lastPluginId = pa.PluginId;
-                }
-                ActionPaletteItems.Add(new ActionPaletteItem(ActionType.Plugin, pa.ActionName,
-                    string.IsNullOrEmpty(pa.Icon) ? "🔌" : pa.Icon, pa.Tooltip)
-                {
-                    IndentLevel = 1,
-                    PreConfiguredAction = new PluginActionConfig { PluginId = pa.PluginId, ActionId = pa.ActionId }
-                });
-            }
         }
         catch (Exception ex)
         {
