@@ -24,7 +24,7 @@
 - MacroKeyboard.Communication — все команды протокола
 - MacroKeyboard.Core — все модели, IPC интерфейсы
 - MacroKeyboard.Infrastructure — `DeviceService`, `ImageService`, `ProfileService` (diff-based sync)
-- MacroKeyboard.UI — `ProfileEditorView`, `ButtonConfigDialogViewModel`, полный UI
+- MacroKeyboard.UI — `ProfileEditorView`, `ButtonConfigDialogViewModel` (разбит на 7 partial-файлов: `.Sequence`, `.LedColor`, `.Image`, `.KeyCapture`, `.Plugin`, `.LaunchApp`), полный UI
 
 ### Software (реализовано, плагины)
 - `PluginManager` — загрузка, жизненный цикл, маршрутизация SD-протокола
@@ -262,11 +262,27 @@ profile_save_to_storage(profile_id);   // NVS видит актуальные im
 
 ### Inline Config Panel visibility
 
-`ProfileEditorView.axaml` содержит inline-панель внутри `DataTemplate` для `FlattenedButtonItem`. Панель видима только когда `FlattenedButtonItem.Button == ConfiguredButtonConfig` (сравнение по ссылке через `ObjectEqualityConverter`). Из-за этого encoder config (ButtonId 200-203 не входят в `FlattenedButtons`) требует отдельной панели — `IsEncoderConfigVisible`.
+`ProfileEditorView.axaml` содержит inline-панель внутри `DataTemplate` для `FlattenedButtonItem`. Панель видима через boolean-свойство в `FlattenedButtonItem`. Encoder config (ButtonId 200-203 не входят в `FlattenedButtons`) требует отдельной панели — `IsEncoderConfigVisible`.
 
-### ActionPaletteItem и drag-and-drop
+### Лимиты действий (firmware protocol)
 
-`ActionPaletteItem` в правой колонке имеет опциональное поле `PreConfiguredAction`. Если оно заполнено (например, конкретная медиа-клавиша), drop сразу применяет действие без открытия конфигурации. Если null — открывает конфигурацию для выбора параметров.
+`ACTION_DATA_MAX_LEN = 51` байт — максимальный размер `action_data` в `button_config_t` прошивки. Лимиты по типу:
+
+| Тип | Лимит | Причина |
+|-----|-------|---------|
+| CustomHID | 51 байт | `Data` передаётся напрямую |
+| Shell | 49 байт UTF-8 | 1 байт флагов + команда + 1 байт null-терминатора |
+| Keyboard inline | 44 байт UTF-8 | 7 байт — заголовок KeyboardAction |
+
+`ButtonConfigDialogViewModel.ValidateBeforeSave()` проверяет CustomHID и Shell перед сохранением и устанавливает `SaveError` (observable string) при нарушении лимита.
+
+### Кэш иконок приложений
+
+Иконки извлекаются через Shell32 P/Invoke и сохраняются в `%APPDATA%\MacroKeyboard\icons\{appname}.png`. При повторном открытии диалога `ExtractAndSetAppIconAsync` проверяет `File.Exists(iconOutputPath)` перед вызовом P/Invoke — извлечение происходит только один раз за установку приложения.
+
+### Директория плагинов
+
+Backend хардкодит путь к плагинам: `Path.Combine(AppContext.BaseDirectory, "plugins")`. Настройка `PluginsDirectory` в UI Settings была удалена — она никогда не читалась бэкендом. Плагины нужно класть рядом с `MacroKeyboard.Backend.exe` в поддиректорию `plugins/`.
 
 ### Папки в UI
 
