@@ -115,6 +115,19 @@ Delay (0x05) и Shell/LaunchApp/Media/NightMode — реализованы в fi
 
 ## Производительность и синхронизация профиля
 
+### Временны́е показатели (измерено 2026-06-21)
+
+| Сценарий | До оптимизаций | После Fix 1 (async SPIFFS) | Планируется Fix 2 (bulk chunk) |
+|----------|---------------|--------------------------|-------------------------------|
+| Полный профиль, ~17 изображений | ~39 с | **~11 с** | ~3–5 с |
+| Правка одной кнопки (diff) | ~5 с | ~5 с | ~2–3 с |
+
+**Fix 1 (реализован):** `save_task` — SPIFFS-запись асинхронна; `CMD_END_IMAGE_TRANSFER (0x22)` отвечает ~50 мс (только JPEG-декод) вместо 50–2500 мс.
+
+**Fix 2 (план):** объединить все chunk-пакеты в одну `WriteAsync()`-передачу в `ImageTransferCommand`. 164 чанка × 4.7 мс LibUSB overhead = 770 мс/изображение → 7 мс/изображение. Экономия ~11 с. Требует увеличения `protocol_cmd_queue` до 256 в firmware (текущий depth = 32).
+
+**Fix 3 (план):** декаплинг `profile_refresh_displays()` от `CMD_REFRESH_DISPLAYS (0x53)` — вынести в асинхронный постинг после отправки ответа. Экономия ~1–1.5 с.
+
 ### Diff-based send (ProfileService.cs)
 
 При каждом `SendProfileToDeviceAsync` пересылаются только кнопки/encoder/папки, чья конфигурация изменилась с последней отправки. Типовое «изменить одну кнопку» — ~5 с вместо ~39 с (полный профиль с 10 изображениями).
@@ -200,6 +213,51 @@ while (pending_get() > 0) vTaskDelay(pdMS_TO_TICKS(20));
 save_task_drain();
 profile_save_to_storage(profile_id);   // NVS видит актуальные image_size
 ```
+
+---
+
+### SPIFFS хранилище текстов (text_storage)
+
+Отдельный механизм от image-хранилища. Используется для данных, которые не влезают inline в `action_data[51]`.
+
+**Путь файла:**
+```
+/storage/txt_{P}_{F}_{B}_{A}_{S}.bin
+```
+
+| Компонент | Тип | Значения |
+|-----------|-----|---------|
+| P | profile_id | всегда 0 |
+| F | folder_id | 0..15 = папка; 255 = root |
+| B | button_id | 0..9; энкодер: 0x40 CW, 0x41 CCW, 0x42 press, 0x43 long press |
+| A | action_slot | 0 = short press, 1 = long press |
+| S | step_index | 0xFF = прямое Keyboard (`TEXT_STEP_DIRECT`); 0xFE = Sequence-блоб (`TEXT_STEP_SEQ_BLOB`); 0..15 = шаг N |
+
+**Что хранится и где:**
+
+| Тип данных | Условие | slot A | step S |
+|-----------|---------|--------|--------|
+| Keyboard-текст (short press) | > 44 байт UTF-8 | 0 | 0xFF |
+| Keyboard-текст (long press) | > 44 байт UTF-8 | 1 | 0xFF |
+| Keyboard-текст шага N в Sequence | > 44 байт | slot кнопки | N |
+| Sequence-блоб | > 51 байт | slot кнопки | 0xFE |
+
+**Маркеры в `action_data`:**
+- Keyboard+SPIFFS: `data[0]=modifiers, data[1]=0x00, data[2]=0x01` — firmware читает текст из файла
+- Sequence+SPIFFS: `data[0]=0x01, data_len=1` — firmware читает блоб из файла, выполняет как inline sequence
+
+**Протокол (CMD_SET_BUTTON_TEXT_START, 0x38) — payload 9 байт:**
+```
+[profile_id][folder_id][button_id][action_slot][step_index][data_size(4 байт LE)]
+```
+(до SPIFF.md рефакторинга был 7 байт без `action_slot`/`step_index`)
+
+**Логика в DeviceService.cs:**
+- `SendSpiffsDataAsync` — базовая передача (START → CHUNK × N → END)
+- `SendActionAsync` — диспетчер: длинный Keyboard и Sequence → SPIFFS, остальное inline
+- `SendSequenceActionAsync` + `BuildSequenceBlob` — собирает блоб, заменяет длинные шаги маркерами, при необходимости шлёт шаговые тексты и блоб отдельными SPIFFS-передачами
+
+**Совместимость:** старый формат пути `/storage/txt_{P}_{old_bid}.bin` несовместим с новым. Существующие SPIFFS-кнопки дадут `ESP_ERR_NOT_FOUND` и не напечатают текст — нужно пересохранить профиль через software.
 
 ---
 
