@@ -121,7 +121,7 @@ public partial class PluginManager
             _logger.LogInformation("[{PluginId}] Replaying {Count} queued willAppear events", pluginId, queue.Count);
             while (queue.TryDequeue(out var pending))
             {
-                var ctx = MakeContext(pluginId, pending.ButtonIndex);
+                var ctx = MakeContext(pluginId, pending.ButtonIndex, pending.FolderId);
                 var replayMsg = BuildWillAppearMessage(pending.ActionId, pending.Settings, pending.ButtonIndex, ctx);
                 await _webSocketServer.SendToConnectionAsync(connectionId, replayMsg);
             }
@@ -168,7 +168,7 @@ public partial class PluginManager
 
     private async Task HandleSetButtonDisplayAsync(PluginMessage msg)
     {
-        if (!TryParseButtonContext(msg.Context, out _, out var buttonIndex)) return;
+        if (!TryParseButtonContext(msg.Context, out _, out var buttonIndex, out var folderId)) return;
         var payload = ParsePayload(msg.Payload);
         if (payload == null) return;
 
@@ -177,7 +177,7 @@ public partial class PluginManager
 
         try
         {
-            await _deviceService.SendPluginDisplayAsync((byte)buttonIndex, text, isOn);
+            await _deviceService.SendPluginDisplayAsync((byte)buttonIndex, folderId, text, isOn);
         }
         catch (Exception ex)
         {

@@ -62,7 +62,7 @@ public partial class PluginManager
 
     public async Task DispatchButtonPressAsync(
         string pluginId, string actionId, string? settings, int buttonIndex,
-        CancellationToken ct = default)
+        byte folderId = 0xFF, CancellationToken ct = default)
     {
         if (!_plugins.TryGetValue(pluginId, out var instance))
         {
@@ -77,7 +77,7 @@ public partial class PluginManager
         }
         else
         {
-            var context = MakeContext(pluginId, buttonIndex);
+            var context = MakeContext(pluginId, buttonIndex, folderId);
             await SendToPluginAsync(pluginId, new PluginMessage
             {
                 Event   = "keyDown",
@@ -98,7 +98,7 @@ public partial class PluginManager
 
     public async Task DispatchButtonReleaseAsync(
         string pluginId, string actionId, string? settings, int buttonIndex,
-        CancellationToken ct = default)
+        byte folderId = 0xFF, CancellationToken ct = default)
     {
         if (!_plugins.TryGetValue(pluginId, out var instance))
         {
@@ -112,7 +112,7 @@ public partial class PluginManager
         }
         else
         {
-            var context = MakeContext(pluginId, buttonIndex);
+            var context = MakeContext(pluginId, buttonIndex, folderId);
             await SendToPluginAsync(pluginId, new PluginMessage
             {
                 Event   = "keyUp",
@@ -135,9 +135,9 @@ public partial class PluginManager
 
     public async Task NotifyWillAppearAsync(
         string pluginId, string actionId, string? settings, int buttonIndex,
-        CancellationToken ct = default)
+        byte folderId = 0xFF, CancellationToken ct = default)
     {
-        var context = MakeContext(pluginId, buttonIndex);
+        var context = MakeContext(pluginId, buttonIndex, folderId);
         _contextToActionId[context] = actionId;
 
         // If plugin is registered, send immediately; otherwise queue for replay on registerPlugin.
@@ -148,10 +148,11 @@ public partial class PluginManager
         }
         else
         {
-            _logger.LogInformation("[{PluginId}] willAppear queued for button {Idx} (plugin not connected yet)", pluginId, buttonIndex);
+            _logger.LogInformation("[{PluginId}] willAppear queued for button {Idx} folder={Folder} (plugin not connected yet)",
+                pluginId, buttonIndex, folderId == 0xFF ? "root" : $"F{folderId}");
             _pendingWillAppear
                 .GetOrAdd(pluginId, _ => new System.Collections.Concurrent.ConcurrentQueue<PendingWillAppear>())
-                .Enqueue(new PendingWillAppear(actionId, settings, buttonIndex));
+                .Enqueue(new PendingWillAppear(actionId, settings, buttonIndex, folderId));
         }
     }
 
@@ -186,9 +187,9 @@ public partial class PluginManager
 
     public async Task NotifyWillDisappearAsync(
         string pluginId, string actionId, string? settings, int buttonIndex,
-        CancellationToken ct = default)
+        byte folderId = 0xFF, CancellationToken ct = default)
     {
-        var context = MakeContext(pluginId, buttonIndex);
+        var context = MakeContext(pluginId, buttonIndex, folderId);
         await SendToPluginAsync(pluginId, new PluginMessage
         {
             Event   = "willDisappear",

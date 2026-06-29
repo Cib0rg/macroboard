@@ -58,14 +58,17 @@ esp_err_t handle_plugin_display(const uint8_t* payload, uint16_t length,
                                   uint8_t* response, uint16_t* response_len) {
     *response_len = 1;
 
-    if (length < 3) {
+    // Payload: [button_id(1)][folder_id(1)][flags(1)][text_len(1)][text(0..52)]
+    // folder_id 0xFF = root button; 0x00-0x0F = button inside that folder.
+    if (length < 4) {
         response[0] = STATUS_ERROR;
         return ESP_ERR_INVALID_ARG;
     }
 
     uint8_t button_id = payload[0];
-    uint8_t flags     = payload[1];
-    uint8_t text_len  = payload[2];
+    uint8_t folder_id = payload[1];   // 0xFF = root
+    uint8_t flags     = payload[2];
+    uint8_t text_len  = payload[3];
     bool    is_on     = (flags & 0x01) != 0;
 
     if (button_id >= NUM_BUTTONS) {
@@ -73,11 +76,16 @@ esp_err_t handle_plugin_display(const uint8_t* payload, uint16_t length,
         response[0] = STATUS_ERROR;
         return ESP_ERR_INVALID_ARG;
     }
+    if (folder_id != 0xFF && folder_id >= NUM_FOLDERS) {
+        ESP_LOGW(TAG, "Invalid folder_id %u", folder_id);
+        response[0] = STATUS_ERROR;
+        return ESP_ERR_INVALID_ARG;
+    }
 
     char text[64] = {0};
     uint8_t copy_len = (text_len < 63) ? text_len : 63;
-    if (copy_len > 0 && length >= (uint16_t)(3u + copy_len)) {
-        memcpy(text, &payload[3], copy_len);
+    if (copy_len > 0 && length >= (uint16_t)(4u + copy_len)) {
+        memcpy(text, &payload[4], copy_len);
     }
 
     // Allocate RGB565 big-endian buffer in PSRAM (160 × 160 × 2 = 51200 bytes)
@@ -96,27 +104,46 @@ esp_err_t handle_plugin_display(const uint8_t* payload, uint16_t length,
     // 2. Overlay ring at display edges (minimal overlap with centred text)
     draw_ring_to_buf(buf, ring_color);
 
-    // 3. Update display cache so any subsequent profile_refresh_displays() draws the
-    //    plugin state instead of the old profile placeholder image.  Without this,
-    //    a profile save (which calls profile_refresh_displays) wipes out the plugin
-    //    display — the purple OFF ring looks identical to the purple placeholder and
-    //    the user perceives "OFF doesn't switch" even though the command executed.
-    uint8_t* cache_buf = heap_caps_malloc(DISPLAY_BUFFER_SIZE, MALLOC_CAP_SPIRAM);
-    if (cache_buf) {
-        memcpy(cache_buf, buf, DISPLAY_BUFFER_SIZE);
-        profile_image_cache_update(button_id, false, cache_buf);
+    // 3. Determine whether this button is currently visible on screen.
+    //    A root button (folder_id=0xFF) is visible when the user is at root level.
+    //    A folder button is visible only while that specific folder is open.
+    bool is_folder_btn = (folder_id != 0xFF);
+    uint8_t cur_folder = profile_get_current_folder();
+    bool is_visible    = is_folder_btn
+        ? (cur_folder == folder_id)
+        : (cur_folder == 0xFF);
+
+    // 4. Update the display cache for the correct navigation layer.
+    //    Only write the folder cache when we are actually in that folder — the cache
+    //    is shared across all folder buttons (one folder at a time), so writing it
+    //    for a different folder than the one currently open would corrupt the cache.
+    bool update_cache = !is_folder_btn || is_visible;
+    if (update_cache) {
+        uint8_t* cache_buf = heap_caps_malloc(DISPLAY_BUFFER_SIZE, MALLOC_CAP_SPIRAM);
+        if (cache_buf) {
+            memcpy(cache_buf, buf, DISPLAY_BUFFER_SIZE);
+            profile_image_cache_update(button_id, is_folder_btn, cache_buf);
+        }
     }
 
-    // 4. Post to display task — ownership of buf transfers to the task
-    esp_err_t ret = display_post_draw(button_id, buf);
-    if (ret != ESP_OK) {
-        // display_post_draw already freed buf on failure (queue full path)
-        ESP_LOGE(TAG, "display_post_draw failed for button %u", button_id);
-        response[0] = STATUS_ERROR;
-        return ret;
+    // 5. Push to display task only when the button is currently visible.
+    //    Hidden buttons (e.g. folder closed) should not overwrite whatever is on screen.
+    //    The backend re-sends CMD_PLUGIN_DISPLAY on willAppear when the folder opens.
+    if (is_visible) {
+        esp_err_t ret = display_post_draw(button_id, buf);
+        if (ret != ESP_OK) {
+            ESP_LOGE(TAG, "display_post_draw failed for button %u", button_id);
+            response[0] = STATUS_ERROR;
+            return ret;
+        }
+    } else {
+        free(buf);
     }
 
-    ESP_LOGI(TAG, "button=%u isOn=%d text='%.32s'", button_id, (int)is_on, text);
+    ESP_LOGI(TAG, "button=%u folder=%s%u isOn=%d visible=%d text='%.32s'",
+             button_id,
+             is_folder_btn ? "F" : "root/", is_folder_btn ? folder_id : 0,
+             (int)is_on, (int)is_visible, text);
     response[0] = STATUS_OK;
     return ESP_OK;
 }

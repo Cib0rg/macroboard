@@ -42,20 +42,44 @@ public partial class PluginManager
             }
         };
 
-    private static string MakeContext(string pluginId, int buttonIndex)
-        => $"{pluginId}:{buttonIndex}";
+    // Context format:
+    //   Root button:   "pluginId:buttonIndex"          e.g. "com.ha.plugin:3"
+    //   Folder button: "pluginId:F{folderId}:buttonIndex"  e.g. "com.ha.plugin:F2:3"
+    private static string MakeContext(string pluginId, int buttonIndex, byte folderId = 0xFF)
+        => folderId == 0xFF
+            ? $"{pluginId}:{buttonIndex}"
+            : $"{pluginId}:F{folderId}:{buttonIndex}";
 
+    // Backward-compat overload — callers that don't need folderId.
     private static bool TryParseButtonContext(string? context, out string pluginId, out int buttonIndex)
+        => TryParseButtonContext(context, out pluginId, out buttonIndex, out _);
+
+    private static bool TryParseButtonContext(string? context, out string pluginId, out int buttonIndex, out byte folderId)
     {
         pluginId    = string.Empty;
         buttonIndex = 0;
+        folderId    = 0xFF;
         if (string.IsNullOrEmpty(context)) return false;
 
         var lastColon = context.LastIndexOf(':');
         if (lastColon < 0) return false;
         if (!int.TryParse(context[(lastColon + 1)..], out buttonIndex)) return false;
 
-        pluginId = context[..lastColon];
+        // prefix is everything before the last colon — either "pluginId" or "pluginId:F{N}"
+        var prefix = context[..lastColon];
+        var folderColon = prefix.LastIndexOf(':');
+        if (folderColon >= 0)
+        {
+            var segment = prefix[(folderColon + 1)..];
+            if (segment.Length > 1 && segment[0] == 'F' && byte.TryParse(segment[1..], out var fid))
+            {
+                folderId = fid;
+                pluginId = prefix[..folderColon];
+                return true;
+            }
+        }
+
+        pluginId = prefix;
         return true;
     }
 

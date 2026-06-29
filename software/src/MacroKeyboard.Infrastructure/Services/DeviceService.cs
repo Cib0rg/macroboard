@@ -230,11 +230,11 @@ public class DeviceService : IDeviceService
         }
     }
 
-    public async Task<bool> SendPluginDisplayAsync(byte buttonId, string text, bool isOn,
+    public async Task<bool> SendPluginDisplayAsync(byte buttonId, byte folderId, string text, bool isOn,
         CancellationToken cancellationToken = default)
     {
         await _commandLock.WaitAsync(cancellationToken);
-        try   { return await _pluginDisplayCommand.ExecuteAsync(buttonId, text, isOn, cancellationToken); }
+        try   { return await _pluginDisplayCommand.ExecuteAsync(buttonId, folderId, text, isOn, cancellationToken); }
         finally { _commandLock.Release(); }
     }
 

@@ -39,8 +39,8 @@ public class ActionExecutorService : IActionExecutorService
         _logger = logger;
 
         _deviceService.ButtonPressed += (s, e) => OnButtonPressed(s, e).FireAndForget(_logger);
-        _deviceService.FolderEntered += (_, e) => _currentFolderId = e.FolderId;
-        _deviceService.FolderExited  += (_, e) => _currentFolderId = e.FolderDepth == 0 ? (byte)0xFF : e.ParentFolderId;
+        _deviceService.FolderEntered += (_, e) => OnFolderEnteredAsync(e).FireAndForget(_logger);
+        _deviceService.FolderExited  += (_, e) => OnFolderExitedAsync(e).FireAndForget(_logger);
         // Subscribe to DeviceManager.DeviceConnected (fires only after firmware is confirmed ready),
         // not DeviceService.DeviceConnected (fires on raw USB connect, firmware may still be booting).
         // The premature CMD 0x12 that was sent via the raw event would arrive late and poison the
@@ -158,14 +158,103 @@ public class ActionExecutorService : IActionExecutorService
         }
 
         // Prefer sidecar settings (written by setSettings from plugin/PI) over profile snapshot.
-        var liveSettings = await _pluginManager.GetActionSettingsAsync(action.PluginId, buttonId);
+        var liveSettings = await _pluginManager.GetActionSettingsAsync(action.PluginId, buttonId, _currentFolderId);
 
         _logger.LogInformation(
-            "Dispatching keyDown: plugin={Plugin} action={Action} button={Btn} settingsSource={Src}",
+            "Dispatching keyDown: plugin={Plugin} action={Action} button={Btn} folder={Folder} settingsSource={Src}",
             action.PluginId, action.ActionId, buttonId,
+            _currentFolderId == 0xFF ? "root" : $"F{_currentFolderId}",
             liveSettings != null ? "sidecar" : "profile");
 
         await _pluginManager.DispatchButtonPressAsync(
-            action.PluginId, action.ActionId, liveSettings ?? action.Settings, buttonId);
+            action.PluginId, action.ActionId, liveSettings ?? action.Settings, buttonId, _currentFolderId);
+    }
+
+    // ── Folder navigation — dispatch willAppear/willDisappear for plugin buttons ───
+
+    private async Task OnFolderEnteredAsync(FolderEventArgs e)
+    {
+        // Capture the previous folder BEFORE updating _currentFolderId so we can
+        // send willDisappear for whichever buttons were visible before.
+        var previousFolderId = _currentFolderId;
+        _currentFolderId = e.FolderId;
+
+        var dbProfileId = _profileService.ActiveProfileId;
+        var profile     = await _profileService.GetProfileAsync(dbProfileId);
+        if (profile == null) return;
+
+        // willDisappear for whichever buttons were visible before (root or parent folder)
+        if (previousFolderId == 0xFF)
+        {
+            foreach (var btn in profile.Buttons)
+            {
+                if (btn.Action is not PluginActionConfig pa) continue;
+                await _pluginManager.NotifyWillDisappearAsync(pa.PluginId, pa.ActionId, pa.Settings, btn.ButtonId);
+            }
+        }
+        else
+        {
+            var prevFolder = profile.Folders.FirstOrDefault(f => f.FolderId == previousFolderId);
+            if (prevFolder != null)
+            {
+                foreach (var btn in prevFolder.Buttons)
+                {
+                    if (btn.Action is not PluginActionConfig pa) continue;
+                    await _pluginManager.NotifyWillDisappearAsync(pa.PluginId, pa.ActionId, pa.Settings, btn.ButtonId, previousFolderId);
+                }
+            }
+        }
+
+        // willAppear for newly visible folder plugin buttons
+        var newFolder = profile.Folders.FirstOrDefault(f => f.FolderId == e.FolderId);
+        if (newFolder == null) return;
+        foreach (var btn in newFolder.Buttons)
+        {
+            if (btn.Action is not PluginActionConfig pa) continue;
+            await _pluginManager.NotifyWillAppearAsync(pa.PluginId, pa.ActionId, pa.Settings, btn.ButtonId, e.FolderId);
+        }
+    }
+
+    private async Task OnFolderExitedAsync(FolderEventArgs e)
+    {
+        var exitedFolderId = _currentFolderId;
+        _currentFolderId = e.FolderDepth == 0 ? (byte)0xFF : e.ParentFolderId;
+
+        var dbProfileId = _profileService.ActiveProfileId;
+        var profile     = await _profileService.GetProfileAsync(dbProfileId);
+        if (profile == null) return;
+
+        // willDisappear for the folder we just left
+        var exitedFolder = profile.Folders.FirstOrDefault(f => f.FolderId == exitedFolderId);
+        if (exitedFolder != null)
+        {
+            foreach (var btn in exitedFolder.Buttons)
+            {
+                if (btn.Action is not PluginActionConfig pa) continue;
+                await _pluginManager.NotifyWillDisappearAsync(pa.PluginId, pa.ActionId, pa.Settings, btn.ButtonId, exitedFolderId);
+            }
+        }
+
+        // willAppear for whichever buttons are now visible (root or parent folder)
+        if (e.FolderDepth == 0)
+        {
+            foreach (var btn in profile.Buttons)
+            {
+                if (btn.Action is not PluginActionConfig pa) continue;
+                await _pluginManager.NotifyWillAppearAsync(pa.PluginId, pa.ActionId, pa.Settings, btn.ButtonId);
+            }
+        }
+        else
+        {
+            var parentFolder = profile.Folders.FirstOrDefault(f => f.FolderId == e.ParentFolderId);
+            if (parentFolder != null)
+            {
+                foreach (var btn in parentFolder.Buttons)
+                {
+                    if (btn.Action is not PluginActionConfig pa) continue;
+                    await _pluginManager.NotifyWillAppearAsync(pa.PluginId, pa.ActionId, pa.Settings, btn.ButtonId, e.ParentFolderId);
+                }
+            }
+        }
     }
 }

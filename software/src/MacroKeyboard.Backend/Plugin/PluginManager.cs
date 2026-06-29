@@ -38,7 +38,7 @@ public partial class PluginManager : IDisposable
     // willAppear events queued while plugin is not yet registered; replayed on registerPlugin
     private readonly ConcurrentDictionary<string, ConcurrentQueue<PendingWillAppear>> _pendingWillAppear = new();
 
-    private sealed record PendingWillAppear(string ActionId, string? Settings, int ButtonIndex);
+    private sealed record PendingWillAppear(string ActionId, string? Settings, int ButtonIndex, byte FolderId = 0xFF);
 
     private const string DeviceId = "MK_DEVICE_0";
 
@@ -79,9 +79,9 @@ public partial class PluginManager : IDisposable
     /// Returns the settings last written by the plugin or PI via setSettings for a specific
     /// action instance (sidecar file). Returns null if never set.
     /// </summary>
-    public async Task<string?> GetActionSettingsAsync(string pluginId, int buttonIndex)
+    public async Task<string?> GetActionSettingsAsync(string pluginId, int buttonIndex, byte folderId = 0xFF)
     {
-        var context = MakeContext(pluginId, buttonIndex);
+        var context = MakeContext(pluginId, buttonIndex, folderId);
         var path    = GetActionSettingsPath(pluginId, context);
         if (!File.Exists(path)) return null;
         return await File.ReadAllTextAsync(path);
