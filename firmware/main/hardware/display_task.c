@@ -56,8 +56,18 @@ void display_task(void* arg) {
     display_cmd_t cmd;
     while (1) {
         if (xQueueReceive(display_queue, &cmd, portMAX_DELAY) == pdTRUE) {
-            gc9a01_draw_image(cmd.button_id, cmd.rgb565_buf,
-                              DISPLAY_WIDTH, DISPLAY_HEIGHT);
+            // Log ring pixel before draw so we can verify buffer content independently
+            // of gc9a01_draw_image (row 80, x=2 is on the ring for 160×160 images).
+            const size_t ring_off = (size_t)80 * DISPLAY_WIDTH * 2 + 2 * 2;
+            ESP_LOGI(TAG, "draw button=%u ring_px=0x%02X%02X",
+                     cmd.button_id,
+                     cmd.rgb565_buf[ring_off], cmd.rgb565_buf[ring_off + 1]);
+            esp_err_t ret = gc9a01_draw_image(cmd.button_id, cmd.rgb565_buf,
+                                              DISPLAY_WIDTH, DISPLAY_HEIGHT);
+            if (ret != ESP_OK) {
+                ESP_LOGW(TAG, "draw_image failed button=%u: %s",
+                         cmd.button_id, esp_err_to_name(ret));
+            }
             free(cmd.rgb565_buf);
         }
     }

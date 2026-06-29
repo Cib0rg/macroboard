@@ -138,11 +138,14 @@ public class ImageService
     }
 
     /// <summary>
-    /// Create a 160×160 plugin-button image: purple ring + centered text (entity name / state).
+    /// Create a 160×160 plugin-button image: ring + centered text.
+    /// Ring is green (#22C55E) when <paramref name="isOn"/> is true, purple (#8B5CF6) otherwise.
     /// </summary>
-    public Task<byte[]> CreatePluginStateImageAsync(string text)
+    public Task<byte[]> CreatePluginStateImageAsync(string text, bool isOn = false)
     {
-        var purple = Color.FromRgb(0x8B, 0x5C, 0xF6);
+        var ringColor = isOn
+            ? Color.FromRgb(0x22, 0xC5, 0x5E) // #22C55E green — active
+            : Color.FromRgb(0x8B, 0x5C, 0xF6); // #8B5CF6 purple — default
 
         using var image = new Image<Rgba32>(DisplaySize, DisplaySize);
         image.Mutate(ctx => ctx.BackgroundColor(Color.Black));
@@ -174,9 +177,15 @@ public class ImageService
         }
 
         ApplyCircularMask(image);
-        DrawRing(image, purple);
+        DrawRing(image, ringColor);
         return ToJpegBytesAsync(image);
     }
+
+    /// <summary>
+    /// Create a 160×160 red-ring error image (#EF4444) with an optional label.
+    /// </summary>
+    public Task<byte[]> CreateErrorRingAsync(string? label = null)
+        => CreateRingPlaceholderAsync(Color.FromRgb(0xEF, 0x44, 0x44), label); // #EF4444 red
 
     private static void DrawRing(Image<Rgba32> image, Color color)
     {

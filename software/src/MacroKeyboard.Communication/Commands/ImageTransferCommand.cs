@@ -32,7 +32,8 @@ public class ImageTransferCommand
         byte[] imageData,
         byte folderId = 0xFF,
         IProgress<int>? progress = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        bool noStore = false)
     {
         // Acquire the protocol lock for the entire image transfer session.
         // This prevents other commands (SetButtonAction, SetLedColor, etc.)
@@ -44,7 +45,7 @@ public class ImageTransferCommand
                 buttonId, imageData.Length);
             
             // 1. Start transfer
-            var (startOk, transferId) = await StartTransferLockedAsync(profileId, buttonId, imageData, folderId, cancellationToken);
+            var (startOk, transferId) = await StartTransferLockedAsync(profileId, buttonId, imageData, folderId, cancellationToken, noStore);
             if (!startOk)
             {
                 _logger.LogError("Failed to start image transfer");
@@ -106,7 +107,8 @@ public class ImageTransferCommand
         byte buttonId,
         byte[] imageData,
         byte folderId,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool noStore = false)
     {
         var payload = new byte[12];
         payload[0] = profileId;
@@ -119,10 +121,11 @@ public class ImageTransferCommand
         payload[5] = (byte)((size >> 24) & 0xFF);
 
         payload[6] = 0x01; // Format: JPEG
-
-        payload[7] = 160;
+        // payload[7]: transfer flags. TRANSFER_FLAG_VOLATILE (0x01) = skip SPIFFS write.
+        // Old firmware ignores this byte; bit 0 of the old "width=160" value is 0 → safe.
+        payload[7] = noStore ? (byte)0x01 : (byte)0x00;
         payload[8] = 0;
-        payload[9] = 160;
+        payload[9] = 0;
         payload[10] = 0;
         payload[11] = folderId; // 0xFF = root; 0..N = folder
         

@@ -142,6 +142,18 @@ public sealed class SdConnection
             context
         }), ct);
 
+    /// <summary>
+    /// MacroKeyboard extension: show red error ring on button with an optional label.
+    /// Backend handles "mkSetButtonError".
+    /// </summary>
+    public Task SetButtonErrorAsync(string context, string? message = null, CancellationToken ct = default)
+        => SendRawAsync(JsonSerializer.Serialize(new
+        {
+            @event  = "mkSetButtonError",
+            context,
+            payload = new { message = message ?? "Error" }
+        }), ct);
+
     public Task GetGlobalSettingsAsync(CancellationToken ct = default)
         => SendRawAsync(JsonSerializer.Serialize(new
         {

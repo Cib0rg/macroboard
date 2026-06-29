@@ -35,6 +35,11 @@ public partial class PluginManager : IDisposable
     // context (pluginId:buttonIndex) → actionId; populated on willAppear so PI registration can send propertyInspectorDidAppear
     private readonly ConcurrentDictionary<string, string> _contextToActionId = new();
 
+    // willAppear events queued while plugin is not yet registered; replayed on registerPlugin
+    private readonly ConcurrentDictionary<string, ConcurrentQueue<PendingWillAppear>> _pendingWillAppear = new();
+
+    private sealed record PendingWillAppear(string ActionId, string? Settings, int ButtonIndex);
+
     private const string DeviceId = "MK_DEVICE_0";
 
     // Tolerates both "Category": "Foo" and "Category": ["Foo", "Bar"] in SD manifests
@@ -96,5 +101,6 @@ public partial class PluginManager : IDisposable
         foreach (var instance in _plugins.Values)
             instance.Dispose();
         _plugins.Clear();
+        _pendingWillAppear.Clear();
     }
 }

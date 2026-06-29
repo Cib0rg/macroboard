@@ -9,6 +9,7 @@
 #include "protocol_types.h"
 #include "image_transfer.h"
 #include "text_transfer.h"
+#include "plugin_display.h"
 #include "config.h"
 #include "profile/profile_manager.h"
 #include "storage/profile_storage.h"
@@ -80,6 +81,7 @@ static const command_entry_t command_table[] = {
     {CMD_SET_FOLDER_BUTTON_ACTION,              handle_set_folder_button_action},
     {CMD_SET_FOLDER_BUTTON_NAME,               handle_set_folder_button_name},
     {CMD_SET_FOLDER_BUTTON_LED,                handle_set_folder_button_led},
+    {CMD_PLUGIN_DISPLAY,                       handle_plugin_display},
     {CMD_SET_LED_COLOR, handle_set_led_color},
     {CMD_GET_LED_COLOR, handle_get_led_color},
     {CMD_SET_BACKLIGHT, handle_set_backlight},
@@ -268,11 +270,15 @@ static esp_err_t handle_start_image_transfer(const uint8_t* payload, uint16_t le
     uint8_t button_id = payload[1];
     uint32_t image_size;
     memcpy(&image_size, &payload[2], 4);
-    uint8_t format = payload[6];
+    uint8_t format    = payload[6];
+    // payload[7]: transfer flags (TRANSFER_FLAG_VOLATILE etc.).
+    // Old C# sends 160 here (width hint, ignored by firmware) — bit 0 = 0, so NOT volatile.
+    // New C# sends explicit flags (0x00 = normal, 0x01 = volatile / no SPIFFS).
+    uint8_t flags     = payload[7];
     // Byte 11 (optional): folder_id. 0xFF or absent means root button.
     uint8_t folder_id = (length >= 12) ? payload[11] : 0xFF;
 
-    esp_err_t ret = image_transfer_start(0, folder_id, button_id, image_size, format);
+    esp_err_t ret = image_transfer_start(0, folder_id, button_id, image_size, format, flags);
 
     response[0] = (ret == ESP_OK) ? STATUS_OK : STATUS_ERROR;
     uint16_t transfer_id = button_id;

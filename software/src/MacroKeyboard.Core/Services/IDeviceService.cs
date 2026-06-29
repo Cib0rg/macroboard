@@ -98,10 +98,18 @@ public interface IDeviceService
     Task<bool> SetProfileAsync(byte profileId, CancellationToken cancellationToken = default);
     
     /// <summary>
-    /// Отправить изображение на кнопку
+    /// Отправить изображение на кнопку. noStore=true пропускает запись в SPIFFS (плагиновые временные изображения).
     /// </summary>
-    Task<bool> SendButtonImageAsync(byte profileId, byte buttonId, byte[] imageData, 
-        IProgress<int>? progress = null, CancellationToken cancellationToken = default);
+    Task<bool> SendButtonImageAsync(byte profileId, byte buttonId, byte[] imageData,
+        IProgress<int>? progress = null, CancellationToken cancellationToken = default,
+        bool noStore = false);
+
+    /// <summary>
+    /// Нарисовать кольцо + текст прямо на ESP (CMD_PLUGIN_DISPLAY 0x44).
+    /// Не передаёт JPEG и не пишет в SPIFFS. Используется плагинами для near-realtime обновлений.
+    /// </summary>
+    Task<bool> SendPluginDisplayAsync(byte buttonId, string text, bool isOn,
+        CancellationToken cancellationToken = default);
     
     /// <summary>
     /// Установить действие для кнопки

@@ -7,6 +7,7 @@ public sealed class PluginController : IAsyncDisposable
     private readonly SdConnection _sd;
     private HaConnection? _ha;
     private readonly SemaphoreSlim _connectLock = new(1, 1);
+    private readonly CancellationTokenSource _disposeCts = new();
 
     // context → button config
     private readonly Dictionary<string, ButtonConfig> _buttons = new();
@@ -14,6 +15,11 @@ public sealed class PluginController : IAsyncDisposable
     private readonly Dictionary<string, HaState> _entityStates = new(StringComparer.OrdinalIgnoreCase);
     // context of the currently open Property Inspector (null when PI is closed)
     private string? _currentPiContext;
+
+    // reconnect state
+    private string? _lastHaUrl;
+    private string? _lastHaToken;
+    private volatile bool _reconnecting;
 
     public PluginController(SdConnection sd)
     {
@@ -177,20 +183,25 @@ public sealed class PluginController : IAsyncDisposable
 
     private async Task ConnectHaAsync(string url, string token)
     {
-        await _connectLock.WaitAsync();
+        _lastHaUrl   = url;
+        _lastHaToken = token;
+
+        await _connectLock.WaitAsync(_disposeCts.Token);
         try
         {
             if (_ha != null)
             {
-                _ha.StateChanged -= OnHaStateChanged;
-                _ha.Connected    -= OnHaConnected;
+                _ha.StateChanged  -= OnHaStateChanged;
+                _ha.Connected     -= OnHaConnected;
+                _ha.Disconnected  -= OnHaDisconnected;
                 await _ha.DisposeAsync();
                 _ha = null;
             }
 
             var ha = new HaConnection();
-            ha.StateChanged += OnHaStateChanged;
-            ha.Connected    += OnHaConnected;
+            ha.StateChanged  += OnHaStateChanged;
+            ha.Connected     += OnHaConnected;
+            ha.Disconnected  += OnHaDisconnected;
 
             // Assign _ha BEFORE ConnectAsync — Connected fires synchronously at the end of
             // ConnectAsync (before it returns), so OnHaConnected must be able to reference _ha.
@@ -199,21 +210,73 @@ public sealed class PluginController : IAsyncDisposable
             try
             {
                 Console.WriteLine($"[Ctrl] Connecting to {url}…");
-                await ha.ConnectAsync(url, token);
+                await ha.ConnectAsync(url, token, _disposeCts.Token);
                 Console.WriteLine($"[Ctrl] Connected to HA at {url}");
             }
+            catch (OperationCanceledException) { throw; }
             catch (Exception ex)
             {
-                ha.StateChanged -= OnHaStateChanged;
-                ha.Connected    -= OnHaConnected;
+                ha.StateChanged  -= OnHaStateChanged;
+                ha.Connected     -= OnHaConnected;
+                ha.Disconnected  -= OnHaDisconnected;
                 await ha.DisposeAsync();
                 _ha = null;
-                Console.Error.WriteLine($"[Ctrl] HA connect failed: {ex}");
+                Console.Error.WriteLine($"[Ctrl] HA connect failed: {ex.Message}");
             }
         }
         finally
         {
             _connectLock.Release();
+        }
+    }
+
+    private async void OnHaDisconnected()
+    {
+        Console.Error.WriteLine("[Ctrl] HA disconnected — showing error state on all buttons");
+
+        foreach (var (context, _) in _buttons.ToList())
+        {
+            try { await _sd.SetButtonErrorAsync(context, "HA\nOffline"); }
+            catch (Exception ex) { Console.Error.WriteLine($"[Ctrl] SetButtonError failed: {ex.Message}"); }
+        }
+
+        if (_lastHaUrl != null && _lastHaToken != null && !_reconnecting && !_disposeCts.IsCancellationRequested)
+        {
+            _reconnecting = true;
+            _ = Task.Run(async () =>
+            {
+                try   { await ReconnectHaLoopAsync(); }
+                finally { _reconnecting = false; }
+            });
+        }
+    }
+
+    private async Task ReconnectHaLoopAsync()
+    {
+        var delay = TimeSpan.FromSeconds(5);
+        Console.WriteLine("[Ctrl] Starting HA reconnect loop...");
+
+        while (!_disposeCts.IsCancellationRequested)
+        {
+            try { await Task.Delay(delay, _disposeCts.Token); }
+            catch (OperationCanceledException) { return; }
+
+            if (_ha?.IsConnected == true) return; // connected by user action
+
+            delay = TimeSpan.FromSeconds(Math.Min(60, delay.TotalSeconds * 2));
+            Console.WriteLine($"[Ctrl] Attempting HA reconnect to {_lastHaUrl}...");
+
+            try
+            {
+                await ConnectHaAsync(_lastHaUrl!, _lastHaToken!);
+                if (_ha?.IsConnected == true)
+                {
+                    Console.WriteLine("[Ctrl] HA reconnected successfully");
+                    return;
+                }
+            }
+            catch (OperationCanceledException) { return; }
+            catch (Exception ex) { Console.Error.WriteLine($"[Ctrl] Reconnect attempt failed: {ex.Message}"); }
         }
     }
 
@@ -330,7 +393,10 @@ public sealed class PluginController : IAsyncDisposable
             return;
         }
 
-        if (!skipFetch && _ha?.IsConnected == true)
+        // Skip full GET_STATES if cache is already warm (OnHaConnected populated it).
+        // willAppear for individual buttons doesn't need to re-fetch all 1000+ entities.
+        bool cacheWarm = _entityStates.Count > 0;
+        if (!skipFetch && !cacheWarm && _ha?.IsConnected == true)
         {
             try
             {
@@ -420,13 +486,16 @@ public sealed class PluginController : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        _disposeCts.Cancel();
         if (_ha != null)
         {
-            _ha.StateChanged -= OnHaStateChanged;
-            _ha.Connected    -= OnHaConnected;
+            _ha.StateChanged  -= OnHaStateChanged;
+            _ha.Connected     -= OnHaConnected;
+            _ha.Disconnected  -= OnHaDisconnected;
             await _ha.DisposeAsync();
         }
         _connectLock.Dispose();
+        _disposeCts.Dispose();
     }
 
     // ── Records ───────────────────────────────────────────────────────────────

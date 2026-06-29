@@ -79,6 +79,15 @@ esp_err_t display_mux_select(uint8_t display_id) {
     
     // Small delay for signal stabilization
     esp_rom_delay_us(1);
-    
+
     return ESP_OK;
+}
+
+void display_mux_deselect(void) {
+    // Address 7 (A0=A1=A2=1) is unused on both decoders — no display wired to output 7.
+    // Drives all display CS lines HIGH, ending the current SPI frame.
+    gpio_set_level(PIN_MUX_A0, 1);
+    gpio_set_level(PIN_MUX_A1, 1);
+    gpio_set_level(PIN_MUX_A2, 1);
+    esp_rom_delay_us(1);
 }

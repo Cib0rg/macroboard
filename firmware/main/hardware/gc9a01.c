@@ -23,6 +23,10 @@ static const char* TAG = "GC9D01";
 static spi_device_handle_t spi_device = NULL;
 static SemaphoreHandle_t spi_mutex = NULL;
 
+// Pre-allocated DMA bounce buffer (DISPLAY_WIDTH * 2 = 320 bytes, internal SRAM).
+// All draw functions use spi_mutex, which also serialises access to this buffer.
+static uint8_t* s_dma_row_buf = NULL;
+
 static void spi_lock(uint8_t display_id) {
     xSemaphoreTake(spi_mutex, portMAX_DELAY);
     display_mux_select(display_id);
@@ -30,6 +34,7 @@ static void spi_lock(uint8_t display_id) {
 
 static void spi_unlock(void) {
     gc9a01_send_command(0x00);  // NOP — exits RAMWR so other displays don't pick up stray SPI traffic
+    display_mux_deselect();     // CS HIGH — GC9D01 requires a CS transition to accept the next frame
     xSemaphoreGive(spi_mutex);
 }
 
@@ -308,6 +313,12 @@ esp_err_t gc9a01_init(void) {
     gpio_set_level(PIN_SPI_RST, 1);
     vTaskDelay(pdMS_TO_TICKS(100));
     
+    s_dma_row_buf = heap_caps_malloc(DISPLAY_WIDTH * 2, MALLOC_CAP_DMA);
+    if (!s_dma_row_buf) {
+        ESP_LOGE(TAG, "Failed to allocate DMA row buffer");
+        return ESP_ERR_NO_MEM;
+    }
+
     ESP_LOGI(TAG, "GC9D01 driver initialized (SPI @ %d MHz)", SPI_CLOCK_SPEED_HZ / 1000000);
     return ESP_OK;
 }
@@ -364,21 +375,16 @@ esp_err_t gc9a01_clear(uint8_t display_id, uint16_t color) {
     if (display_id >= NUM_DISPLAYS) {
         return ESP_ERR_INVALID_ARG;
     }
-    
-    uint16_t* buffer = heap_caps_malloc(DISPLAY_WIDTH * 2, MALLOC_CAP_DMA);
-    if (buffer == NULL) return ESP_ERR_NO_MEM;
-
-    uint16_t swapped = __builtin_bswap16(color);
-    for (int i = 0; i < DISPLAY_WIDTH; i++) buffer[i] = swapped;
 
     spi_lock(display_id);
+    uint16_t swapped = __builtin_bswap16(color);
+    uint16_t* row16  = (uint16_t*)s_dma_row_buf;
+    for (int i = 0; i < DISPLAY_WIDTH; i++) row16[i] = swapped;
     gc9a01_set_window(0, 0, DISPLAY_WIDTH - 1, DISPLAY_HEIGHT - 1);
     for (int y = 0; y < DISPLAY_HEIGHT; y++)
-        gc9a01_write_data((uint8_t*)buffer, DISPLAY_WIDTH * 2);
+        gc9a01_write_data(s_dma_row_buf, DISPLAY_WIDTH * 2);
     spi_unlock();
 
-    free(buffer);
-    
     return ESP_OK;
 }
 
@@ -395,12 +401,18 @@ esp_err_t gc9a01_draw_image(uint8_t display_id, const uint8_t* image_data,
     // image_data may point into PSRAM (s_display_cache / s_folder_display_cache).
     // spi_device_transmit requires a DMA-capable (internal SRAM) buffer; passing a
     // PSRAM pointer causes the driver to either reject the transaction or fall back
-    // to an expensive per-row bounce-buffer copy internally.  Allocate one row-sized
-    // DMA buffer here and memcpy each row before sending — this is fast (320 bytes
-    // from PSRAM, typically L1-cache-warm) and guarantees DMA works correctly.
+    // to an expensive per-row bounce-buffer copy internally.  s_dma_row_buf is
+    // pre-allocated in gc9a01_init() and reused here — protected by spi_mutex so
+    // there is no race between concurrent callers.
     size_t row_bytes = width * 2;
-    uint8_t* row_buf = heap_caps_malloc(row_bytes, MALLOC_CAP_DMA);
-    if (!row_buf) return ESP_ERR_NO_MEM;
+
+    // Diagnostic: log the ring pixel (row 80, x=2 → d²=6084=RING_OUTER_R² for 160×160).
+    // GREEN ring = 0x262B, PURPLE ring = 0x8AFE, black bg = 0x0000.
+    if (width == DISPLAY_WIDTH && height == DISPLAY_HEIGHT) {
+        size_t ring_off = 80 * row_bytes + 2 * 2;
+        ESP_LOGI(TAG, "draw_image disp=%u ring_px=0x%02X%02X",
+                 display_id, image_data[ring_off], image_data[ring_off + 1]);
+    }
 
     uint16_t x0 = (DISPLAY_WIDTH - width) / 2;
     uint16_t y0 = (DISPLAY_HEIGHT - height) / 2;
@@ -408,12 +420,17 @@ esp_err_t gc9a01_draw_image(uint8_t display_id, const uint8_t* image_data,
     spi_lock(display_id);
     gc9a01_set_window(x0, y0, x0 + width - 1, y0 + height - 1);
     for (uint16_t row = 0; row < height; row++) {
-        memcpy(row_buf, image_data + row * row_bytes, row_bytes);
-        gc9a01_write_data(row_buf, row_bytes);
+        memcpy(s_dma_row_buf, image_data + row * row_bytes, row_bytes);
+        esp_err_t wr = gc9a01_write_data(s_dma_row_buf, row_bytes);
+        if (wr != ESP_OK) {
+            ESP_LOGE(TAG, "draw_image SPI fail row=%u disp=%u: %s",
+                     row, display_id, esp_err_to_name(wr));
+            spi_unlock();
+            return wr;
+        }
     }
     spi_unlock();
 
-    free(row_buf);
     return ESP_OK;
 }
 
@@ -437,18 +454,15 @@ esp_err_t gc9a01_draw_image_in_region(uint8_t display_id, const uint8_t* image_d
     uint16_t x0     = (DISPLAY_WIDTH - img_w) / 2;
 
     size_t row_bytes = img_w * 2;
-    uint8_t* row_buf = heap_caps_malloc(row_bytes, MALLOC_CAP_DMA);
-    if (!row_buf) return ESP_ERR_NO_MEM;
 
     spi_lock(display_id);
     gc9a01_set_window(x0, disp_y, x0 + img_w - 1, disp_y + draw_h - 1);
     for (uint16_t row = 0; row < draw_h; row++) {
-        memcpy(row_buf, image_data + (src_y + row) * row_bytes, row_bytes);
-        gc9a01_write_data(row_buf, row_bytes);
+        memcpy(s_dma_row_buf, image_data + (src_y + row) * row_bytes, row_bytes);
+        gc9a01_write_data(s_dma_row_buf, row_bytes);
     }
     spi_unlock();
 
-    free(row_buf);
     return ESP_OK;
 }
 
@@ -457,19 +471,15 @@ esp_err_t gc9a01_fill_band(uint8_t display_id, uint16_t y0, uint16_t h, uint16_t
     if ((uint32_t)y0 + h > DISPLAY_HEIGHT) return ESP_ERR_INVALID_SIZE;
     if (h == 0) return ESP_OK;
 
-    uint16_t* row_buf = heap_caps_malloc(DISPLAY_WIDTH * sizeof(uint16_t), MALLOC_CAP_DMA);
-    if (!row_buf) return ESP_ERR_NO_MEM;
-
-    uint16_t swapped = __builtin_bswap16(color);
-    for (int i = 0; i < DISPLAY_WIDTH; i++) row_buf[i] = swapped;
-
     spi_lock(display_id);
+    uint16_t swapped = __builtin_bswap16(color);
+    uint16_t* row16  = (uint16_t*)s_dma_row_buf;
+    for (int i = 0; i < DISPLAY_WIDTH; i++) row16[i] = swapped;
     gc9a01_set_window(0, y0, DISPLAY_WIDTH - 1, y0 + h - 1);
     for (uint16_t row = 0; row < h; row++)
-        gc9a01_write_data((uint8_t*)row_buf, DISPLAY_WIDTH * 2);
+        gc9a01_write_data(s_dma_row_buf, DISPLAY_WIDTH * 2);
     spi_unlock();
 
-    free(row_buf);
     return ESP_OK;
 }
 

@@ -40,6 +40,7 @@
 #define CMD_SET_LED_COLOR               0x40
 #define CMD_GET_LED_COLOR               0x42
 #define CMD_SET_FOLDER_BUTTON_LED       0x43
+#define CMD_PLUGIN_DISPLAY              0x44  // on-device ring+text render; no SPIFFS
 #define CMD_SET_BACKLIGHT           0x41
 #define CMD_SAVE_PROFILE            0x50
 #define CMD_LOAD_PROFILE            0x51

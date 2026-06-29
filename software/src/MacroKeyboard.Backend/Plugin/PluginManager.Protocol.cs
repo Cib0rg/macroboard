@@ -28,6 +28,7 @@ public partial class PluginManager
             case "setTitle":              await HandleSetTitleAsync(msg); break;
             case "setImage":              await HandleSetImageAsync(msg); break;
             case "mkSetButtonDisplay":    await HandleSetButtonDisplayAsync(msg); break;
+            case "mkSetButtonError":      await HandleSetButtonErrorAsync(msg); break;
             case "showAlert":          await HandleShowAlertAsync(msg); break;
             case "showOk":             await HandleShowOkAsync(msg); break;
             case "setState":           HandleSetState(msg); break;
@@ -113,6 +114,18 @@ public partial class PluginManager
         {
             _logger.LogInformation("[{PluginId}] No global settings file yet — plugin will start with empty settings", pluginId);
         }
+
+        // Replay any willAppear events that arrived before the plugin had registered its WS connection.
+        if (_pendingWillAppear.TryRemove(pluginId, out var queue))
+        {
+            _logger.LogInformation("[{PluginId}] Replaying {Count} queued willAppear events", pluginId, queue.Count);
+            while (queue.TryDequeue(out var pending))
+            {
+                var ctx = MakeContext(pluginId, pending.ButtonIndex);
+                var replayMsg = BuildWillAppearMessage(pending.ActionId, pending.Settings, pending.ButtonIndex, ctx);
+                await _webSocketServer.SendToConnectionAsync(connectionId, replayMsg);
+            }
+        }
     }
 
     private async Task HandleSetTitleAsync(PluginMessage msg)
@@ -145,7 +158,7 @@ public partial class PluginManager
                 _logger.LogWarning("setImage: ProcessImageBytesForButtonAsync returned null for button {Idx} ({Bytes} raw bytes)", buttonIndex, rawBytes.Length);
                 return;
             }
-            await _deviceService.SendButtonImageAsync(0, (byte)buttonIndex, processed, null);
+            await _deviceService.SendButtonImageAsync(0, (byte)buttonIndex, processed, null, default, noStore: true);
         }
         catch (Exception ex)
         {
@@ -159,16 +172,33 @@ public partial class PluginManager
         var payload = ParsePayload(msg.Payload);
         if (payload == null) return;
 
-        var text = payload.GetValueOrDefault("text")?.ToString() ?? string.Empty;
+        var text  = payload.GetValueOrDefault("text")?.ToString() ?? string.Empty;
+        var isOn  = payload.TryGetValue("isOn", out var isOnVal) && isOnVal is bool b && b;
 
         try
         {
-            var imageBytes = await _imageService.CreatePluginStateImageAsync(text);
-            await _deviceService.SendButtonImageAsync(0, (byte)buttonIndex, imageBytes, null);
+            await _deviceService.SendPluginDisplayAsync((byte)buttonIndex, text, isOn);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "mkSetButtonDisplay: failed to generate/send image for button {Idx}", buttonIndex);
+            _logger.LogError(ex, "mkSetButtonDisplay: failed to render plugin display for button {Idx}", buttonIndex);
+        }
+    }
+
+    private async Task HandleSetButtonErrorAsync(PluginMessage msg)
+    {
+        if (!TryParseButtonContext(msg.Context, out _, out var buttonIndex)) return;
+        var payload = ParsePayload(msg.Payload);
+        var label   = payload?.GetValueOrDefault("message")?.ToString();
+
+        try
+        {
+            var errorImage = await _imageService.CreateErrorRingAsync(label);
+            await _deviceService.SendButtonImageAsync(0, (byte)buttonIndex, errorImage, null, default, noStore: true);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "mkSetButtonError: failed to generate/send error image for button {Idx}", buttonIndex);
         }
     }
 

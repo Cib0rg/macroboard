@@ -25,6 +25,7 @@ typedef struct {
     uint32_t total_size;
     uint32_t received_size;
     uint8_t format;
+    uint8_t flags;         // TRANSFER_FLAG_VOLATILE → skip SPIFFS + cache
     uint16_t expected_chunk;
     uint8_t* buffer;
 } image_transfer_ctx_t;
@@ -33,7 +34,7 @@ static image_transfer_ctx_t transfer_ctx = {0};
 
 esp_err_t image_transfer_start(uint8_t profile_id, uint8_t folder_id,
                                 uint8_t button_id, uint32_t image_size,
-                                uint8_t format) {
+                                uint8_t format, uint8_t flags) {
     if (transfer_ctx.active) {
         ESP_LOGW(TAG, "Transfer already in progress, cancelling previous");
         if (transfer_ctx.buffer != NULL) {
@@ -74,6 +75,7 @@ esp_err_t image_transfer_start(uint8_t profile_id, uint8_t folder_id,
     transfer_ctx.total_size = image_size;
     transfer_ctx.received_size = 0;
     transfer_ctx.format = format;
+    transfer_ctx.flags = flags;
     transfer_ctx.expected_chunk = 0;
     
     return ESP_OK;
@@ -154,41 +156,53 @@ esp_err_t image_transfer_end(uint32_t* calculated_crc) {
 
     ESP_LOGI(TAG, "JPEG decoded to %dx%d", decoded_w, decoded_h);
 
-    // Queue the SPIFFS write asynchronously so CMD 0x22 can respond to the host
-    // as soon as decode finishes (~50ms) rather than waiting for SPIFFS (~2.5s).
-    // Falls back to a blocking write if the queue is near capacity (see save_task.h).
-    // save_task updates image_size in the profile on success; save_task_drain() in
-    // handle_save_profile() ensures all writes complete before the profile is persisted.
-    save_task_save_image(transfer_ctx.profile_id, transfer_ctx.folder_id,
-                         transfer_ctx.button_id, transfer_ctx.storage_bid,
-                         rgb565_buf, *calculated_crc);
+    bool is_volatile = (transfer_ctx.flags & TRANSFER_FLAG_VOLATILE) != 0;
+
+    if (!is_volatile) {
+        // Queue the SPIFFS write asynchronously so CMD 0x22 can respond to the host
+        // as soon as decode finishes (~50ms) rather than waiting for SPIFFS (~2.5s).
+        // Falls back to a blocking write if the queue is near capacity (see save_task.h).
+        // save_task updates image_size in the profile on success; save_task_drain() in
+        // handle_save_profile() ensures all writes complete before the profile is persisted.
+        save_task_save_image(transfer_ctx.profile_id, transfer_ctx.folder_id,
+                             transfer_ctx.button_id, transfer_ctx.storage_bid,
+                             rgb565_buf, *calculated_crc);
+    } else {
+        ESP_LOGI(TAG, "Volatile transfer — skipping SPIFFS write for button %d", transfer_ctx.button_id);
+    }
 
     // Always draw decoded image to display (CRC verified, decode succeeded).
     // A SPIFFS save failure must NOT prevent the screen from showing the new image.
     // Buffer ownership is transferred to the display_task (Core 1); it frees it
     // after the SPI write.  If draw is not required we free it here instead.
+    // For volatile transfers the profile cache is intentionally NOT updated —
+    // these images are transient and should not override the persisted profile image.
     bool draw_posted = false;
     {
         bool should_draw = false;
         if (transfer_ctx.folder_id == 0xFF) {
-            profile_image_cache_invalidate(transfer_ctx.button_id, false);
-            // Populate root cache with new frame immediately after invalidation.
-            // Prevents profile_update_button_display (triggered by a subsequent
-            // SetButtonName or folder exit) from loading the OLD SPIFFS image before
-            // save_task finishes writing — which would draw the old image on top of
-            // what display_post_draw renders here, making the new image "disappear".
-            uint8_t* cc = heap_caps_malloc(DISPLAY_BUFFER_SIZE, MALLOC_CAP_SPIRAM);
-            if (cc) { memcpy(cc, rgb565_buf, DISPLAY_BUFFER_SIZE); profile_image_cache_update(transfer_ctx.button_id, false, cc); }
+            if (!is_volatile) {
+                profile_image_cache_invalidate(transfer_ctx.button_id, false);
+                // Populate root cache with new frame immediately after invalidation.
+                // Prevents profile_update_button_display (triggered by a subsequent
+                // SetButtonName or folder exit) from loading the OLD SPIFFS image before
+                // save_task finishes writing — which would draw the old image on top of
+                // what display_post_draw renders here, making the new image "disappear".
+                uint8_t* cc = heap_caps_malloc(DISPLAY_BUFFER_SIZE, MALLOC_CAP_SPIRAM);
+                if (cc) { memcpy(cc, rgb565_buf, DISPLAY_BUFFER_SIZE); profile_image_cache_update(transfer_ctx.button_id, false, cc); }
+            }
             // Only draw if the device is currently at root level.  When inside a
             // folder, root-button images must not overwrite the folder-button displays
             // at the same physical positions.  The cache is already populated above,
             // so the image will be drawn correctly when the user exits the folder.
             should_draw = (profile_get_current_folder() == 0xFF);
         } else {
-            profile_image_cache_invalidate(transfer_ctx.button_id, true);
-            // Same as above: populate folder cache immediately to prevent stale loads.
-            uint8_t* cc = heap_caps_malloc(DISPLAY_BUFFER_SIZE, MALLOC_CAP_SPIRAM);
-            if (cc) { memcpy(cc, rgb565_buf, DISPLAY_BUFFER_SIZE); profile_image_cache_update(transfer_ctx.button_id, true, cc); }
+            if (!is_volatile) {
+                profile_image_cache_invalidate(transfer_ctx.button_id, true);
+                // Same as above: populate folder cache immediately to prevent stale loads.
+                uint8_t* cc = heap_caps_malloc(DISPLAY_BUFFER_SIZE, MALLOC_CAP_SPIRAM);
+                if (cc) { memcpy(cc, rgb565_buf, DISPLAY_BUFFER_SIZE); profile_image_cache_update(transfer_ctx.button_id, true, cc); }
+            }
             if (profile_get_current_folder() == transfer_ctx.folder_id) {
                 should_draw = true;
             }
@@ -197,8 +211,8 @@ esp_err_t image_transfer_end(uint32_t* calculated_crc) {
             display_post_draw(transfer_ctx.button_id, rgb565_buf);
             rgb565_buf = NULL;  // ownership always transfers: task frees on success, display_post_draw frees on queue-full
             draw_posted = true;
-            ESP_LOGI(TAG, "Draw queued for button %d (folder=%d)",
-                     transfer_ctx.button_id, transfer_ctx.folder_id);
+            ESP_LOGI(TAG, "%sDraw queued for button %d (folder=%d)",
+                     is_volatile ? "[volatile] " : "", transfer_ctx.button_id, transfer_ctx.folder_id);
         }
     }
     if (!draw_posted) {

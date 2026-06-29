@@ -9,6 +9,11 @@
 #include <stdint.h>
 #include "esp_err.h"
 
+// Transfer flags for image_transfer_start() — combined in the flags byte.
+// VOLATILE: skip SPIFFS write and profile cache update; display only.
+// Used for plugin-driven display updates that must not persist across reboots.
+#define TRANSFER_FLAG_VOLATILE  0x01
+
 /**
  * @brief Start image transfer
  * @param profile_id Profile ID
@@ -16,11 +21,12 @@
  * @param button_id  Button ID within the profile or folder
  * @param image_size Total image size
  * @param format     Image format (0x01 = JPEG)
+ * @param flags      Transfer flags (TRANSFER_FLAG_VOLATILE = skip SPIFFS write)
  * @return ESP_OK on success
  */
 esp_err_t image_transfer_start(uint8_t profile_id, uint8_t folder_id,
                                 uint8_t button_id, uint32_t image_size,
-                                uint8_t format);
+                                uint8_t format, uint8_t flags);
 
 /**
  * @brief Receive image data chunk

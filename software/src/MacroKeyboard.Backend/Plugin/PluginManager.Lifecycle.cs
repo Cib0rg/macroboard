@@ -12,6 +12,9 @@ public partial class PluginManager
         if (!_plugins.TryGetValue(pluginId, out var instance))
             throw new InvalidOperationException($"Plugin not found: {pluginId}");
 
+        if (instance is ExecutablePluginInstance exe)
+            exe.Crashed += (_, _) => _ = HandlePluginCrashedAsync(pluginId);
+
         await instance.StartAsync(cancellationToken);
         _logger.LogInformation("Plugin started: {Id}", pluginId);
     }
@@ -42,6 +45,7 @@ public partial class PluginManager
         _piConnections.Clear();
         _actionStates.Clear();
         _contextToActionId.Clear();
+        _pendingWillAppear.Clear();
 
         await LoadPluginsAsync(cancellationToken);
 
@@ -135,20 +139,49 @@ public partial class PluginManager
     {
         var context = MakeContext(pluginId, buttonIndex);
         _contextToActionId[context] = actionId;
-        await SendToPluginAsync(pluginId, new PluginMessage
+
+        // If plugin is registered, send immediately; otherwise queue for replay on registerPlugin.
+        var isConnected = _connectionToPlugin.Any(kvp => kvp.Value == pluginId);
+        if (isConnected)
         {
-            Event   = "willAppear",
-            Action  = actionId,
-            Context = context,
-            Device  = DeviceId,
-            Payload = new
+            await SendToPluginAsync(pluginId, BuildWillAppearMessage(actionId, settings, buttonIndex, context), ct);
+        }
+        else
+        {
+            _logger.LogInformation("[{PluginId}] willAppear queued for button {Idx} (plugin not connected yet)", pluginId, buttonIndex);
+            _pendingWillAppear
+                .GetOrAdd(pluginId, _ => new System.Collections.Concurrent.ConcurrentQueue<PendingWillAppear>())
+                .Enqueue(new PendingWillAppear(actionId, settings, buttonIndex));
+        }
+    }
+
+    private async Task HandlePluginCrashedAsync(string pluginId)
+    {
+        _logger.LogError("[{PluginId}] Plugin process crashed — showing error ring on all plugin buttons", pluginId);
+
+        // Remove stale WS registration so future messages aren't sent to a dead connection
+        var staleConns = _connectionToPlugin
+            .Where(kvp => kvp.Value == pluginId)
+            .Select(kvp => kvp.Key)
+            .ToList();
+        foreach (var conn in staleConns)
+            _connectionToPlugin.TryRemove(conn, out _);
+
+        // Show red error ring on every known button for this plugin
+        foreach (var (context, _) in _contextToActionId.ToList())
+        {
+            if (!TryParseButtonContext(context, out var ctxPluginId, out var buttonIndex)) continue;
+            if (ctxPluginId != pluginId) continue;
+            try
             {
-                settings        = DeserializeSettings(settings),
-                coordinates     = new { column = buttonIndex % DeviceConstants.Columns, row = buttonIndex / DeviceConstants.Columns },
-                state           = _actionStates.TryGetValue(context, out var s) ? s : 0,
-                isInMultiAction = false
+                var errorImage = await _imageService.CreateErrorRingAsync("PLUGIN\nCRASHED");
+                await _deviceService.SendButtonImageAsync(0, (byte)buttonIndex, errorImage, null, default, noStore: true);
             }
-        }, ct);
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "[{PluginId}] Failed to show error ring for button {Idx}", pluginId, buttonIndex);
+            }
+        }
     }
 
     public async Task NotifyWillDisappearAsync(

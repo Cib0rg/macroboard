@@ -48,6 +48,7 @@ public static class ProtocolConstants
     public const byte CMD_SET_BACKLIGHT             = 0x41;
     public const byte CMD_GET_LED_COLOR             = 0x42;
     public const byte CMD_SET_FOLDER_BUTTON_LED     = 0x43;
+    public const byte CMD_PLUGIN_DISPLAY            = 0x44;  // on-device ring+text; no SPIFFS
     public const byte CMD_SAVE_PROFILE = 0x50;
     public const byte CMD_LOAD_PROFILE = 0x51;
     public const byte CMD_DELETE_PROFILE = 0x52;

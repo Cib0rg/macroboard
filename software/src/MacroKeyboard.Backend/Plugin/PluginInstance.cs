@@ -39,6 +39,9 @@ public class ExecutablePluginInstance : PluginInstance
 {
     private System.Diagnostics.Process? _process;
 
+    /// <summary>Raised when the plugin process exits with a non-zero exit code.</summary>
+    public event EventHandler? Crashed;
+
     public ExecutablePluginInstance(PluginManifest manifest, string pluginDirectory, ILogger logger)
         : base(manifest, pluginDirectory, logger) { }
 
@@ -139,8 +142,16 @@ public class ExecutablePluginInstance : PluginInstance
                 };
                 _process.Exited += (_, _) =>
                 {
+                    var code = -1;
+                    try { code = _process?.ExitCode ?? -1; } catch { }
                     IsRunning = false;
-                    Logger.LogInformation("[{Id}] Headless browser process exited", Manifest.Id);
+                    if (code == 0)
+                        Logger.LogInformation("[{Id}] Headless browser process exited cleanly", Manifest.Id);
+                    else
+                    {
+                        Logger.LogError("[{Id}] Headless browser exited unexpectedly (code {Code})", Manifest.Id, code);
+                        Crashed?.Invoke(this, EventArgs.Empty);
+                    }
                 };
 
                 try
@@ -234,7 +245,10 @@ public class ExecutablePluginInstance : PluginInstance
             if (code == 0)
                 Logger.LogInformation("[{Id}] Process exited cleanly (code 0)", Manifest.Id);
             else
+            {
                 Logger.LogError("[{Id}] Process exited unexpectedly with code {Code}", Manifest.Id, code);
+                Crashed?.Invoke(this, EventArgs.Empty);
+            }
         };
 
         try

@@ -36,6 +36,7 @@ public class DeviceService : IDeviceService
     private readonly SetButtonLongPressActionCommand _setButtonLongPressActionCommand;
     private readonly SetButtonLongPressNameCommand _setButtonLongPressNameCommand;
     private readonly GetImageHashesCommand _getImageHashesCommand;
+    private readonly PluginDisplayCommand _pluginDisplayCommand;
 
     // CRC32 cache: (profileId, buttonId) → last-confirmed CRC on device
     private readonly Dictionary<(byte, byte), uint> _imageHashCache = new();
@@ -84,7 +85,8 @@ public class DeviceService : IDeviceService
         _setButtonLongPressActionCommand   = new SetButtonLongPressActionCommand(_protocol, loggerFactory.CreateLogger<SetButtonLongPressActionCommand>());
         _setButtonLongPressNameCommand     = new SetButtonLongPressNameCommand(_protocol, loggerFactory.CreateLogger<SetButtonLongPressNameCommand>());
         _getImageHashesCommand             = new GetImageHashesCommand(_protocol, loggerFactory.CreateLogger<GetImageHashesCommand>());
-        
+        _pluginDisplayCommand              = new PluginDisplayCommand(_protocol);
+
         // Подписаться на события устройства
         _deviceManager.DeviceConnected += OnDeviceConnected;
         _deviceManager.DeviceDisconnected += OnDeviceDisconnected;
@@ -201,22 +203,24 @@ public class DeviceService : IDeviceService
         byte buttonId,
         byte[] imageData,
         IProgress<int>? progress = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        bool noStore = false)
     {
         var crc = Crc32.Calculate(imageData);
 
         await _commandLock.WaitAsync(cancellationToken);
         try
         {
-            if (_imageHashCache.TryGetValue((profileId, buttonId), out var cached) && cached == crc)
+            // Skip CRC dedup for volatile images — they're transient and shouldn't be cached
+            if (!noStore && _imageHashCache.TryGetValue((profileId, buttonId), out var cached) && cached == crc)
             {
                 _logger.LogDebug("Image for button {ButtonId} unchanged (CRC=0x{Crc:X8}), skipping transfer", buttonId, crc);
                 progress?.Report(100);
                 return true;
             }
 
-            var result = await _imageTransferCommand.ExecuteAsync(profileId, buttonId, imageData, 0xFF, progress, cancellationToken);
-            if (result)
+            var result = await _imageTransferCommand.ExecuteAsync(profileId, buttonId, imageData, 0xFF, progress, cancellationToken, noStore);
+            if (result && !noStore)
                 _imageHashCache[(profileId, buttonId)] = crc;
             return result;
         }
@@ -224,6 +228,14 @@ public class DeviceService : IDeviceService
         {
             _commandLock.Release();
         }
+    }
+
+    public async Task<bool> SendPluginDisplayAsync(byte buttonId, string text, bool isOn,
+        CancellationToken cancellationToken = default)
+    {
+        await _commandLock.WaitAsync(cancellationToken);
+        try   { return await _pluginDisplayCommand.ExecuteAsync(buttonId, text, isOn, cancellationToken); }
+        finally { _commandLock.Release(); }
     }
 
     public async Task<bool> SendFolderButtonImageAsync(

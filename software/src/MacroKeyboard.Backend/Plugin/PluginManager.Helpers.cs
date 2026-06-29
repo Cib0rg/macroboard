@@ -19,11 +19,28 @@ public partial class PluginManager
         }
         else
         {
-            _logger.LogWarning("WS→plugin [{PluginId}] event={Event}: plugin not connected, broadcasting",
+            // Plugin not connected — drop the message. willAppear is queued separately
+            // in NotifyWillAppearAsync and replayed when the plugin sends registerPlugin.
+            _logger.LogDebug("WS→plugin [{PluginId}] event={Event}: plugin not connected, dropping",
                 pluginId, msg.Event);
-            await _webSocketServer.BroadcastAsync(msg, ct);
         }
     }
+
+    private PluginMessage BuildWillAppearMessage(string actionId, string? settings, int buttonIndex, string context)
+        => new()
+        {
+            Event   = "willAppear",
+            Action  = actionId,
+            Context = context,
+            Device  = DeviceId,
+            Payload = new
+            {
+                settings        = DeserializeSettings(settings),
+                coordinates     = new { column = buttonIndex % DeviceConstants.Columns, row = buttonIndex / DeviceConstants.Columns },
+                state           = _actionStates.TryGetValue(context, out var s) ? s : 0,
+                isInMultiAction = false
+            }
+        };
 
     private static string MakeContext(string pluginId, int buttonIndex)
         => $"{pluginId}:{buttonIndex}";
