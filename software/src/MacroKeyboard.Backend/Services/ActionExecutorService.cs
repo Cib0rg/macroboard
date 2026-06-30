@@ -63,6 +63,38 @@ public class ActionExecutorService : IActionExecutorService
             _logger.LogWarning(ex, "Failed to restore folder state on connect, assuming root");
             _currentFolderId = 0xFF;
         }
+
+        // Send willAppear for all currently visible plugin buttons.
+        // This ensures plugins know which buttons are active even before any key is pressed.
+        // If the plugin isn't registered yet, NotifyWillAppearAsync queues events that are
+        // replayed automatically when the plugin connects (via _pendingWillAppear).
+        await NotifyVisiblePluginButtonsAsync();
+    }
+
+    private async Task NotifyVisiblePluginButtonsAsync()
+    {
+        var dbProfileId = _profileService.ActiveProfileId;
+        var profile = await _profileService.GetProfileAsync(dbProfileId);
+        if (profile == null) return;
+
+        if (_currentFolderId == 0xFF)
+        {
+            foreach (var btn in profile.Buttons)
+            {
+                if (btn.Action is not PluginActionConfig pa) continue;
+                await _pluginManager.NotifyWillAppearAsync(pa.PluginId, pa.ActionId, pa.Settings, btn.ButtonId);
+            }
+        }
+        else
+        {
+            var folder = profile.Folders.FirstOrDefault(f => f.FolderId == _currentFolderId);
+            if (folder == null) return;
+            foreach (var btn in folder.Buttons)
+            {
+                if (btn.Action is not PluginActionConfig pa) continue;
+                await _pluginManager.NotifyWillAppearAsync(pa.PluginId, pa.ActionId, pa.Settings, btn.ButtonId, _currentFolderId);
+            }
+        }
     }
 
     private ButtonConfig? FindButton(Profile? profile, byte buttonId)

@@ -21,6 +21,10 @@ public sealed class PluginController : IAsyncDisposable
     private string? _lastHaToken;
     private volatile bool _reconnecting;
 
+    // periodic full-sync loop (fallback for missed state_changed events)
+    private CancellationTokenSource? _syncCts;
+    private const int SyncIntervalSeconds = 30;
+
     public PluginController(SdConnection sd)
     {
         _sd = sd;
@@ -232,6 +236,7 @@ public sealed class PluginController : IAsyncDisposable
 
     private async void OnHaDisconnected()
     {
+        _syncCts?.Cancel();
         Console.Error.WriteLine("[Ctrl] HA disconnected — showing error state on all buttons");
 
         foreach (var (context, _) in _buttons.ToList())
@@ -334,8 +339,49 @@ public sealed class PluginController : IAsyncDisposable
             // Push entity list to PI if it's open
             if (_currentPiContext != null)
                 await SendEntitiesToPiAsync(_currentPiContext);
+
+            // Start periodic full-sync loop (one at a time)
+            _syncCts?.Cancel();
+            _syncCts = CancellationTokenSource.CreateLinkedTokenSource(_disposeCts.Token);
+            _ = Task.Run(() => SyncLoopAsync(_syncCts.Token));
         }
         catch (Exception ex) { Console.Error.WriteLine($"[Ctrl] OnHaConnected error: {ex}"); }
+    }
+
+    private async Task SyncLoopAsync(CancellationToken ct)
+    {
+        Console.WriteLine($"[Ctrl] Sync loop started (interval={SyncIntervalSeconds}s)");
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(SyncIntervalSeconds));
+        try
+        {
+            while (await timer.WaitForNextTickAsync(ct))
+            {
+                if (_ha?.IsConnected != true) break;
+                try { await PollAndRefreshAsync(ct); }
+                catch (Exception ex) { Console.Error.WriteLine($"[Ctrl] Sync tick error: {ex.Message}"); }
+            }
+        }
+        catch (OperationCanceledException) { }
+        Console.WriteLine("[Ctrl] Sync loop exited");
+    }
+
+    private async Task PollAndRefreshAsync(CancellationToken ct)
+    {
+        var states = await _ha!.GetAllStatesAsync(ct);
+        var updated = 0;
+        foreach (var (context, cfg) in _buttons.ToList())
+        {
+            if (string.IsNullOrEmpty(cfg.Settings.EntityId)) continue;
+            if (!states.TryGetValue(cfg.Settings.EntityId, out var newState)) continue;
+            var prev = _entityStates.GetValueOrDefault(cfg.Settings.EntityId);
+            if (prev?.State == newState.State) continue;
+            _entityStates[newState.EntityId] = newState;
+            Console.WriteLine($"[Ctrl] Sync detected change: {newState.EntityId} '{prev?.State}' → '{newState.State}'");
+            await UpdateButtonDisplayAsync(context, cfg.Settings, newState.State);
+            updated++;
+        }
+        if (updated > 0)
+            Console.WriteLine($"[Ctrl] Sync complete: {updated} button(s) updated");
     }
 
     private async void OnHaStateChanged(HaState haState)
@@ -486,6 +532,8 @@ public sealed class PluginController : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        _syncCts?.Cancel();
+        _syncCts?.Dispose();
         _disposeCts.Cancel();
         if (_ha != null)
         {
