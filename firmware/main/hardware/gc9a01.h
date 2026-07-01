@@ -49,6 +49,17 @@ esp_err_t gc9a01_init(void);
 esp_err_t gc9a01_init_display(uint8_t display_id);
 
 /**
+ * @brief Initialize all displays with a pipelined Sleep-Out delay.
+ *
+ * Sends all register writes and Sleep Out (0x11) to every display first,
+ * then waits once for 200 ms, then sends Display ON and clears each display.
+ * Saves ~1.8 s vs. calling gc9a01_init_display() in a loop.
+ *
+ * @return ESP_OK on success
+ */
+esp_err_t gc9a01_init_all_displays(void);
+
+/**
  * @brief Clear display with color
  * @param display_id Display ID
  * @param color RGB565 color

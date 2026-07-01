@@ -368,9 +368,8 @@ esp_err_t image_storage_init(void) {
         migrate_legacy_images();
     }
 
-    // Always run GC on init to recover from any previous crash or missed cleanup
-    // (e.g. profile deleted while device was powered off mid-operation).
-    image_storage_gc();
+    // GC is NOT called here — it requires the profile to be loaded first.
+    // main.c calls image_storage_gc(profile_get()) after profile_manager_init().
 
     ESP_LOGI(TAG, "Image storage initialized: %d unique images, %d mappings",
              s_num_images, s_num_mappings);
@@ -600,7 +599,7 @@ esp_err_t image_storage_cleanup_profile(uint8_t profile_id) {
     return ESP_OK;
 }
 
-esp_err_t image_storage_gc(void) {
+esp_err_t image_storage_gc(const profile_t* preloaded) {
     bool changed = false;
 
     // Pass 1: remove mappings whose profile file no longer exists
@@ -617,14 +616,26 @@ esp_err_t image_storage_gc(void) {
 
     // Pass 2: for each existing profile, remove mappings for buttons that no
     // longer have an image (image_size == 0 in the saved profile binary).
-    // profile_t is ~27 KB — allocate from PSRAM, not stack.
-    profile_t* profile = heap_caps_malloc(sizeof(profile_t), MALLOC_CAP_SPIRAM);
-    if (profile == NULL) {
-        ESP_LOGE(TAG, "GC: failed to allocate profile buffer, skipping button-level check");
-        goto done;
+    // If the caller already has the profile loaded (preloaded != NULL), use it
+    // directly to avoid an extra SPIFFS read.  Otherwise load it ourselves.
+    profile_t* profile_buf = NULL;   // non-NULL only when WE allocated it
+    const profile_t* profile = NULL;
+
+    if (preloaded != NULL) {
+        profile = preloaded;
+    } else if (profile_storage_exists(0)) {
+        profile_buf = heap_caps_malloc(sizeof(profile_t), MALLOC_CAP_SPIRAM);
+        if (profile_buf == NULL) {
+            ESP_LOGE(TAG, "GC: failed to allocate profile buffer, skipping button-level check");
+        } else if (profile_storage_load(0, profile_buf) == ESP_OK) {
+            profile = profile_buf;
+        } else {
+            free(profile_buf);
+            profile_buf = NULL;
+        }
     }
 
-    if (profile_storage_exists(0) && profile_storage_load(0, profile) == ESP_OK) {
+    if (profile != NULL) {
         for (int i = (int)s_num_mappings - 1; i >= 0; i--) {
             if (s_mappings[i].profile_id != 0) continue;
             uint8_t bid = s_mappings[i].button_id;
@@ -674,9 +685,10 @@ esp_err_t image_storage_gc(void) {
         }
     }
 
-    free(profile);
+    if (profile_buf != NULL) {
+        free(profile_buf);
+    }
 
-done:
     if (changed) {
         save_map_to_flash();
         ESP_LOGI(TAG, "GC: map saved after removing orphaned entries");

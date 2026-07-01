@@ -78,7 +78,7 @@ static void gc9d01_send_data_byte(uint8_t data) {
  * This sequence is from the TZT manufacturer reference code.
  * It configures the display for 160x160 RGB565 operation.
  */
-static void gc9d01_send_init_sequence(void) {
+static void gc9d01_init_phase_a(void) {
     // Enter inter-register command mode
     gc9a01_send_command(0xFE);
     gc9a01_send_command(0xEF);
@@ -234,10 +234,11 @@ static void gc9d01_send_init_sequence(void) {
     // Bit 7 (MY) = 1, Bit 6 (MX) = 1 → 180° rotation
     gc9a01_send_command(0x36); gc9d01_send_data_byte(0xC0);
 
-    // Sleep Out
+    // Sleep Out — caller must wait ≥120 ms (we use 200 ms) before Display ON
     gc9a01_send_command(0x11);
-    vTaskDelay(pdMS_TO_TICKS(200));
+}
 
+static void gc9d01_init_phase_b(void) {
     // Display ON
     gc9a01_send_command(0x29);
 
@@ -248,9 +249,15 @@ static void gc9d01_send_init_sequence(void) {
     // causing display corruption (e.g., display 0 showing display 4's image).
     // The RAMWR command is sent in gc9a01_set_window() right before actual
     // pixel data transfer, when the correct display is already selected via mux.
-    
+
     // Send NOP to ensure the display is in a clean command-idle state
     gc9a01_send_command(0x00);
+}
+
+static void gc9d01_send_init_sequence(void) {
+    gc9d01_init_phase_a();
+    vTaskDelay(pdMS_TO_TICKS(200));
+    gc9d01_init_phase_b();
 }
 
 // ==================== Public API ====================
@@ -343,6 +350,33 @@ esp_err_t gc9a01_init_display(uint8_t display_id) {
     xSemaphoreGive(spi_mutex);
     
     ESP_LOGI(TAG, "Display %d initialized (GC9D01 160x160)", display_id);
+    return ESP_OK;
+}
+
+esp_err_t gc9a01_init_all_displays(void) {
+    // Phase A: send all register writes + Sleep Out (0x11) to every display
+    // without any per-display delay — all displays receive the command in ~100 ms total.
+    for (int i = 0; i < NUM_DISPLAYS; i++) {
+        xSemaphoreTake(spi_mutex, portMAX_DELAY);
+        display_mux_select(i);
+        gc9d01_init_phase_a();
+        xSemaphoreGive(spi_mutex);
+    }
+
+    // Single 200 ms wait covers all displays.  The last display's Sleep Out was
+    // sent only ~100 ms after the first's, so every display gets its full 200 ms.
+    vTaskDelay(pdMS_TO_TICKS(200));
+
+    // Phase B: Display ON + NOP + clear each display.
+    for (int i = 0; i < NUM_DISPLAYS; i++) {
+        xSemaphoreTake(spi_mutex, portMAX_DELAY);
+        display_mux_select(i);
+        gc9d01_init_phase_b();
+        xSemaphoreGive(spi_mutex);
+        gc9a01_clear(i, COLOR_BLACK);
+        ESP_LOGI(TAG, "Display %d initialized (GC9D01 160x160)", i);
+    }
+
     return ESP_OK;
 }
 

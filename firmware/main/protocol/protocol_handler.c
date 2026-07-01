@@ -541,7 +541,7 @@ static esp_err_t handle_save_profile(const uint8_t* payload, uint16_t length,
     esp_err_t ret = profile_save_to_storage();
 
     if (ret == ESP_OK) {
-        image_storage_gc();
+        image_storage_gc(profile_get());
     }
 
     response[0] = (ret == ESP_OK) ? STATUS_OK : STATUS_ERROR;

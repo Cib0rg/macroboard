@@ -101,15 +101,10 @@ void app_main(void) {
     gc9a01_set_backlight(true);
     ESP_LOGI(TAG, "✓ Display backlight enabled");
     
-    // 2.3 Initialize all displays
-    for (int i = 0; i < NUM_DISPLAYS; i++) {
-        ret = gc9a01_init_display(i);
-        if (ret == ESP_OK) {
-            gc9a01_clear(i, COLOR_BLACK);
-            ESP_LOGI(TAG, "✓ Display %d initialized", i);
-        }
-        vTaskDelay(pdMS_TO_TICKS(10));
-    }
+    // 2.3 Initialize all displays (pipelined: one shared 200 ms Sleep-Out wait
+    //     for all 10 displays instead of 10 sequential 200 ms waits)
+    gc9a01_init_all_displays();
+    ESP_LOGI(TAG, "✓ All %d displays initialized", NUM_DISPLAYS);
     
     // 2.4 Initialize buttons
     ret = buttons_init();
@@ -208,17 +203,15 @@ void app_main(void) {
         ESP_LOGE(TAG, "Failed to initialize profile manager: %s", esp_err_to_name(ret));
         return;
     }
-    
     ESP_LOGI(TAG, "✓ Profile loaded");
+
+    // 5.1.1 Run GC now that the profile is in memory — avoids the redundant
+    //       SPIFFS read that image_storage_gc() would otherwise do itself.
+    image_storage_gc(profile_get());
     
-    // 5.2 Update LEDs from profile
-    for (int i = 0; i < NUM_BUTTONS; i++) {
-        button_config_t* btn = profile_get_button_config(i);
-        if (btn != NULL) {
-            led_set_color(i, btn->led_r, btn->led_g, btn->led_b, btn->led_brightness);
-        }
-    }
-    led_update();
+    // 5.2 Update LEDs from profile (uses BTN_LED_BRIGHTNESS which suppresses
+    //     ACTION_TYPE_NONE buttons — same path as night mode exit / folder exit)
+    profile_restore_leds();
     ESP_LOGI(TAG, "✓ LEDs configured from profile");
     
     // 5.3 Refresh all button displays (images or text labels) from current profile

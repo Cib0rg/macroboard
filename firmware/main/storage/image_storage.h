@@ -16,6 +16,7 @@
 #include <stdbool.h>
 #include "esp_err.h"
 #include "config.h"
+#include "profile/profile_types.h"
 
 /**
  * @brief Initialize image storage (load mapping table from flash)
@@ -108,12 +109,15 @@ esp_err_t image_storage_cleanup_profile(uint8_t profile_id);
  * @brief Scan the mapping table for entries whose profile no longer exists
  *        and delete them (plus orphaned blobs).
  *
- * Called automatically during image_storage_init() to recover from any
- * previous crash or missed cleanup. Safe to call at any time.
+ * Must be called once after both image_storage_init() and profile_manager_init()
+ * so the profile is available for the button-level stale-mapping check.
  *
+ * @param profile Pre-loaded profile_t (from profile_get()). When non-NULL the
+ *                function uses it directly, avoiding a redundant SPIFFS read.
+ *                Pass NULL to have gc() load the profile itself (slower).
  * @return ESP_OK on success
  */
-esp_err_t image_storage_gc(void);
+esp_err_t image_storage_gc(const profile_t* profile);
 
 /**
  * @brief Get the CRC32 of the image mapped to a specific (profile, button) slot.
