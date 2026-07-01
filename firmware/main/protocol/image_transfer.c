@@ -130,7 +130,25 @@ esp_err_t image_transfer_end(uint32_t* calculated_crc) {
     ESP_LOGI(TAG, "Transfer complete: %lu bytes JPEG, CRC32=0x%08lX",
              transfer_ctx.total_size, *calculated_crc);
 
-    // Decode JPEG → raw RGB565 big-endian (one-time cost at upload, ~20-50ms)
+    bool is_volatile = (transfer_ctx.flags & TRANSFER_FLAG_VOLATILE) != 0;
+
+    if (!is_volatile) {
+        // Save original JPEG bytes to SPIFFS BEFORE freeing the buffer.
+        // save_task_save_image() makes an internal PSRAM copy, so it is safe to pass
+        // transfer_ctx.buffer here even though we free it right after decode.
+        // Queue the SPIFFS write asynchronously so CMD 0x22 can respond to the host
+        // as soon as decode finishes (~50ms) rather than waiting for SPIFFS (~2.5s).
+        // Falls back to a blocking write if the queue is near capacity (see save_task.h).
+        // save_task updates image_size in the profile on success; save_task_drain() in
+        // handle_save_profile() ensures all writes complete before the profile is persisted.
+        save_task_save_image(transfer_ctx.profile_id, transfer_ctx.folder_id,
+                             transfer_ctx.button_id, transfer_ctx.storage_bid,
+                             transfer_ctx.buffer, transfer_ctx.total_size, *calculated_crc);
+    } else {
+        ESP_LOGI(TAG, "Volatile transfer — skipping SPIFFS write for button %d", transfer_ctx.button_id);
+    }
+
+    // Decode JPEG → RGB565 for immediate display (one-time cost at upload)
     uint8_t* rgb565_buf = heap_caps_malloc(DISPLAY_BUFFER_SIZE, MALLOC_CAP_SPIRAM);
     if (rgb565_buf == NULL) {
         ESP_LOGE(TAG, "Failed to allocate RGB565 decode buffer");
@@ -144,6 +162,7 @@ esp_err_t image_transfer_end(uint32_t* calculated_crc) {
         transfer_ctx.buffer, transfer_ctx.total_size,
         rgb565_buf, DISPLAY_BUFFER_SIZE, &decoded_w, &decoded_h);
 
+    // JPEG buffer is no longer needed — save_task already made its own copy above
     free(transfer_ctx.buffer);
     transfer_ctx.buffer = NULL;
 
@@ -155,21 +174,6 @@ esp_err_t image_transfer_end(uint32_t* calculated_crc) {
     }
 
     ESP_LOGI(TAG, "JPEG decoded to %dx%d", decoded_w, decoded_h);
-
-    bool is_volatile = (transfer_ctx.flags & TRANSFER_FLAG_VOLATILE) != 0;
-
-    if (!is_volatile) {
-        // Queue the SPIFFS write asynchronously so CMD 0x22 can respond to the host
-        // as soon as decode finishes (~50ms) rather than waiting for SPIFFS (~2.5s).
-        // Falls back to a blocking write if the queue is near capacity (see save_task.h).
-        // save_task updates image_size in the profile on success; save_task_drain() in
-        // handle_save_profile() ensures all writes complete before the profile is persisted.
-        save_task_save_image(transfer_ctx.profile_id, transfer_ctx.folder_id,
-                             transfer_ctx.button_id, transfer_ctx.storage_bid,
-                             rgb565_buf, *calculated_crc);
-    } else {
-        ESP_LOGI(TAG, "Volatile transfer — skipping SPIFFS write for button %d", transfer_ctx.button_id);
-    }
 
     // Always draw decoded image to display (CRC verified, decode succeeded).
     // A SPIFFS save failure must NOT prevent the screen from showing the new image.

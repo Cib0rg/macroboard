@@ -29,7 +29,8 @@ typedef struct {
     uint8_t  folder_id;    // 0xFF = root
     uint8_t  button_id;
     uint8_t  storage_bid;
-    uint8_t* rgb565_buf;   // heap_caps_malloc'd copy; task frees after write
+    uint8_t* jpeg_buf;     // heap_caps_malloc'd copy; task frees after write
+    size_t   jpeg_size;
     uint32_t crc32;
 } save_cmd_t;
 
@@ -46,15 +47,15 @@ static volatile int         s_pending = 0;
 
 // ── Internal helpers ──────────────────────────────────────────────────────────
 
-static void update_image_size(uint8_t profile_id, uint8_t folder_id, uint8_t button_id)
+static void update_image_size(uint8_t profile_id, uint8_t folder_id, uint8_t button_id, size_t jpeg_size)
 {
     (void)profile_id;
     profile_t* prof = profile_get();
 
     if (folder_id == 0xFF) {
-        prof->buttons[button_id].image_size = DISPLAY_BUFFER_SIZE;
+        prof->buttons[button_id].image_size = jpeg_size;
     } else if (folder_id < NUM_FOLDERS) {
-        prof->folders[folder_id].buttons[button_id].image_size = DISPLAY_BUFFER_SIZE;
+        prof->folders[folder_id].buttons[button_id].image_size = jpeg_size;
     }
 }
 
@@ -99,22 +100,24 @@ esp_err_t save_task_save_image(uint8_t profile_id,
                                uint8_t folder_id,
                                uint8_t button_id,
                                uint8_t storage_bid,
-                               const uint8_t* rgb565_buf,
+                               const uint8_t* jpeg_buf,
+                               size_t jpeg_size,
                                uint32_t crc32)
 {
     UBaseType_t free_slots = uxQueueSpacesAvailable(save_queue);
 
     if (free_slots >= SAVE_QUEUE_SYNC_BELOW) {
-        uint8_t* buf_copy = heap_caps_malloc(DISPLAY_BUFFER_SIZE, MALLOC_CAP_SPIRAM);
+        uint8_t* buf_copy = heap_caps_malloc(jpeg_size, MALLOC_CAP_SPIRAM);
         if (buf_copy != NULL) {
-            memcpy(buf_copy, rgb565_buf, DISPLAY_BUFFER_SIZE);
+            memcpy(buf_copy, jpeg_buf, jpeg_size);
 
             save_cmd_t cmd = {
                 .profile_id  = profile_id,
                 .folder_id   = folder_id,
                 .button_id   = button_id,
                 .storage_bid = storage_bid,
-                .rgb565_buf  = buf_copy,
+                .jpeg_buf    = buf_copy,
+                .jpeg_size   = jpeg_size,
                 .crc32       = crc32,
             };
 
@@ -124,8 +127,8 @@ esp_err_t save_task_save_image(uint8_t profile_id,
             pending_inc();
 
             if (xQueueSend(save_queue, &cmd, 0) == pdTRUE) {
-                ESP_LOGD(TAG, "Queued async save: storage_bid=%d (pending=%d, free=%lu)",
-                         storage_bid, pending_get(),
+                ESP_LOGD(TAG, "Queued async save: storage_bid=%d size=%u (pending=%d, free=%lu)",
+                         storage_bid, (unsigned)jpeg_size, pending_get(),
                          (unsigned long)(free_slots - 1));
                 return ESP_OK;
             }
@@ -145,9 +148,9 @@ esp_err_t save_task_save_image(uint8_t profile_id,
 
     // Sync fallback: block here until SPIFFS write completes.
     esp_err_t ret = image_storage_save(profile_id, storage_bid,
-                                       rgb565_buf, DISPLAY_BUFFER_SIZE, crc32);
+                                       jpeg_buf, jpeg_size, crc32);
     if (ret == ESP_OK) {
-        update_image_size(profile_id, folder_id, button_id);
+        update_image_size(profile_id, folder_id, button_id, jpeg_size);
     } else {
         ESP_LOGE(TAG, "Sync save failed for storage_bid=%d: %s",
                  storage_bid, esp_err_to_name(ret));
@@ -177,7 +180,7 @@ void save_task_fn(void* arg)
     while (1) {
         if (xQueueReceive(save_queue, &cmd, portMAX_DELAY) == pdTRUE) {
             esp_err_t ret = image_storage_save(cmd.profile_id, cmd.storage_bid,
-                                               cmd.rgb565_buf, DISPLAY_BUFFER_SIZE,
+                                               cmd.jpeg_buf, cmd.jpeg_size,
                                                cmd.crc32);
 
             // SPIFFS write can fail transiently (GC, fragmentation, stale blob from
@@ -188,12 +191,12 @@ void save_task_fn(void* arg)
                          cmd.storage_bid);
                 vTaskDelay(pdMS_TO_TICKS(200));
                 ret = image_storage_save(cmd.profile_id, cmd.storage_bid,
-                                         cmd.rgb565_buf, DISPLAY_BUFFER_SIZE,
+                                         cmd.jpeg_buf, cmd.jpeg_size,
                                          cmd.crc32);
             }
 
             if (ret == ESP_OK) {
-                update_image_size(cmd.profile_id, cmd.folder_id, cmd.button_id);
+                update_image_size(cmd.profile_id, cmd.folder_id, cmd.button_id, cmd.jpeg_size);
                 ESP_LOGD(TAG, "Saved storage_bid=%d (queue remaining: %lu)",
                          cmd.storage_bid,
                          (unsigned long)uxQueueMessagesWaiting(save_queue));
@@ -202,7 +205,7 @@ void save_task_fn(void* arg)
                          cmd.storage_bid, esp_err_to_name(ret));
             }
 
-            free(cmd.rgb565_buf);
+            free(cmd.jpeg_buf);
 
             // Decrement only after write + update (and free) are fully complete.
             pending_dec();

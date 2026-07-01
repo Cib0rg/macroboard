@@ -40,7 +40,8 @@ static const char* TAG = "IMG_STOR";
 #define IMAGE_BLOB_FMT          "/storage/img_%08lx.raw"
 #define IMAGE_MAP_FILE          "/storage/img_map.bin"
 #define IMAGE_MAP_MAGIC         0x494D4150  // "IMAP"
-#define IMAGE_MAP_VERSION       2           // v2: raw RGB565 big-endian instead of JPEG
+#define IMAGE_MAP_VERSION       3           // v3: JPEG blobs (v2 was raw RGB565)
+#define IMAGE_MAP_VERSION_RGB   2           // legacy version whose blobs must be purged
 
 // Maximum unique images we can track
 #define MAX_UNIQUE_IMAGES       64
@@ -214,8 +215,30 @@ static esp_err_t load_map_from_flash(void) {
     }
 
     if (hdr.magic != IMAGE_MAP_MAGIC || hdr.version != IMAGE_MAP_VERSION) {
-        ESP_LOGW(TAG, "Map file invalid (magic=0x%08lx, ver=%d)", 
-                 (unsigned long)hdr.magic, hdr.version);
+        // Special case: old RGB565 format — purge blobs before discarding
+        if (hdr.magic == IMAGE_MAP_MAGIC && hdr.version == IMAGE_MAP_VERSION_RGB) {
+            ESP_LOGW(TAG, "Old RGB565 map (v%d, %d blobs) — purging and upgrading to v%d",
+                     hdr.version, hdr.num_images, IMAGE_MAP_VERSION);
+            // Skip mapping entries: profile_id(1) + button_id(1) + crc32(4) = 6 bytes each
+            fseek(f, (long)hdr.num_mappings * 6, SEEK_CUR);
+            // Read image CRCs and delete the corresponding .raw blob files
+            for (int i = 0; i < hdr.num_images && i < MAX_UNIQUE_IMAGES; i++) {
+                uint32_t crc, sz; uint16_t rc;
+                if (fread(&crc, 1, 4, f) != 4 ||
+                    fread(&sz,  1, 4, f) != 4 ||
+                    fread(&rc,  1, 2, f) != 2) break;
+                char path[48];
+                build_blob_path(crc, path, sizeof(path));
+                if (unlink(path) == 0) {
+                    ESP_LOGI(TAG, "Purged old blob: %s", path);
+                }
+            }
+            unlink(IMAGE_MAP_FILE);
+            ESP_LOGI(TAG, "Old format cleanup done — starting fresh with JPEG storage");
+        } else {
+            ESP_LOGW(TAG, "Map file invalid (magic=0x%08lx, ver=%d)",
+                     (unsigned long)hdr.magic, hdr.version);
+        }
         fclose(f);
         return ESP_FAIL;
     }

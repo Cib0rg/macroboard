@@ -680,14 +680,36 @@ static uint8_t* load_image_cached(uint8_t button_id) {
     uint8_t** cache_slot = resolve_cache_slot(button_id);
     if (*cache_slot != NULL) return *cache_slot;
 
-    uint8_t* img = NULL;
-    size_t img_sz = 0;
-    if (image_storage_load(0, resolve_storage_bid(button_id), &img, &img_sz) == ESP_OK && img != NULL) {
-        *cache_slot = img;
-        return img;
+    uint8_t* jpeg_data = NULL;
+    size_t jpeg_size = 0;
+    if (image_storage_load(0, resolve_storage_bid(button_id), &jpeg_data, &jpeg_size) != ESP_OK
+        || jpeg_data == NULL) {
+        free(jpeg_data);
+        return NULL;
     }
-    free(img);
-    return NULL;
+
+    // Stale RGB565 guard: JPEG always starts with 0xFF 0xD8
+    if (jpeg_size < 2 || jpeg_data[0] != 0xFF || jpeg_data[1] != 0xD8) {
+        ESP_LOGW(TAG, "button %u: stored data is not JPEG (stale RGB565?), skipping", button_id);
+        free(jpeg_data);
+        return NULL;
+    }
+
+    uint8_t* rgb565 = heap_caps_malloc(DISPLAY_BUFFER_SIZE, MALLOC_CAP_SPIRAM);
+    if (!rgb565) { free(jpeg_data); return NULL; }
+
+    uint16_t w = 0, h = 0;
+    esp_err_t ret = jpeg_decode_to_rgb565(jpeg_data, jpeg_size, rgb565, DISPLAY_BUFFER_SIZE, &w, &h);
+    free(jpeg_data);
+
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "JPEG decode failed for button %u: %s", button_id, esp_err_to_name(ret));
+        free(rgb565);
+        return NULL;
+    }
+
+    *cache_slot = rgb565;
+    return rgb565;
 }
 
 // ── Split display: top = short-press content, bottom = long-press label ───────
@@ -766,16 +788,36 @@ static void render_full_display(uint8_t button_id, button_config_t* btn) {
     }
 
     if (btn->image_size > 0) {
-        uint8_t* image_data = NULL;
-        size_t image_size = 0;
-        if (image_storage_load(0, resolve_storage_bid(button_id), &image_data, &image_size) == ESP_OK
-            && image_data != NULL) {
-            gc9a01_draw_image(button_id, image_data, DISPLAY_WIDTH, DISPLAY_HEIGHT);
-            *cache_slot = image_data;
+        uint8_t* jpeg_data = NULL;
+        size_t jpeg_size = 0;
+        bool loaded = (image_storage_load(0, resolve_storage_bid(button_id), &jpeg_data, &jpeg_size) == ESP_OK
+                       && jpeg_data != NULL);
+
+        // Stale RGB565 guard: JPEG always starts with 0xFF 0xD8
+        if (loaded && (jpeg_size < 2 || jpeg_data[0] != 0xFF || jpeg_data[1] != 0xD8)) {
+            ESP_LOGW(TAG, "render_full[%u]: stored data not JPEG (stale RGB565?)", button_id);
+            loaded = false;
+        }
+
+        if (loaded) {
+            uint8_t* rgb565 = heap_caps_malloc(DISPLAY_BUFFER_SIZE, MALLOC_CAP_SPIRAM);
+            if (rgb565) {
+                uint16_t w = 0, h = 0;
+                if (jpeg_decode_to_rgb565(jpeg_data, jpeg_size, rgb565, DISPLAY_BUFFER_SIZE, &w, &h) == ESP_OK) {
+                    gc9a01_draw_image(button_id, rgb565, DISPLAY_WIDTH, DISPLAY_HEIGHT);
+                    *cache_slot = rgb565;   // cache takes ownership
+                } else {
+                    ESP_LOGE(TAG, "render_full[%u]: JPEG decode failed", button_id);
+                    free(rgb565);
+                    gc9a01_clear(button_id, COLOR_BLACK);
+                }
+            } else {
+                gc9a01_clear(button_id, COLOR_BLACK);
+            }
         } else {
-            free(image_data);
             gc9a01_clear(button_id, COLOR_BLACK);
         }
+        free(jpeg_data);
         return;
     }
 

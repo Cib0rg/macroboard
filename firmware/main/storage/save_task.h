@@ -18,6 +18,7 @@
 #pragma once
 #include "esp_err.h"
 #include <stdint.h>
+#include <stddef.h>
 
 /**
  * Initialize queue and synchronization primitives.
@@ -37,25 +38,27 @@ void save_task_fn(void* arg);
 void save_task_drain(void);
 
 /**
- * Save an RGB565 image to SPIFFS.
+ * Save a JPEG image to SPIFFS.
  *
- * Async path (queue has room): copies rgb565_buf internally and returns immediately.
- * Sync path  (queue near full): writes directly from rgb565_buf, blocks until done.
+ * Async path (queue has room): copies jpeg_buf internally and returns immediately.
+ * Sync path  (queue near full): writes directly from jpeg_buf, blocks until done.
  *
- * In both paths the caller retains ownership of rgb565_buf — it is never consumed.
+ * In both paths the caller retains ownership of jpeg_buf — it is never consumed.
  * image_size in the in-memory profile is updated only on a successful write.
  *
  * @param profile_id  Profile slot (0).
  * @param folder_id   0xFF for root buttons; folder index for folder buttons.
  * @param button_id   Physical button index (0-9).
  * @param storage_bid Synthetic storage key (button_id for root, offset for folders).
- * @param rgb565_buf  Decoded RGB565 image (DISPLAY_BUFFER_SIZE bytes, PSRAM).
- * @param crc32       CRC32 of the original JPEG (content-address key).
+ * @param jpeg_buf    Original JPEG bytes (variable size, PSRAM).
+ * @param jpeg_size   Size of jpeg_buf in bytes.
+ * @param crc32       CRC32 of the JPEG (content-address key).
  * @return ESP_OK always (async path cannot report write errors; check logs).
  */
 esp_err_t save_task_save_image(uint8_t profile_id,
                                uint8_t folder_id,
                                uint8_t button_id,
                                uint8_t storage_bid,
-                               const uint8_t* rgb565_buf,
+                               const uint8_t* jpeg_buf,
+                               size_t jpeg_size,
                                uint32_t crc32);
