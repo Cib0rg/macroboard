@@ -16,7 +16,7 @@
 #include "storage/image_storage.h"
 #include "storage/save_task.h"
 #include "usb/usb_vendor.h"
-#include "esp_spiffs.h"
+#include "esp_littlefs.h"
 #include "esp_system.h"
 
 static const char* TAG = "PROTOCOL";
@@ -224,9 +224,9 @@ static esp_err_t handle_get_device_info(const uint8_t* payload, uint16_t length,
     response[21] = profile_storage_exists(0) ? 1 : 0;
     response[22] = 0;
     
-    // Free flash space from SPIFFS
+    // Free flash space from LittleFS
     size_t total = 0, used = 0;
-    esp_spiffs_info(NULL, &total, &used);
+    esp_littlefs_info("storage", &total, &used);
     uint32_t free_space = (uint32_t)(total - used);
     memcpy(&response[23], &free_space, 4);
     

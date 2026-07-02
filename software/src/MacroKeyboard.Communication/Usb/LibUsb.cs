@@ -209,6 +209,16 @@ internal sealed class UsbDeviceWrapper : IDisposable
             _device = null;
         }
 
+        // UsbContext.Dispose() calls libusb_exit(), which frees all native memory for
+        // this context.  UsbContext.Find() creates SafeHandle wrappers for every USB
+        // device on the bus (to scan them), then discards the non-matching ones.  Those
+        // discarded SafeHandles may still be sitting in the GC finalizer queue when we
+        // get here.  If libusb_exit() fires first, their finalizers call UnrefDevice()
+        // on freed memory → 0xC0000005 ACCESS_VIOLATION.
+        // Force all pending finalizers to complete before releasing the context.
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+
         try
         {
             _context?.Dispose();

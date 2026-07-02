@@ -38,7 +38,7 @@ idf_component_register(
     REQUIRES
         driver
         nvs_flash
-        spiffs
+        joltwallet__littlefs
         esp_timer
         esp_tinyusb
         led_strip

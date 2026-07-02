@@ -9,5 +9,5 @@ factory,    app,  factory,  0x10000,  0x300000,
 ota_0,      app,  ota_0,    0x310000, 0x300000,
 ota_1,      app,  ota_1,    0x610000, 0x300000,
 
-# Storage partition (SPIFFS for profiles and images)
+# Storage partition (LittleFS for profiles and images)
 storage,    data, spiffs,   0x910000, 0x6F0000,

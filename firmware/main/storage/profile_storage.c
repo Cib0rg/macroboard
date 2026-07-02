@@ -7,7 +7,7 @@
 #include "profile_storage.h"
 #include "config.h"
 #include "utils/crc.h"
-#include "esp_spiffs.h"
+#include "esp_littlefs.h"
 #include <sys/stat.h>
 #include <unistd.h>
 
@@ -16,23 +16,23 @@ static const char* TAG = "PROF_STOR";
 esp_err_t profile_storage_init(void) {
     ESP_LOGI(TAG, "Initializing profile storage");
     
-    esp_vfs_spiffs_conf_t conf = {
+    esp_vfs_littlefs_conf_t conf = {
         .base_path = STORAGE_BASE_PATH,
         .partition_label = "storage",
-        .max_files = 10,
-        .format_if_mount_failed = true
+        .format_if_mount_failed = true,
+        .grow_on_mount = true,
     };
-    
-    esp_err_t ret = esp_vfs_spiffs_register(&conf);
+
+    esp_err_t ret = esp_vfs_littlefs_register(&conf);
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to initialize SPIFFS: %s", esp_err_to_name(ret));
+        ESP_LOGE(TAG, "Failed to initialize LittleFS: %s", esp_err_to_name(ret));
         return ret;
     }
-    
+
     size_t total = 0, used = 0;
-    ret = esp_spiffs_info("storage", &total, &used);
+    ret = esp_littlefs_info("storage", &total, &used);
     if (ret == ESP_OK) {
-        ESP_LOGI(TAG, "SPIFFS: Total=%dKB, Used=%dKB, Free=%dKB",
+        ESP_LOGI(TAG, "LittleFS: Total=%dKB, Used=%dKB, Free=%dKB",
                  total/1024, used/1024, (total-used)/1024);
     }
     
