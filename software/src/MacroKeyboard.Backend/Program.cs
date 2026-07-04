@@ -8,6 +8,7 @@ using MacroKeyboard.Infrastructure.Persistence;
 using MacroKeyboard.Infrastructure.Repositories;
 using MacroKeyboard.Infrastructure.Services;
 using MacroKeyboard.Shared.IPC;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Serilog;
@@ -16,11 +17,17 @@ using Serilog;
 // Pin it to the binary directory so that relative paths (logs, data) resolve correctly.
 Environment.CurrentDirectory = AppContext.BaseDirectory;
 
-// Configure Serilog
+// Bootstrap configuration so Serilog can read its settings before the host is built.
+var env = Environment.GetEnvironmentVariable("DOTNET_ENVIRONMENT") ?? "Production";
+var bootstrapConfig = new ConfigurationBuilder()
+    .SetBasePath(AppContext.BaseDirectory)
+    .AddJsonFile("appsettings.json")
+    .AddJsonFile($"appsettings.{env}.json", optional: true)
+    .AddEnvironmentVariables()
+    .Build();
+
 Log.Logger = new LoggerConfiguration()
-    .MinimumLevel.Debug()
-    .WriteTo.Console()
-    .WriteTo.File("logs/backend-.log", rollingInterval: RollingInterval.Day, retainedFileCountLimit: 3)
+    .ReadFrom.Configuration(bootstrapConfig)
     .CreateLogger();
 
 try
